@@ -1,0 +1,292 @@
+---
+apiVersion: template.openshift.io/v1
+kind: Template
+metadata:
+  annotations:
+    description: resource-claim-operator deploy
+  name: resource-claim-operator-deploy
+
+parameters:
+- name: NAMESPACE
+  value: resource-claim-operator
+- name: IMAGE
+  value: image-registry.openshift-image-registry.svc:5000/resource-claim-operator/resource-claim-operator:latest
+  #value: quay.io/gpte-devops-automation/resource-claim-operator:latest
+- name: SERVICE_NAME
+  value: resource-claim-operator
+- name: OPERATOR_DOMAIN
+  value: gpte.redhat.com
+
+objects:
+- apiVersion: apiextensions.k8s.io/v1beta1
+  kind: CustomResourceDefinition
+  metadata:
+    name: resourceclaims.${OPERATOR_DOMAIN}
+  spec:
+    group: ${OPERATOR_DOMAIN}
+    version: v1
+    scope: Namespaced
+    names:
+      plural: resourceclaims
+      singular: resourceclaim
+      kind: ResourceClaim
+      shortNames: []
+    subresources:
+      status: {}
+
+- apiVersion: apiextensions.k8s.io/v1beta1
+  kind: CustomResourceDefinition
+  metadata:
+    name: resourcehandles.${OPERATOR_DOMAIN}
+  spec:
+    group: ${OPERATOR_DOMAIN}
+    version: v1
+    scope: Namespaced
+    names:
+      plural: resourcehandles
+      singular: resourcehandle
+      kind: ResourceHandle
+      shortNames: []
+    subresources:
+      status: {}
+
+- apiVersion: apiextensions.k8s.io/v1beta1
+  kind: CustomResourceDefinition
+  metadata:
+    name: resourcehandlers.${OPERATOR_DOMAIN}
+  spec:
+    group: ${OPERATOR_DOMAIN}
+    version: v1
+    scope: Namespaced
+    names:
+      plural: resourcehandlers
+      singular: resourcehandler
+      kind: ResourceHandler
+      shortNames: []
+    subresources:
+      status: {}
+
+- apiVersion: apiextensions.k8s.io/v1beta1
+  kind: CustomResourceDefinition
+  metadata:
+    name: resourcepools.${OPERATOR_DOMAIN}
+  spec:
+    group: ${OPERATOR_DOMAIN}
+    version: v1
+    scope: Namespaced
+    names:
+      plural: resourcepools
+      singular: resourcepool
+      kind: ResourcePool
+      shortNames: []
+    subresources:
+      status: {}
+
+- apiVersion: apiextensions.k8s.io/v1beta1
+  kind: CustomResourceDefinition
+  metadata:
+    name: anarchyactions.${OPERATOR_DOMAIN}
+  spec:
+    group: ${OPERATOR_DOMAIN}
+    version: v1
+    scope: Namespaced
+    names:
+      plural: anarchyactions
+      singular: anarchyaction
+      kind: AnarchyAction
+      shortNames: []
+    subresources:
+      status: {}
+
+- apiVersion: v1
+  kind: Namespace
+  metadata:
+    name: ${NAMESPACE}
+    annotations:
+      openshift-provision/action: create
+
+- apiVersion: v1
+  kind: ServiceAccount
+  metadata:
+    name: ${SERVICE_NAME}
+    namespace: ${NAMESPACE}
+
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRole
+  metadata:
+    name: ${SERVICE_NAME}
+  rules:
+  - apiGroups:
+    - ${OPERATOR_DOMAIN}
+    resources:
+    - resourceclaims
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups:
+    - ${OPERATOR_DOMAIN}
+    resources:
+    - resourceclaims/status
+    verbs:
+    - create
+    - get
+    - list
+    - patch
+    - watch
+    - update
+  - apiGroups:
+    - ""
+    resources:
+    - namespaces
+    verbs:
+    - get
+    - list
+  - apiGroups:
+    - user.openshift.io
+    resources:
+    - users
+    - identities
+    verbs:
+    - get
+
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRoleBinding
+  metadata:
+    name: ${SERVICE_NAME}
+  roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: ClusterRole
+    name: ${SERVICE_NAME}
+  subjects:
+  - kind: ServiceAccount
+    name: ${SERVICE_NAME}
+    namespace: ${NAMESPACE}
+
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: Role
+  metadata:
+    name: ${SERVICE_NAME}
+    namespace: ${NAMESPACE}
+  rules:
+  - apiGroups:
+    - ${OPERATOR_DOMAIN}
+    resources:
+    - resourcehandlers
+    - resourcepools
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups:
+    - ${OPERATOR_DOMAIN}
+    resources:
+    - resourcehandlers/status
+    - resourcepools/status
+    verbs:
+    - create
+    - get
+    - list
+    - patch
+    - watch
+    - update
+  - apiGroups:
+    - ${OPERATOR_DOMAIN}
+    resources:
+    - resourcehandles
+    - resourcehandles/status
+    verbs:
+    - create
+    - delete
+    - deletecollection
+    - get
+    - list
+    - patch
+    - update
+    - watch
+  - apiGroups:
+    - ""
+    - image.openshift.io
+    resources:
+    - imagestreamimages
+    - imagestreams
+    - imagestreamtags
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups:
+    - ""
+    - image.openshift.io
+    resources:
+    - imagestreams/layers
+    verbs:
+    - get
+
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: RoleBinding
+  metadata:
+    name: ${SERVICE_NAME}
+    namespace: ${NAMESPACE}
+  roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: Role
+    name: ${SERVICE_NAME}
+  subjects:
+  - kind: ServiceAccount
+    name: ${SERVICE_NAME}
+    namespace: ${NAMESPACE}
+
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ${SERVICE_NAME}
+    namespace: ${NAMESPACE}
+  spec:
+    ports:
+    - name: metrics
+      port: 8000
+      protocol: TCP
+      targetPort: 8000
+    selector:
+      name: ${SERVICE_NAME}
+    sessionAffinity: None
+    type: ClusterIP
+
+- apiVersion: extensions/v1beta1
+  kind: Deployment
+  metadata:
+    labels:
+      name: ${SERVICE_NAME}
+    name: ${SERVICE_NAME}
+    namespace: ${NAMESPACE}
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        name: ${SERVICE_NAME}
+    strategy:
+      type: Recreate
+    template:
+      metadata:
+        labels:
+          name: ${SERVICE_NAME}
+      spec:
+        containers:
+        - name: manager
+          env:
+          - name: OPERATOR_DOMAIN
+            value: ${OPERATOR_DOMAIN}
+          image: ${IMAGE}
+          imagePullPolicy: Always
+          # FIXME - Add probes
+          #livenessProbe:
+          #readinessProbe:
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        restartPolicy: Always
+        securityContext: {}
+        serviceAccountName: ${SERVICE_NAME}
+        terminationGracePeriodSeconds: 30
+

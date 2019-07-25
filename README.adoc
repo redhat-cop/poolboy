@@ -1,0 +1,10 @@
+Resource Claim Operator
+-----------------------
+
+The resource claim operator provides a structure to manage any OpenShift
+resource types through with ResourceClaim resources created in any
+namespace which are handled according to the configuration in ResourceHandler
+resources to create ResourceHandle resources which can then create cluster
+resources or resources in any namespace.
+
+`ResourceClaim` in user namespace -> `ResourceHandle` in operator namespace -> _Any Resource Kind_

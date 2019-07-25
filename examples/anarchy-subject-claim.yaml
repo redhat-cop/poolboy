@@ -1,0 +1,18 @@
+---
+apiVersion: gpte.redhat.com/v1
+kind: ResourceClaim
+metadata:
+  generateName: anarchy-subject-
+spec:
+  template:
+    apiVersion: gpte.redhat.com/v1
+    kind: AnarchySubject
+    metadata:
+      labels:
+        governor: test
+    spec:
+      governor: test
+      parameters:
+        test_str: bar
+        test_int: 23
+        test_float: 23.3

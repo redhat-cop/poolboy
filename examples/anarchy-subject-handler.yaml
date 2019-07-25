@@ -1,0 +1,61 @@
+---
+apiVersion: gpte.redhat.com/v1
+kind: ResourceHandler
+metadata:
+  name: anarchy-subject
+  namespace: resource-claim-operator
+spec:
+  match:
+    apiVersion: gpte.redhat.com/v1
+    kind: AnarchySubject
+  default: {}
+  override:
+    metadata:
+      generateName: "{{: resource_handle.spec.template.spec.governor :}}-"
+      namespace: anarchy-operator
+    spec:
+      parameters:
+        guid: "{{: resource_handle.metadata.name[-5:] :}}"
+  updateFilter:
+  - pathMatch: /spec/desiredState
+  validation:
+    openAPIV3Schema:
+      type: object
+      required:
+      - apiVersion
+      - kind
+      - spec
+      additionalProperties: false
+      properties:
+        apiVersion:
+          type: string
+          enum:
+          - gpte.redhat.com/v1
+        kind:
+          type: string
+          enum:
+          - AnarchySubject
+        metadata:
+          type: object
+          additionalProperties: false
+          properties:
+            labels:
+              type: object
+              additionalProperties:
+                type: string
+        spec:
+          type: object
+          required:
+          - governor
+          - parameters
+          additionalProperties: false
+          properties:
+            desiredState: 
+              type: string
+              enum:
+              - deployed
+              - idled
+            governor:
+              type: string
+            parameters:
+              type: object
