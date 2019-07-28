@@ -147,21 +147,21 @@ class OperatorRuntime(object):
         if not patch:
             return resource
 
-        if '/' in resource_definition['apiVersion']:
-            api_group, version = resource_definition['apiVersion'].split('/')
+        if '/' in resource['apiVersion']:
+            api_group, version = resource['apiVersion'].split('/')
             return self.patch_custom_resource(
                 api_group,
                 version,
-                resource_definition['kind'],
-                resource_definition['metadata'].get('namespace', None),
-                resource_definition['metadata']['name'],
+                resource['kind'],
+                resource['metadata'].get('namespace', None),
+                resource['metadata']['name'],
                 patch
             )
         else:
             return self.patch_core_resource(
-                resource_definition['kind'],
-                resource_definition['metadata'].get('namespace', None),
-                resource_definition['metadata']['name'],
+                resource['kind'],
+                resource['metadata'].get('namespace', None),
+                resource['metadata']['name'],
                 patch
             )
 

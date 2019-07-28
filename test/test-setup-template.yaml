@@ -1,0 +1,65 @@
+---
+apiVersion: template.openshift.io/v1
+kind: Template
+metadata:
+  annotations:
+    description: resource-claim-operator deploy
+  name: resource-claim-operator-deploy
+
+parameters:
+- name: NAMESPACE
+  value: resource-claim-operator-test
+- name: OPERATOR_DOMAIN
+  value: gpte.redhat.com
+
+objects:
+- apiVersion: v1
+  kind: Namespace
+  metadata:
+    name: ${NAMESPACE}
+
+- apiVersion: apiextensions.k8s.io/v1beta1
+  kind: CustomResourceDefinition
+  metadata:
+    name: resourceclaimtests.${OPERATOR_DOMAIN}
+  spec:
+    group: ${OPERATOR_DOMAIN}
+    version: v1
+    scope: Namespaced
+    names:
+      plural: resourceclaimtests
+      singular: resourceclaimtest
+      kind: ResourceClaimTest
+      shortNames: []
+
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRole
+  metadata:
+    name: resource-claim-operator-test
+  rules:
+  - apiGroups:
+    - gpte.redhat.com
+    resources:
+    - resourceclaimtests
+    verbs:
+    - create
+    - delete
+    - deletecollection
+    - get
+    - list
+    - patch
+    - watch
+    - update
+
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRoleBinding
+  metadata:
+    name: resource-claim-operator-test
+  roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: ClusterRole
+    name: resource-claim-operator-test
+  subjects:
+  - kind: ServiceAccount
+    name: resource-claim-operator
+    namespace: resource-claim-operator

@@ -1,0 +1,63 @@
+---
+apiVersion: gpte.redhat.com/v1
+kind: ResourceHandler
+metadata:
+  name: {{ name | default('test') | to_json }}
+  namespace: {{ operator_namespace | to_json }}
+spec:
+  match:
+    apiVersion: gpte.redhat.com/v1
+    kind: ResourceClaimTest
+    metadata:
+      annotations:
+        gpte.redhat.com/resource-handler-name: {{ name | default('test') | to_json }}
+        gpte.redhat.com/resource-handler-namespace: {{ operator_namespace }}
+  default: {}
+  override:
+    metadata:
+      namespace: {{ operator_test_namespace }}
+{% raw %}
+    spec:
+      etc:
+        guid: "{{: resource_handle.metadata.name[-5:] :}}"
+  updateFilter:
+  - pathMatch: /spec/desiredState
+  validation:
+    openAPIV3Schema:
+      type: object
+      required:
+      - apiVersion
+      - kind
+      - spec
+      additionalProperties: false
+      properties:
+        apiVersion:
+          type: string
+          enum:
+          - gpte.redhat.com/v1
+        kind:
+          type: string
+          enum:
+          - ResourceClaimTest
+        metadata:
+          type: object
+          additionalProperties: false
+          properties:
+            annotations:
+              type: object
+              additionalProperties:
+                type: string
+        spec:
+          type: object
+          required:
+          - etc
+          additionalProperties: false
+          properties:
+            desiredState: 
+              type: string
+              enum:
+              - deployed
+              - idled
+            etc:
+              type: object
+{% endraw %}

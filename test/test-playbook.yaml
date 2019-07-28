@@ -1,0 +1,273 @@
+---
+- hosts: localhost
+  gather_facts: false
+  vars:
+    oc_cmd: oc
+    operator_namespace: resource-claim-operator
+    operator_test_namespace: resource-claim-operator-test
+    build: true
+  tasks:
+  - when: build
+    block:
+    - name: Start operator build
+      command: >-
+        {{ oc_cmd }} start-build resource-claim-operator
+        -n {{ operator_namespace | quote }}
+        --from-dir {{ playbook_dir }}/..
+
+    - name: Get resource-claim-operator BuildConfig
+      k8s_facts:
+        api_version: build.openshift.io/v1
+        kind: BuildConfig
+        name: resource-claim-operator
+        namespace: "{{ operator_namespace }}"
+      register: operator_buildconfig
+
+    - name: Wait for operator build
+      k8s_facts:
+        api_version: build.openshift.io/v1
+        kind: Build
+        name: resource-claim-operator-{{ operator_buildconfig.resources[0].status.lastVersion }}
+        namespace: "{{ operator_namespace }}"
+      register: operator_build
+      until: operator_build.resources[0].status.phase in ['Complete', 'Failed']
+      retries: 30
+      delay: 10
+
+    - name: Assert that exactly one deploy action for test-1 was found
+      assert:
+        that:
+        - operator_build.resources[0].status.phase == 'Complete'
+        fail_msg: Operator build did not complete
+        success_msg: Operator build complete
+
+  - name: Scale down operator
+    k8s_scale:
+      api_version: extensions/v1beta1
+      kind: Deployment
+      name: resource-claim-operator
+      namespace: "{{ operator_namespace }}"
+      replicas: 0
+
+  - name: Wait for operator scale down
+    k8s_facts:
+      api_version: v1
+      kind: Pod
+      namespace: "{{ operator_namespace }}"
+      label_selectors:
+      - name=resource-claim-operator
+    register: get_operator_pod
+    until: get_operator_pod.resources | length == 0
+    retries: 30
+    delay: 5
+
+  - name: Get test resource claims
+    k8s_facts:
+      api_version: gpte.redhat.com/v1
+      kind: ResourceClaim
+      namespace: "{{ operator_test_namespace }}"
+    register: test_claims
+
+  - name: Remove finalizer from test resource claims
+    command: >-
+      {{ oc_cmd }} patch resourceclaim.gpte.redhat.com {{ claim.metadata.name }}
+      -n {{ operator_test_namespace }}
+      --type=merge -p {{ patch | to_json | quote}}
+    loop: "{{ test_claims.resources }}"
+    loop_control:
+      label: "{{ claim.metadata.name }}"
+      loop_var: claim
+    vars:
+      patch:
+        metadata:
+          finalizers: []
+
+  - name: Remove test resource claims
+    k8s:
+      state: absent
+      api_version: gpte.redhat.com/v1
+      kind: ResourceClaim
+      name: "{{ claim.metadata.name }}"
+      namespace: "{{ operator_test_namespace }}"
+    loop: "{{ test_claims.resources }}"
+    loop_control:
+      label: "{{ claim.metadata.name }}"
+      loop_var: claim
+
+  - name: Get test resource handles
+    k8s_facts:
+      api_version: gpte.redhat.com/v1
+      kind: ResourceHandle
+      namespace: "{{ operator_namespace }}"
+      label_selectors:
+      - gpte.redhat.com/resource-handler=test
+    register: test_handles
+
+  - name: Remove finalizer from test resource handles
+    command: >-
+      {{ oc_cmd }} patch resourcehandle.gpte.redhat.com {{ handle.metadata.name }}
+      -n {{ operator_namespace }}
+      --type=merge -p {{ patch | to_json | quote}}
+    loop: "{{ test_handles.resources }}"
+    loop_control:
+      label: "{{ handle.metadata.name }}"
+      loop_var: handle
+    vars:
+      patch:
+        metadata:
+          finalizers: []
+
+  - name: Remove test resource handles
+    k8s:
+      state: absent
+      api_version: gpte.redhat.com/v1
+      kind: ResourceHandle
+      name: "{{ handle.metadata.name }}"
+      namespace: "{{ operator_namespace }}"
+    loop: "{{ test_handles.resources }}"
+    loop_control:
+      label: "{{ handle.metadata.name }}"
+      loop_var: handle
+
+  - name: Get resource claim tests
+    k8s_facts:
+      api_version: gpte.redhat.com/v1
+      kind: ResourceClaimTest
+      namespace: "{{ operator_test_namespace }}"
+      label_selectors:
+      - gpte.redhat.com/resource-handler=test
+    register: resource_claim_tests
+
+  - name: Remove resource claim tests
+    k8s:
+      state: absent
+      api_version: gpte.redhat.com/v1
+      kind: ResourceClaimTest
+      name: "{{ resource_claim_test.metadata.name }}"
+      namespace: "{{ operator_test_namespace }}"
+    loop: "{{ resource_claim_tests.resources }}"
+    loop_control:
+      label: "{{ resource_claim_test.metadata.name }}"
+      loop_var: resource_claim_test
+
+  - name: Remove test ResourceHandler
+    k8s:
+      state: absent
+      api_version: gpte.redhat.com/v1
+      kind: ResourceHandler
+      name: test
+      namespace: "{{ operator_namespace }}"
+
+  - name: Remove test-new ResourceHandler
+    k8s:
+      state: absent
+      api_version: gpte.redhat.com/v1
+      kind: ResourceHandler
+      name: test-new
+      namespace: "{{ operator_namespace }}"
+
+  - name: Create test ResourceHandler
+    k8s:
+      state: present
+      definition: "{{ lookup('template', 'test-resource-handler.yaml.j2') | from_yaml }}"
+
+  - name: Scale up operator
+    k8s_scale:
+      api_version: extensions/v1beta1
+      kind: Deployment
+      name: resource-claim-operator
+      namespace: "{{ operator_namespace }}"
+      replicas: 1
+
+  - name: Pause for operator start-up
+    pause:
+      seconds: 35
+
+  - name: Create ResourceClaim test-1
+    k8s:
+      state: present
+      definition:
+        apiVersion: gpte.redhat.com/v1
+        kind: ResourceClaim
+        metadata:
+          name: test-1
+          namespace: "{{ operator_test_namespace }}"
+        spec:
+          template:
+            apiVersion: gpte.redhat.com/v1
+            kind: ResourceClaimTest
+            metadata:
+              annotations:
+                gpte.redhat.com/resource-handler-name: test
+                gpte.redhat.com/resource-handler-namespace: "{{ operator_namespace }}"
+            spec:
+              etc:
+                name: test-1
+
+  - name: Pause for resource generation
+    pause:
+      seconds: 10
+
+  - name: Get resource handle for claim test-1
+    k8s_facts:
+      api_version: gpte.redhat.com/v1
+      kind: ResourceHandle
+      namespace: "{{ operator_namespace }}"
+      label_selectors:
+      - gpte.redhat.com/resource-claim-name=test-1
+      - gpte.redhat.com/resource-claim-namespace={{ operator_test_namespace }}
+    register: resource_handle_for_test_1
+
+  - name: Assert that exactly one handle for test-1 was found
+    assert:
+      that:
+      - resource_handle_for_test_1.resources | length == 1
+      fail_msg: One test-1 resource handle not found
+      success_msg: One test-1 resource handle found
+
+  - name: Check resource handle for test-1
+    assert:
+      that:
+      - handle.metadata.finalizers[0] == 'gpte.redhat.com/resource-claim-operator'
+      - handle.metadata.generateName == 'guid-'
+      - handle.metadata.labels['gpte.redhat.com/resource-handler'] == 'test'
+      - handle.spec.claim.name == 'test-1'
+      - handle.spec.claim.namespace == operator_test_namespace
+      - handle.spec.handler.name == 'test'
+      - handle.spec.handler.namespace == operator_namespace
+      - handle.spec.resource.kind == 'ResourceClaimTest'
+      - handle.spec.resource.namespace == operator_test_namespace
+      - handle.spec.template.kind == 'ResourceClaimTest'
+      - handle.spec.template.spec.etc.name == 'test-1'
+      fail_msg: test-1 handle not found as expected
+      success_msg: test-1 handle found as expected
+    vars:
+      handle: "{{ resource_handle_for_test_1.resources[0] }}"
+
+  - name: Get resource from handle for test-1
+    k8s_facts:
+      api_version: "{{ resource_ref.apiVersion }}"
+      kind: "{{ resource_ref.kind }}"
+      name: "{{ resource_ref.name }}"
+      namespace: "{{ resource_ref.namespace | default('') }}"
+    vars:
+      resource_ref: "{{resource_handle_for_test_1.resources[0].spec.resource }}" 
+    register: resource_for_test_1
+
+  - name: Check resource for test-1
+    assert:
+      that:
+      - resource.kind == 'ResourceClaimTest'
+      - resource.metadata.annotations['gpte.redhat.com/resource-claim-name'] == 'test-1' 
+      - resource.metadata.annotations['gpte.redhat.com/resource-claim-namespace'] == operator_test_namespace
+      - resource.metadata.annotations['gpte.redhat.com/resource-handle-name'] == handle.metadata.name
+      - resource.metadata.annotations['gpte.redhat.com/resource-handle-namespace'] == handle.metadata.namespace
+      - resource.metadata.annotations['gpte.redhat.com/resource-handle-uid'] == handle.metadata.uid
+      - resource.metadata.annotations['gpte.redhat.com/resource-handle-version'] == handle.metadata.resourceVersion 
+      - resource.metadata.annotations['gpte.redhat.com/resource-handler-name'] == 'test' 
+      - resource.metadata.annotations['gpte.redhat.com/resource-handler-namespace'] == operator_namespace
+      fail_msg: test-1 resource not found as expected
+      success_msg: test-1 resource looks good
+    vars:
+      handle: "{{ resource_handle_for_test_1.resources[0] }}"
+      resource: "{{ resource_for_test_1.resources[0] }}"

@@ -80,6 +80,17 @@ class ResourceHandle(object):
             or self.resource_version() != resource['metadata'].get('/resource-handle-version', ''):
                 runtime.patch_resource(resource, resource_definition, patch_filters)
         else:
+            self.patch(runtime, {
+                "spec": {
+                    "resource": {
+                        "apiVersion": resource_definition['apiVersion'],
+                        "kind": resource_definition['kind'],
+                        "name": resource_definition['metadata']['name'],
+                        "namespace": resource_definition['metadata']['namespace']
+                    }
+                }
+            })
+            resource_definition['metadata']['annotations'][runtime.operator_domain + '/resource-handle-version'] = self.resource_version()
             runtime.create_resource(resource_definition)
 
     def process_resource_template(self, runtime):
@@ -157,3 +168,18 @@ class ResourceHandle(object):
         runtime.logger.warn(resource_definition)
 
         return resource_definition, handler.update_filters()
+
+    def patch(self, runtime, patch):
+        runtime.logger.info("Before patch resource version " + self.metadata['resourceVersion'])
+        resource = runtime.patch_resource(
+            {
+                'apiVersion': runtime.operator_domain + '/v1',
+                'kind': 'ResourceHandle',
+                'metadata': self.metadata,
+                'spec': self.spec,
+            },
+            patch,
+            [{ 'pathMatch': '/.*', 'allowedOps': ['add','replace'] }]
+        )
+        self.__init__(resource)
+        runtime.logger.info("After patch resource version " + self.metadata['resourceVersion'])
