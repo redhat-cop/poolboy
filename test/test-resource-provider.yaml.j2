@@ -1,17 +1,17 @@
 ---
 apiVersion: gpte.redhat.com/v1
-kind: ResourceHandler
+kind: ResourceProvider
 metadata:
-  name: {{ name | default('test') | to_json }}
-  namespace: {{ operator_namespace | to_json }}
+  name: {{ name | default('test') }}
+  namespace: {{ operator_namespace }}
 spec:
   match:
     apiVersion: gpte.redhat.com/v1
     kind: ResourceClaimTest
     metadata:
       annotations:
-        gpte.redhat.com/resource-handler-name: {{ name | default('test') | to_json }}
-        gpte.redhat.com/resource-handler-namespace: {{ operator_namespace }}
+        gpte.redhat.com/resource-provider-name: {{ name | default('test') }}
+        gpte.redhat.com/resource-provider-namespace: {{ operator_namespace }}
   default: {}
   override:
     metadata:
@@ -53,7 +53,7 @@ spec:
           - etc
           additionalProperties: false
           properties:
-            desiredState: 
+            desiredState:
               type: string
               enum:
               - deployed

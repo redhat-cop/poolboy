@@ -53,15 +53,15 @@ objects:
 - apiVersion: apiextensions.k8s.io/v1beta1
   kind: CustomResourceDefinition
   metadata:
-    name: resourcehandlers.${OPERATOR_DOMAIN}
+    name: resourceproviders.${OPERATOR_DOMAIN}
   spec:
     group: ${OPERATOR_DOMAIN}
     version: v1
     scope: Namespaced
     names:
-      plural: resourcehandlers
-      singular: resourcehandler
-      kind: ResourceHandler
+      plural: resourceproviders
+      singular: resourceprovider
+      kind: ResourceProvider
       shortNames: []
     subresources:
       status: {}
@@ -172,7 +172,7 @@ objects:
   - apiGroups:
     - ${OPERATOR_DOMAIN}
     resources:
-    - resourcehandlers
+    - resourceproviders
     - resourcepools
     verbs:
     - get
@@ -181,7 +181,7 @@ objects:
   - apiGroups:
     - ${OPERATOR_DOMAIN}
     resources:
-    - resourcehandlers/status
+    - resourceproviders/status
     - resourcepools/status
     verbs:
     - create

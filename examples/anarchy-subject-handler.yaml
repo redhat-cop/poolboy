@@ -50,7 +50,7 @@ spec:
           - parameters
           additionalProperties: false
           properties:
-            desiredState: 
+            desiredState:
               type: string
               enum:
               - deployed
