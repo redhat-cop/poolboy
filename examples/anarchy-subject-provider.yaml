@@ -1,6 +1,6 @@
 ---
 apiVersion: gpte.redhat.com/v1
-kind: ResourceHandler
+kind: ResourceProvider
 metadata:
   name: anarchy-subject
   namespace: resource-claim-operator

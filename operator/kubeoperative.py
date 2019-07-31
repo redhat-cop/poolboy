@@ -71,6 +71,10 @@ class Watcher(object):
         self.name = name
         self.operative = operative
         self._preload = preload
+        self.thread = threading.Thread(
+            name = self.name,
+            target = self.watch_loop
+        )
         if group:
             self.__init_custom_resource_watcher(
                 group=group,
@@ -141,7 +145,6 @@ class Watcher(object):
     def preload(self):
         if not self._preload:
             return
-        self.operative.logger.warn(self.method_args)
         res = self.method(*self.method_args)
         for resource in res.get('items', []):
             event = self.make_event('ADDED', resource)
@@ -183,6 +186,10 @@ class Watcher(object):
                         self.handler(event)
                     except Exception as e:
                         self.operative.logger.exception("Error handling event %s", event)
+
+    def start(self):
+        if not self.thread.is_alive():
+            self.thread.start()
 
 class KubeOperative(object):
 
@@ -494,11 +501,7 @@ class KubeOperative(object):
             w.preload()
 
         for w in self.watcher_list:
-            w.thread = threading.Thread(
-                name = w.name,
-                target = w.watch_loop
-            )
-            w.thread.start()
+            w.start()
 
     def watcher(self, plural, cache_resources=False, name=None, namespace=None, group=None, preload=False, version='v1'):
         if not name:

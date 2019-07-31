@@ -236,8 +236,6 @@
       - handle.spec.claim.namespace == operator_test_namespace
       - handle.spec.provider.name == 'test'
       - handle.spec.provider.namespace == operator_namespace
-      - handle.spec.resource.kind == 'ResourceClaimTest'
-      - handle.spec.resource.namespace == operator_test_namespace
       - handle.spec.template.kind == 'ResourceClaimTest'
       - handle.spec.template.spec.etc.name == 'test-1'
       fail_msg: test-1 handle not found as expected
@@ -252,7 +250,7 @@
       name: "{{ resource_ref.name }}"
       namespace: "{{ resource_ref.namespace | default('') }}"
     vars:
-      resource_ref: "{{resource_handle_for_test_1.resources[0].spec.resource }}"
+      resource_ref: "{{ resource_handle_for_test_1.resources[0].spec.resource }}"
     register: resource_for_test_1
 
   - name: Check resource for test-1
@@ -272,3 +270,22 @@
     vars:
       handle: "{{ resource_handle_for_test_1.resources[0] }}"
       resource: "{{ resource_for_test_1.resources[0] }}"
+
+  - name: Get resource claim test-1
+    k8s_facts:
+      api_version: gpte.redhat.com/v1
+      kind: ResourceClaim
+      name: test-1
+      namespace: "{{ operator_test_namespace }}"
+    register: test_1_claim
+
+  - name: Check claim test-1
+    assert:
+      that:
+      - claim.status.resource.kind == 'ResourceClaimTest'
+      - claim.status.resource.metadata.namespace == operator_test_namespace
+      - claim.status.resource.spec.etc.name == 'test-1'
+      fail_msg: test-1 resource not found as expected
+      success_msg: test-1 resource looks good
+    vars:
+      claim: "{{ test_1_claim.resources[0] }}"
