@@ -202,8 +202,10 @@
                 gpte.redhat.com/resource-provider-name: test
                 gpte.redhat.com/resource-provider-namespace: "{{ operator_namespace }}"
             spec:
-              etc:
+              governor: test
+              parameters:
                 name: test-1
+                number: 23
 
   - name: Pause for resource generation
     pause:
@@ -237,7 +239,8 @@
       - handle.spec.provider.name == 'test'
       - handle.spec.provider.namespace == operator_namespace
       - handle.spec.template.kind == 'ResourceClaimTest'
-      - handle.spec.template.spec.etc.name == 'test-1'
+      - handle.spec.template.spec.parameters.name == 'test-1'
+      - handle.spec.template.spec.parameters.number == 23
       fail_msg: test-1 handle not found as expected
       success_msg: test-1 handle found as expected
     vars:
@@ -284,7 +287,88 @@
       that:
       - claim.status.resource.kind == 'ResourceClaimTest'
       - claim.status.resource.metadata.namespace == operator_test_namespace
-      - claim.status.resource.spec.etc.name == 'test-1'
+      - claim.status.resource.spec.parameters.name == 'test-1'
+      - claim.status.resource.spec.parameters.number == 23
+      fail_msg: test-1 resource not found as expected
+      success_msg: test-1 resource looks good
+    vars:
+      claim: "{{ test_1_claim.resources[0] }}"
+
+  - name: Update ResourceClaim test-1
+    k8s:
+      state: present
+      definition:
+        apiVersion: gpte.redhat.com/v1
+        kind: ResourceClaim
+        metadata:
+          name: test-1
+          namespace: "{{ operator_test_namespace }}"
+        spec:
+          template:
+            apiVersion: gpte.redhat.com/v1
+            kind: ResourceClaimTest
+            metadata:
+              annotations:
+                gpte.redhat.com/resource-provider-name: test
+                gpte.redhat.com/resource-provider-namespace: "{{ operator_namespace }}"
+            spec:
+              desiredState: deployed
+              governor: test
+              parameters:
+                name: test-1
+                foo: bar
+                number: 42
+
+  - name: Pause for claim resource status update
+    pause:
+      seconds: 5
+
+  - name: Get resource handle for claim test-1
+    k8s_facts:
+      api_version: gpte.redhat.com/v1
+      kind: ResourceHandle
+      namespace: "{{ operator_namespace }}"
+      label_selectors:
+      - gpte.redhat.com/resource-claim-name=test-1
+      - gpte.redhat.com/resource-claim-namespace={{ operator_test_namespace }}
+    register: resource_handle_for_test_1
+
+  - name: Check update of resource handle for test-1
+    assert:
+      that:
+      - handle.metadata.finalizers[0] == 'gpte.redhat.com/resource-claim-operator'
+      - handle.metadata.generateName == 'guid-'
+      - handle.metadata.labels['gpte.redhat.com/resource-provider'] == 'test'
+      - handle.spec.claim.name == 'test-1'
+      - handle.spec.claim.namespace == operator_test_namespace
+      - handle.spec.provider.name == 'test'
+      - handle.spec.provider.namespace == operator_namespace
+      - handle.spec.template.kind == 'ResourceClaimTest'
+      - handle.spec.template.spec.parameters.name == 'test-1'
+      - handle.spec.template.spec.parameters.number == 42
+      fail_msg: test-1 handle not found as expected
+      success_msg: test-1 handle found as expected
+    vars:
+      handle: "{{ resource_handle_for_test_1.resources[0] }}"
+
+  - name: Get resource claim test-1
+    k8s_facts:
+      api_version: gpte.redhat.com/v1
+      kind: ResourceClaim
+      name: test-1
+      namespace: "{{ operator_test_namespace }}"
+    register: test_1_claim
+
+  - name: Check claim test-1 update
+    assert:
+      that:
+      - claim.status.resource.kind == 'ResourceClaimTest'
+      - claim.status.resource.metadata.namespace == operator_test_namespace
+      - claim.status.resource.spec.parameters.name == 'test-1'
+      # Check changes to parameters are rejected on the resource
+      - claim.status.resource.spec.parameters.number == 23
+      # Change to desiredState should go through
+      - claim.status.resource.spec.desiredState == 'deployed'
       fail_msg: test-1 resource not found as expected
       success_msg: test-1 resource looks good
     vars:

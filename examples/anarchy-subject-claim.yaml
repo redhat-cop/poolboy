@@ -10,6 +10,9 @@ spec:
     metadata:
       labels:
         governor: test
+      annotations:
+        gpte.redhat.com/resource-provider-name: test
+        gpte.redhat.com/resource-provider-namespace: "{{ operator_namespace }}"
     spec:
       governor: test
       parameters:

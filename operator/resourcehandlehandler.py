@@ -116,12 +116,13 @@ class ResourceHandleHandler(object):
 
         if resource:
             annotations = resource['metadata']['annotations']
-            if handle_uid != annotations.get(self.ko.operator_domain + '/resource-handle-uid') \
-            or handle_version != annotations.get(self.ko.operator_domain + '/resource-handle-version'):
+            if handle_uid == annotations.get(self.ko.operator_domain + '/resource-handle-uid') \
+            and handle_version != annotations.get(self.ko.operator_domain + '/resource-handle-version'):
                 # Allow changes to resource related operator annotations
                 update_filters = provider['spec'].get('updateFilters', []) + [{
-                    'pathMatch': '/metadata/annotations/' + re.escape(self.ko.operator_domain) + '~1resource-'
+                    'pathMatch': '/metadata/annotations/' + re.escape(self.ko.operator_domain) + '~1resource-.*'
                 }]
+                self.ko.logger.warn(update_filters)
                 self.ko.patch_resource(
                     resource=resource,
                     patch=resource_definition,
@@ -158,7 +159,7 @@ class ResourceHandleHandler(object):
         if not name:
             return None
         try:
-            requester_user = ko.custom_objects_api.get_cluster_custom_object(
+            requester_user = self.ko.custom_objects_api.get_cluster_custom_object(
                 'user.openshift.io',
                 'v1',
                 'users',
@@ -172,7 +173,7 @@ class ResourceHandleHandler(object):
         if not name:
             return None
         try:
-            return ko.custom_objects_api.get_cluster_custom_object(
+            return self.ko.custom_objects_api.get_cluster_custom_object(
                 'user.openshift.io',
                 'v1',
                 'identities',
@@ -242,7 +243,6 @@ class ResourceHandleHandler(object):
             })
 
     def resource_watch(self, event):
-        self.ko.logger.warn(event)
         resource = event.resource
         metadata = resource['metadata']
         annotations = metadata.get('annotations', {})

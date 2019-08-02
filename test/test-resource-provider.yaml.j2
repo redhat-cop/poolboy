@@ -20,7 +20,7 @@ spec:
     spec:
       etc:
         guid: "{{: resource_handle.metadata.name[-5:] :}}"
-  updateFilter:
+  updateFilters:
   - pathMatch: /spec/desiredState
   validation:
     openAPIV3Schema:
@@ -50,7 +50,7 @@ spec:
         spec:
           type: object
           required:
-          - etc
+          - governor
           additionalProperties: false
           properties:
             desiredState:
@@ -58,6 +58,8 @@ spec:
               enum:
               - deployed
               - idled
-            etc:
+            governor:
+              type: string
+            parameters:
               type: object
 {% endraw %}

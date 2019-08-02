@@ -16,7 +16,7 @@ spec:
     spec:
       parameters:
         guid: "{{: resource_handle.metadata.name[-5:] :}}"
-  updateFilter:
+  updateFilters:
   - pathMatch: /spec/desiredState
   validation:
     openAPIV3Schema:

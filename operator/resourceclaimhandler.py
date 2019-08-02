@@ -1,5 +1,6 @@
 import copy
 import json
+import kubernetes.client.rest
 import openapi_core.shortcuts
 import openapi_core.wrappers.mock
 import openapi_core.extensions.models.models
@@ -66,7 +67,7 @@ class ResourceClaimHandler(object):
 
     def added(self, claim):
         if claim_is_bound(claim):
-            self.check_handle_status(claim)
+            self.update_handle(claim)
         else:
             self.bind_handle_to_claim(claim)
 
@@ -113,14 +114,6 @@ class ResourceClaimHandler(object):
                 handle = self.create_handle_for_claim(provider, claim)
 
         self.set_handle_for_claim(claim, handle)
-
-    def check_handle_status(self,claim):
-        # FIXME - Verify that handle still exists
-
-        # FIXME - Update resource handle if claim is bound and handle spec.template
-        # differs from claim spec.template. The handler updateFilter should apply
-        # to changes propagated from claim template to handle template.
-        pass
 
     def create_handle_for_claim(self, provider, claim):
         claim_name = claim['metadata']['name']
@@ -177,8 +170,19 @@ class ResourceClaimHandler(object):
         ))
 
     def get_handle_for_claim(self, claim):
-        # FIXME - Search for handle based on resource-claim-name and resource-claim-namespace labels
-        pass
+        claim_name = claim['metadata']['name']
+        claim_namespace = claim['metadata']['namespace']
+        items = self.ko.custom_objects_api.list_namespaced_custom_object(
+             self.ko.operator_domain,
+             'v1',
+             self.ko.operator_namespace,
+             'resourcehandles',
+             label_selector='{0}/resource-claim-namespace={1},{0}/resource-claim-name={2}'.format(
+                 self.ko.operator_domain, claim_namespace, claim_name
+             )
+        ).get('items', [])
+        if items:
+            return items[0]
 
     def set_handle_for_claim(self, claim, handle):
         self.ko.patch_resource_status(
@@ -192,4 +196,28 @@ class ResourceClaimHandler(object):
                 }
             },
             [{ 'pathMatch': '/.*', 'allowedOps': ['add','replace'] }]
+        )
+
+    def update_handle(self, claim):
+        claim_name = claim['metadata']['name']
+        claim_namespace = claim['metadata']['namespace']
+        claim_template = claim['spec']['template']
+
+        handle = self.get_handle_for_claim(claim)
+        if not handle:
+            self.ko.logger.warn("Handle missing for claim %s/%s", claim_namespace, claim_name)
+            return
+
+        # FIXME - Add provider control for changes from claim template to handle
+        if handle['spec']['template'] == claim_template:
+            return
+
+        self.ko.patch_resource(
+            handle,
+            {
+                "spec": {
+                    "template": claim_template
+                }
+            },
+            [{ 'pathMatch': '/spec/template(/.*)?' }]
         )
