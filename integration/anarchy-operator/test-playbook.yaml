@@ -1,0 +1,188 @@
+---
+- hosts: localhost
+  gather_facts: false
+  vars:
+    oc_cmd: oc
+    anarchy_namespace: anarchy-operator
+    operator_namespace: resource-claim-operator
+    operator_test_namespace: resource-claim-operator-test
+  tasks:
+  - name: Get test resource claims
+    k8s_facts:
+      api_version: gpte.redhat.com/v1
+      kind: ResourceClaim
+      namespace: "{{ operator_test_namespace }}"
+      label_selectors:
+      - test=anarchy-integration
+    register: test_claims
+
+  - name: Remove test resource claims
+    k8s:
+      state: absent
+      api_version: gpte.redhat.com/v1
+      kind: ResourceClaim
+      name: "{{ claim.metadata.name }}"
+      namespace: "{{ claim.metadata.namespace }}"
+    loop: "{{ test_claims.resources }}"
+    loop_control:
+      label: "{{ claim.metadata.name }}"
+      loop_var: claim
+
+  - name: Create ResourceProvider anarchy-test
+    k8s:
+      state: present
+      definition:
+        apiVersion: gpte.redhat.com/v1
+        kind: ResourceProvider
+        metadata:
+          name: anarchy-test
+          namespace: "{{ operator_namespace }}"
+        spec:
+          match:
+            apiVersion: gpte.redhat.com/v1
+            kind: AnarchySubject
+            metadata:
+              annotations:
+                gpte.redhat.com/resource-provider-name: anarchy-test
+                gpte.redhat.com/resource-provider-namespace: "{{ operator_namespace }}"
+          matchIgnore:
+          - /spec/desiredState
+          default:
+            spec:
+              desiredState: deployed
+          override:
+            metadata:
+              namespace: "{{ anarchy_namespace }}"
+            spec:
+              parameters:
+                guid: "{% raw %}{{: resource_handle.metadata.name[-5:] :}}{% endraw %}"
+          updateFilters:
+          - pathMatch: /spec/desiredState
+          validation:
+            openAPIV3Schema:
+              type: object
+              required:
+              - apiVersion
+              - kind
+              - metadata
+              - spec
+              additionalProperties: false
+              properties:
+                apiVersion:
+                  type: string
+                  enum:
+                  - gpte.redhat.com/v1
+                kind:
+                  type: string
+                  enum:
+                  - AnarchySubject
+                metadata:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    annotations:
+                      type: object
+                      additionalProperties:
+                        type: string
+                    labels:
+                      type: object
+                      additionalProperties:
+                        type: string
+                spec:
+                  type: object
+                  required:
+                  - governor
+                  additionalProperties: false
+                  properties:
+                    desiredState:
+                      type: string
+                      enum:
+                      - deployed
+                      - idled
+                    governor:
+                      type: string
+                      enum:
+                      - test
+                    parameters:
+                      type: object
+
+  - name: Create ResourceClaim anarchy-test-1
+    k8s:
+      state: present
+      definition:
+        apiVersion: gpte.redhat.com/v1
+        kind: ResourceClaim
+        metadata:
+          name: anarchy-test-1
+          namespace: "{{ operator_test_namespace }}"
+          labels:
+            test: anarchy-integration
+        spec:
+          template:
+            apiVersion: gpte.redhat.com/v1
+            kind: AnarchySubject
+            metadata:
+              annotations:
+                gpte.redhat.com/resource-provider-name: anarchy-test
+                gpte.redhat.com/resource-provider-namespace: "{{ operator_namespace }}"
+            spec:
+              desiredState: deployed
+              governor: test
+              parameters:
+                account_id: gpte
+                aws_hosted_zone_id: Z3IHLWJZOU9SRT
+                aws_region: us-east-1
+                babylon_scm_reference: three-tier-app-prod-1.14
+                cloud_provider: ec2
+                email: babylon@example.com
+                env_type: three-tier-app
+                key_name: ocpkey
+                own_repo_path: http://admin.na.shared.opentlc.com/repos/ocp/3.6
+                subdomain_base_suffix: .example.opentlc.com
+
+  - name: Pause for AnarchySubject provision
+    pause:
+      seconds: 45
+
+  - name: Get resource claim anarchy-test-1
+    k8s_facts:
+      api_version: gpte.redhat.com/v1
+      kind: ResourceClaim
+      name: anarchy-test-1
+      namespace: "{{ operator_test_namespace }}"
+    register: test_1_claim
+
+  - name: Check claim anarchy-test-1
+    assert:
+      that:
+      - claim.status.resource.kind == 'AnarchySubject'
+      - claim.status.resource.metadata.namespace == anarchy_namespace
+      - claim.status.resource.spec.parameters.guid == claim.status.handle.name[-5:]
+      - claim.status.resource.status.state == 'deployed'
+      fail_msg: anarchy-test-1 resource not found as expected
+      success_msg: anarchy-test-1 resource looks good
+    vars:
+      claim: "{{ test_1_claim.resources[0] }}"
+
+  - name: Delete claim anarchy-test-1
+    k8s:
+      api_version: gpte.redhat.com/v1
+      kind: ResourceClaim
+      name: anarchy-test-1
+      namespace: "{{ operator_test_namespace }}"
+      state: absent
+ 
+  - name: Pause for AnarchySubject destroy
+    pause:
+      seconds: 45
+
+  - name: Check that anarchy subject has been deleted
+    k8s_facts:
+      api_version:  claim.status.resource.apiVersion
+      kind: claim.status.resource.kind
+      name: claim.status.resource.metadata.name
+      namespace: claim.status.resource.metadata.namespace
+    vars:
+      claim: "{{ test_1_claim.resources[0] }}"
+    register: get_subject
+    failed_when: get_subject.resources
