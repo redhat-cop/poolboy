@@ -8,12 +8,19 @@ spec:
   match:
     apiVersion: gpte.redhat.com/v1
     kind: AnarchySubject
+    metadata:
+      annotations:
+        gpte.redhat.com/resource-provider-name: anarchy-subject
+        gpte.redhat.com/resource-provider-namespace: resource-claim-operator
   default: {}
   override:
     metadata:
-      generateName: "{{: resource_handle.spec.template.spec.governor :}}-"
+      generateName: babylon1-agnosticd-
       namespace: anarchy-operator
+      labels:
+        gpte.redhat.com/anarchy-governor: babylon1-agnosticd
     spec:
+      governor: babylon1-agnosticd
       parameters:
         guid: "{{: resource_handle.metadata.name[-5:] :}}"
   updateFilters:
@@ -39,14 +46,19 @@ spec:
           type: object
           additionalProperties: false
           properties:
+            annotations:
+              type: object
+              additionalProperties:
+                type: string
             labels:
               type: object
               additionalProperties:
                 type: string
+            namespace:
+              type: string
         spec:
           type: object
           required:
-          - governor
           - parameters
           additionalProperties: false
           properties:

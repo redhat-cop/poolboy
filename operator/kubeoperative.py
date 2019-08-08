@@ -1,7 +1,6 @@
 import inflection
 import jsonpatch
 import kubernetes
-import kubernetes.client.rest
 import logging
 import os
 import os.path
@@ -40,22 +39,21 @@ class WatchEvent(object):
         self.resource = resource
         self.cached_resource = None
 
-        if 'deletionTimestamp' in resource['metadata']:
-            self.deleted = True
-            self.delete_finalized = 0 == len(resource['metadata'].get('finalizers', []))
-        else:
-            self.deleted = False
-            self.delete_finalized = False
+    @property
+    def delete_pending(self):
+        return 'deletionTimestamp' in self.resource['metadata']
 
-        if self.event_type == 'ADDED':
-            self.added = True
-            self.modified = False
-        elif self.event_type == 'MODIFIED':
-            self.added = False
-            self.modified = True
-        elif self.event_type == 'DELETED':
-            self.added = False
-            self.modified = True
+    @property
+    def added(self):
+        return self.event_type == 'ADDED'
+
+    @property
+    def modified(self):
+        return self.event_type == 'MODIFIED'
+
+    @property
+    def deleted(self):
+        return self.event_type == 'DELETED'
 
 class Watcher(object):
     def __init__(self, operative, plural,
@@ -128,14 +126,12 @@ class Watcher(object):
                 if cache_hit.resource_version == resource['metadata']['resourceVersion']:
                     # Resource has not changed since it was last seen
                     return None
-                event.added = False
-                event.modified = True
 
                 event.cached_resource = cache_hit.resource
             else:
                 self.operative.logger.warn('Stale data found in cache for %s', resource_name)
 
-        if event.delete_finalized:
+        if event_type == 'DELETED':
             del self.cache[resource_name]
         else:
             self.cache[resource_name] = CacheEntry(resource, self.cache_resources)
@@ -165,10 +161,9 @@ class Watcher(object):
     def watch(self):
         stream = kubernetes.watch.Watch().stream(self.method, *self.method_args)
         for event in stream:
-            self.operative.logger.debug(event)
             event_obj = event['object']
-            # FIXME - Check better, kind 'Status' could conflict with a crd?
-            if event_obj['kind'] == 'Status':
+            if event['type'] == 'ERROR' \
+            and event_obj['kind'] == 'Status':
                 self.operative.logger.debug('Watch %s - reason %s, %s',
                     event_obj['status'],
                     event_obj['reason'],
@@ -280,6 +275,11 @@ class KubeOperative(object):
         namespace = resource_definition['metadata'].get('namespace', None)
         plural = self.kind_to_plural(group, version, resource_definition['kind'])
         if namespace:
+            self.logger.warn("group: %s", group)
+            self.logger.warn("version: %s", version)
+            self.logger.warn("namespace: %s", namespace)
+            self.logger.warn("plural: %s", plural)
+            self.logger.warn("resource: %s", resource_definition)
             return self.custom_objects_api.create_namespaced_custom_object(
                 group,
                 version,
@@ -294,6 +294,67 @@ class KubeOperative(object):
                 plural,
                 resource_definition
             )
+
+    def delete_resource(self, api_version, kind, name, namespace=None):
+        if '/' in api_version:
+            group, version = api_version.split('/')
+            return self.delete_custom_resource(
+                group=group,
+                version=version,
+                kind=kind,
+                name=name,
+                namespace=namespace
+            )
+        else:
+            return self.delete_core_resource(
+                kind=kind,
+                name=name,
+                namespace=namespace
+            )
+
+    def delete_core_resource(self, kind, namespace, name):
+        delete_options = kubernetes.client.V1DeleteOptions()
+        try:
+            if namespace:
+                method = getattr(
+                    self.core_v1_api,
+                    'delete_namespaced_' + inflection.underscore(kind)
+                )
+                return method(name, namespace, body=delete_options)
+            else:
+                method = getattr(
+                    self.core_v1_api,
+                    'delete_' + inflection.underscore(kind)
+                )
+                return method(name, body=delete_options)
+        except kubernetes.client.rest.ApiException as e:
+            if e.status != 404:
+                raise
+
+    def delete_custom_resource(self, group, version, kind, namespace, name):
+        plural = self.kind_to_plural(group, version, kind)
+        delete_options = kubernetes.client.V1DeleteOptions()
+        try:
+            if namespace:
+                return self.custom_objects_api.delete_namespaced_custom_object(
+                    group,
+                    version,
+                    namespace,
+                    plural,
+                    name,
+                    delete_options
+                )
+            else:
+                return self.custom_objects_api.delete_cluster_custom_object(
+                    group,
+                    version,
+                    plural,
+                    name,
+                    delete_options
+                )
+        except kubernetes.client.rest.ApiException as e:
+            if e.status != 404:
+                raise
 
     def get_resource(self, api_version, kind, name, namespace=None):
         if '/' in api_version:

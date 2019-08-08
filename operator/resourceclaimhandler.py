@@ -72,8 +72,15 @@ class ResourceClaimHandler(object):
             self.bind_handle_to_claim(claim)
 
     def deleted(self, claim):
-        # FIXME
-        pass
+        handle = self.get_handle_for_claim(claim)
+        if handle and not 'deletionTimestamp' in handle['metadata']:
+            self.ko.delete_custom_resource(
+                group=self.ko.operator_domain,
+                version='v1',
+                kind='ResourceHandle',
+                name=handle['metadata']['name'],
+                namespace=handle['metadata']['namespace']
+            )
 
     def modified(self, claim):
         # Handle modified the same as added

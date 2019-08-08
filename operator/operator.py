@@ -35,14 +35,12 @@ def watch_claims(event):
     if event.added:
         claim_handler.added(claim)
     elif event.deleted:
-        if event.delete_finalized:
-            ko.logger.info(
-                'ResourceClaim %s/%s deleted',
-                claim['metedata']['namespace'],
-                claim['metedata']['name']
-            )
-        else:
-            claim_handler.deleted(claim)
+        ko.logger.info(
+            'ResourceClaim %s/%s deleted',
+            claim['metadata']['namespace'],
+            claim['metadata']['name']
+        )
+        claim_handler.deleted(claim)
     elif event.modified:
         claim_handler.modified(claim)
 
@@ -58,13 +56,13 @@ def watch_handles(event):
     if event.added:
         handle_handler.added(handle)
     elif event.deleted:
-        if event.delete_finalized:
-            ko.logger(
-                'ResourceHandle %s deleted',
-                handle['metedata']['name']
-            )
-        else:
-            handle_handler.deleted(handle)
+        ko.logger.info(
+            'ResourceHandle %s/%s deleted',
+            handle['metadata']['namespace'],
+            handle['metadata']['name']
+        )
+    elif event.delete_pending:
+        handle_handler.delete_pending(handle)
     elif event.modified:
         handle_handler.modified(handle)
 

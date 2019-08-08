@@ -1,0 +1,79 @@
+---
+apiVersion: template.openshift.io/v1
+kind: Template
+metadata:
+  annotations:
+    description: anarchy-operator deploy
+  name: anarchy-operator-deploy
+
+parameters:
+- name: NAMESPACE
+  value: resource-claim-operator
+- name: SERVICE_NAME
+  value: resource-claim-operator
+- name: OPERATOR_DOMAIN
+  value: gpte.redhat.com
+- name: ANARCHY_NAMESPACE
+  value: anarchy-operator
+- name: ANARCHY_SERVICE_NAME
+  value: anarchy-operator
+- name: ANARCHY_OPERATOR_DOMAIN
+  value: gpte.redhat.com
+
+objects:
+- kind: ClusterRole
+  apiVersion: v1
+  metadata:
+    name: ${SERVICE_NAME}:${ANARCHY_NAMESPACE}:${ANARCHY_SERVICE_NAME}
+  rules:
+  - apiGroups:
+    - ${OPERATOR_DOMAIN}
+    resources:
+    - resourceclaims
+    - resourcehandles
+    verbs:
+    - delete
+    - get
+    - list
+    - patch
+    - update
+
+- kind: ClusterRoleBinding
+  apiVersion: v1
+  metadata:
+    name: ${SERVICE_NAME}:${ANARCHY_NAMESPACE}:${ANARCHY_SERVICE_NAME}
+  roleRef:
+    name: ${SERVICE_NAME}:${ANARCHY_NAMESPACE}:${ANARCHY_SERVICE_NAME}
+  subjects:
+  - kind: ServiceAccount
+    namespace: ${ANARCHY_NAMESPACE}
+    name: ${ANARCHY_SERVICE_NAME}
+
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRole
+  metadata:
+    name: ${ANARCHY_SERVICE_NAME}:${NAMESPACE}:${SERVICE_NAME}
+  rules:
+  - apiGroups:
+    - ${ANARCHY_OPERATOR_DOMAIN}
+    resources:
+    - anarchysubjects
+    verbs:
+    - create
+    - delete
+    - get
+    - list
+    - patch
+    - watch
+    - update
+
+- kind: ClusterRoleBinding
+  apiVersion: v1
+  metadata:
+    name: ${ANARCHY_SERVICE_NAME}:${NAMESPACE}:${SERVICE_NAME}
+  roleRef:
+    name: ${ANARCHY_SERVICE_NAME}:${NAMESPACE}:${SERVICE_NAME}
+  subjects:
+  - kind: ServiceAccount
+    namespace: ${NAMESPACE}
+    name: ${SERVICE_NAME}

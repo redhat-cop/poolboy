@@ -10,8 +10,9 @@ parameters:
 - name: NAMESPACE
   value: resource-claim-operator
 - name: IMAGE
-  value: image-registry.openshift-image-registry.svc:5000/resource-claim-operator/resource-claim-operator:latest
   #value: quay.io/gpte-devops-automation/resource-claim-operator:latest
+  value: docker-registry.default.svc:5000/resource-claim-operator/resource-claim-operator:latest
+  #value: image-registry.openshift-image-registry.svc:5000/resource-claim-operator/resource-claim-operator:latest
 - name: SERVICE_NAME
   value: resource-claim-operator
 - name: OPERATOR_DOMAIN
@@ -82,22 +83,6 @@ objects:
     subresources:
       status: {}
 
-- apiVersion: apiextensions.k8s.io/v1beta1
-  kind: CustomResourceDefinition
-  metadata:
-    name: anarchyactions.${OPERATOR_DOMAIN}
-  spec:
-    group: ${OPERATOR_DOMAIN}
-    version: v1
-    scope: Namespaced
-    names:
-      plural: anarchyactions
-      singular: anarchyaction
-      kind: AnarchyAction
-      shortNames: []
-    subresources:
-      status: {}
-
 - apiVersion: v1
   kind: Namespace
   metadata:
@@ -110,6 +95,41 @@ objects:
   metadata:
     name: ${SERVICE_NAME}
     namespace: ${NAMESPACE}
+
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRole
+  metadata:
+    name: ${SERVICE_NAME}-aggregate-to-admin
+    labels:
+      rbac.authorization.k8s.io/aggregate-to-admin: "true"
+  rules:
+  - apiGroups:
+    - ${OPERATOR_DOMAIN}
+    resources:
+    - resourceclaims
+    verbs:
+    - create
+    - get
+    - list
+    - patch
+    - watch
+    - update
+
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRole
+  metadata:
+    name: ${SERVICE_NAME}-aggregate-to-edit
+    labels:
+      rbac.authorization.k8s.io/aggregate-to-edit: "true"
+  rules:
+  - apiGroups:
+    - ${OPERATOR_DOMAIN}
+    resources:
+    - resourceclaims
+    verbs:
+    - get
+    - list
+    - watch
 
 - apiVersion: rbac.authorization.k8s.io/v1
   kind: ClusterRole

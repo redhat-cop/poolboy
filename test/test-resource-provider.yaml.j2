@@ -12,6 +12,8 @@ spec:
       annotations:
         gpte.redhat.com/resource-provider-name: {{ name | default('test') }}
         gpte.redhat.com/resource-provider-namespace: {{ operator_namespace }}
+  matchIgnore:
+  - /spec/desiredState
   default: {}
   override:
     metadata:

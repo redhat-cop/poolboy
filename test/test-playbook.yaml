@@ -373,3 +373,26 @@
       success_msg: test-1 resource looks good
     vars:
       claim: "{{ test_1_claim.resources[0] }}"
+
+  - name: Delete resource claim test-1
+    k8s:
+      state: absent
+      api_version: gpte.redhat.com/v1
+      kind: ResourceClaim
+      name: test-1
+      namespace: "{{ operator_test_namespace }}"
+
+  - name: Pause for delete cascade
+    pause:
+      seconds: 2
+
+  - name: Confirm resource deletion for test-1
+    k8s_facts:
+      api_version: "{{ resource_ref.apiVersion }}"
+      kind: "{{ resource_ref.kind }}"
+      name: "{{ resource_ref.name }}"
+      namespace: "{{ resource_ref.namespace | default('') }}"
+    vars:
+      resource_ref: "{{ resource_handle_for_test_1.resources[0].spec.resource }}"
+    register: resource_for_test_1
+    failed_when: resource_for_test_1.resources

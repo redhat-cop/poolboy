@@ -60,7 +60,7 @@ class ResourceHandleHandler(object):
             resource_claim = self.get_resource_claim(claim_namespace, claim_name)
             if not resource_claim:
                 # Claim deleted, delete resource handle
-                delete_resource_handle(handle_name)
+                self.delete_resource_handle(handle_name)
                 return
             resource_claim_namespace = self.ko.core_v1_api.read_namespace(claim_namespace)
             requester_user_name = resource_claim_namespace.metadata.annotations.get('openshift.io/requester', None)
@@ -147,9 +147,29 @@ class ResourceHandleHandler(object):
             resource_definition['metadata']['annotations'][self.ko.operator_domain + '/resource-handle-version'] = handle['metadata']['resourceVersion']
             resource = self.ko.create_resource(resource_definition)
 
-    def deleted(self, handle):
-        # FIXME
-        pass
+    def delete_pending(self, handle):
+        if 'resource' in handle['spec']:
+            resource_ref = handle['spec']['resource']
+            self.ko.delete_resource(
+                api_version=resource_ref['apiVersion'],
+                kind=resource_ref['kind'],
+                name=resource_ref['name'],
+                namespace=resource_ref.get('namespace', None)
+            )
+        return self.ko.patch_resource(
+            handle,
+            [{'op': 'replace', 'path': '/metadata/finalizers', 'value': []}]
+        )
+
+    def delete_resource_handle(self, handle_name):
+        self.ko.custom_objects_api.delete_namespaced_custom_object(
+            self.ko.operator_domain,
+            'v1',
+            self.ko.operator_namespace,
+            'resourcehandles',
+            handle_name,
+            kubernetes.client.V1DeleteOptions()
+        )
 
     def modified(self, handle):
         # Handle modified the same as added
