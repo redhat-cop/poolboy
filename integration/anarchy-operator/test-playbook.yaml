@@ -49,7 +49,7 @@
           - /spec/desiredState
           default:
             spec:
-              desiredState: deployed
+              desiredState: started
           override:
             metadata:
               namespace: "{{ anarchy_namespace }}"
@@ -97,8 +97,8 @@
                     desiredState:
                       type: string
                       enum:
-                      - deployed
-                      - idled
+                      - started
+                      - stopped
                     governor:
                       type: string
                       enum:
@@ -126,7 +126,7 @@
                 gpte.redhat.com/resource-provider-name: anarchy-test
                 gpte.redhat.com/resource-provider-namespace: "{{ operator_namespace }}"
             spec:
-              desiredState: deployed
+              desiredState: started
               governor: test
               parameters:
                 account_id: gpte
@@ -158,7 +158,7 @@
       - claim.status.resource.kind == 'AnarchySubject'
       - claim.status.resource.metadata.namespace == anarchy_namespace
       - claim.status.resource.spec.parameters.guid == claim.status.handle.name[-5:]
-      - claim.status.resource.status.state == 'deployed'
+      - claim.status.resource.status.state == 'started'
       fail_msg: anarchy-test-1 resource not found as expected
       success_msg: anarchy-test-1 resource looks good
     vars:
