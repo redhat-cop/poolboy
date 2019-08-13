@@ -64,15 +64,18 @@ def dict_merge(dct, merge_dct):
         else:
             dct[k] = copy.deepcopy(merge_dct[k])
 
-def recursive_process_template_strings(template, variables={}):
+def jinja2process(template, variables):
     variables = copy.copy(variables)
     variables['timestamp'] = TimeStamp()
+    j2template = jinja2env.from_string(template)
+    return j2template.render(variables)
+
+def recursive_process_template_strings(template, variables={}):
     if isinstance(template, dict):
         return { k: recursive_process_template_strings(v, variables) for k, v in template.items() }
     elif isinstance(template, list):
         return [ recursive_process_template_strings(item) for item in template ]
     elif isinstance(template, str):
-        j2template = jinja2env.from_string(template)
-        return j2template.render(variables)
+        return jinja2process(template, variables)
     else:
         return template

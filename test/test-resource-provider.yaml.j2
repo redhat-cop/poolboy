@@ -37,25 +37,17 @@ spec:
   updateFilters:
   - pathMatch: /spec/actionSchedule/destroy
     allowedOps: ['add', 'replace']
-    valueValidation:
-      type: datetime
-      maximum: >-
-        {%: if resource_claim -:%}
-        {{: timestamp(resource_claim.metadata.creationTimestamp).add('14d') :}}
-        {%:- else -:%}
-        {{: timestamp.utcnow.add('14d') :}}"
-        {%:- endif :%}
   - pathMatch: /spec/actionSchedule/stop
     allowedOps: ['add', 'replace']
-    valueValidation:
-      type: datetime
-      maximum: "{{: currentTimestamp.add('8h') :}}"
   - pathMatch: /spec/desiredState
     allowedOps: ['add', 'replace']
-    valueValidation:
-      type: string
-      enum: ['started', 'stopped']
   validation:
+    # FIXME - Implement these...
+    customValidation:
+    - name: destroy schedule must be no more than 14 days from creation
+      check: spec.actionSchedule.destroy < timestamp(resource_claim.metadata.creationTimestamp).add('14d')
+    - name: stop schedule must be no more than 8 hours from now
+      check: spec.actionSchedule.stop < timestamp.utcnow.add('8h')
     openAPIV3Schema:
       type: object
       required:
