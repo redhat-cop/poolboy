@@ -8,6 +8,17 @@ import re
 import threading
 import time
 
+def check_value_datetime_validation(validation, value):
+    maximum = validation.get('maximum', None)
+    print("maximum %s > %s", value, maximum)
+    if maximum and value > maximum:
+        return False
+    return True
+
+def check_value_validation(validation, value):
+    if validation['type'] == 'datetime':
+        return check_value_datetime_validation(validation, value)
+
 def filter_patch_item(update_filters, item):
     if not update_filters:
         return True
@@ -15,11 +26,21 @@ def filter_patch_item(update_filters, item):
     op = item['op']
     for f in update_filters:
         allowed_ops = f.get('allowedOps', ['add','remove','replace'])
-        if op in allowed_ops and re.match(f['pathMatch'] + '$', path):
+        value_validation = f.get('valueValidation', None)
+        if re.match(f['pathMatch'] + '$', path):
+            if op not in allowed_ops:
+                return False
+
+            if op in ['add','replace'] \
+            and value_validation \
+            and not check_value_validation(value_validation, item['value']):
+                return False
+
             return True
     return False
 
 def create_patch(resource, update, update_filters):
+    # FIXME - There should be some sort of warning about patch items being rejected?
     return [
         item for item in jsonpatch.JsonPatch.from_diff(
             resource,

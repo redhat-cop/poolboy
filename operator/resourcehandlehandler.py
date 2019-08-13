@@ -1,30 +1,8 @@
 import copy
-import jinja2
 import kubernetes.client.rest
 import re
 
-from util import dict_merge
-
-jinja2env = jinja2.Environment(
-    block_start_string='{%:',
-    block_end_string=':%}',
-    comment_start_string='{#:',
-    comment_end_string=':#}',
-    variable_start_string='{{:',
-    variable_end_string=':}}'
-)
-jinja2env.filters['to_json'] = lambda x: json.dumps(x)
-
-def recursive_process_template_strings(template, params):
-    if isinstance(template, dict):
-        return { k: recursive_process_template_strings(v, params) for k, v in template.items() }
-    elif isinstance(template, list):
-        return [ recursive_process_template_strings(item) for item in template ]
-    elif isinstance(template, str):
-        j2template = jinja2env.from_string(template)
-        return j2template.render(params)
-    else:
-        return template
+from util import dict_merge, recursive_process_template_strings
 
 def process_resource_template(template, provider, params):
     provider_spec = provider['spec']
@@ -65,7 +43,7 @@ class ResourceHandleHandler(object):
             resource_claim_namespace = self.ko.core_v1_api.read_namespace(claim_namespace)
             requester_user_name = resource_claim_namespace.metadata.annotations.get('openshift.io/requester', None)
         else:
-            resource_claim = {}
+            resource_claim = None
             requester_user_name = None
 
         requester_user = self.get_user(requester_user_name)
@@ -88,7 +66,8 @@ class ResourceHandleHandler(object):
             params={
                 "requester_identity": requester_identity,
                 "requester_user": requester_user,
-                "resource_handle": handle
+                "resource_handle": handle,
+                "resource_claim": resource_claim
             }
         )
 
@@ -122,7 +101,6 @@ class ResourceHandleHandler(object):
                 update_filters = provider['spec'].get('updateFilters', []) + [{
                     'pathMatch': '/metadata/annotations/' + re.escape(self.ko.operator_domain) + '~1resource-.*'
                 }]
-                self.ko.logger.warn(update_filters)
                 self.ko.patch_resource(
                     resource=resource,
                     patch=resource_definition,

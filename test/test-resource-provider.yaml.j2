@@ -12,18 +12,49 @@ spec:
       annotations:
         gpte.redhat.com/resource-provider-name: {{ name | default('test') }}
         gpte.redhat.com/resource-provider-namespace: {{ operator_namespace }}
+{% raw %}
   matchIgnore:
   - /spec/desiredState
-  default: {}
+  - /spec/actionSchedule(/.*)?
+  # Override is automatically applied when handle is processed
+  # Claim init is applied to the claim when it created
+  claimInit:
+    spec:
+      actionSchedule:
+        destroy: "{{: timestamp.utcnow.add('8d') :}}"
+        stop: "{{: timestamp.utcnow.add('8h') :}}"
+      desiredState: started
+  default:
+    spec:
+      actionSchedule: {}
+      desiredState: started
   override:
     metadata:
-      namespace: {{ operator_test_namespace }}
-{% raw %}
+      namespace: {% endraw %}{{ operator_test_namespace }}{% raw %}
     spec:
       etc:
         guid: "{{: resource_handle.metadata.name[-5:] :}}"
   updateFilters:
+  - pathMatch: /spec/actionSchedule/destroy
+    allowedOps: ['add', 'replace']
+    valueValidation:
+      type: datetime
+      maximum: >-
+        {%: if resource_claim -:%}
+        {{: timestamp(resource_claim.metadata.creationTimestamp).add('14d') :}}
+        {%:- else -:%}
+        {{: timestamp.utcnow.add('14d') :}}"
+        {%:- endif :%}
+  - pathMatch: /spec/actionSchedule/stop
+    allowedOps: ['add', 'replace']
+    valueValidation:
+      type: datetime
+      maximum: "{{: currentTimestamp.add('8h') :}}"
   - pathMatch: /spec/desiredState
+    allowedOps: ['add', 'replace']
+    valueValidation:
+      type: string
+      enum: ['started', 'stopped']
   validation:
     openAPIV3Schema:
       type: object
@@ -55,11 +86,21 @@ spec:
           - governor
           additionalProperties: false
           properties:
+            actionSchedule:
+              type: object
+              additionalProperties: false
+              properties:
+                destroy:
+                  pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$
+                  type: string
+                stop:
+                  pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$
+                  type: string
             desiredState:
               type: string
               enum:
-              - deployed
-              - idled
+              - started
+              - stopped
             governor:
               type: string
             parameters:

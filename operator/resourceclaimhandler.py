@@ -6,7 +6,7 @@ import openapi_core.wrappers.mock
 import openapi_core.extensions.models.models
 import openapi_core.schema.schemas.exceptions
 
-from util import dict_merge
+from util import dict_merge, recursive_process_template_strings
 
 def claim_is_bound(claim):
     return 'status' in claim and 'handle' in claim['status']
@@ -116,6 +116,8 @@ class ResourceClaimHandler(object):
                 )
                 return
 
+            claim = self.initialize_claim(provider, claim)
+
             handle = self.bind_available_handle_to_claim(provider, claim)
             if not handle:
                 handle = self.create_handle_for_claim(provider, claim)
@@ -190,6 +192,24 @@ class ResourceClaimHandler(object):
         ).get('items', [])
         if items:
             return items[0]
+
+    def initialize_claim(self, provider, claim):
+        claim_init = provider['spec'].get('claimInit', None)
+        if not claim_init:
+            return claim
+        template_variables = {
+            "resource_claim": claim,
+            "resource_provider": provider
+        }
+        return self.ko.patch_resource(
+            claim,
+            {
+                "spec": {
+                    "template": recursive_process_template_strings(claim_init, template_variables),
+                }
+            },
+            [{ 'pathMatch': '/.*', 'allowedOps': ['add','replace'] }]
+        )
 
     def set_handle_for_claim(self, claim, handle):
         self.ko.patch_resource_status(

@@ -312,7 +312,7 @@
                 gpte.redhat.com/resource-provider-name: test
                 gpte.redhat.com/resource-provider-namespace: "{{ operator_namespace }}"
             spec:
-              desiredState: deployed
+              desiredState: started
               governor: test
               parameters:
                 name: test-1
@@ -368,7 +368,7 @@
       # Check changes to parameters are rejected on the resource
       - claim.status.resource.spec.parameters.number == 23
       # Change to desiredState should go through
-      - claim.status.resource.spec.desiredState == 'deployed'
+      - claim.status.resource.spec.desiredState == 'started'
       fail_msg: test-1 resource not found as expected
       success_msg: test-1 resource looks good
     vars:

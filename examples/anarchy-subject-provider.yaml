@@ -65,8 +65,8 @@ spec:
             desiredState:
               type: string
               enum:
-              - deployed
-              - idled
+              - started
+              - stopped
             governor:
               type: string
             parameters:

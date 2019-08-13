@@ -147,6 +147,7 @@ objects:
   - apiGroups:
     - ${OPERATOR_DOMAIN}
     resources:
+    - resourceclaims
     - resourceclaims/status
     verbs:
     - create

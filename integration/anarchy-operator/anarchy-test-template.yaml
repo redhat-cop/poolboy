@@ -27,7 +27,7 @@ objects:
           gpte.redhat.com/resource-provider-name: anarchy-test
           gpte.redhat.com/resource-provider-namespace: resource-claim-operator
       spec:
-        desiredState: deployed
+        desiredState: started
         governor: test
         parameters:
           account_id: gpte
