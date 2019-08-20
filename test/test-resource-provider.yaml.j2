@@ -18,15 +18,11 @@ spec:
   - /spec/actionSchedule(/.*)?
   # Override is automatically applied when handle is processed
   # Claim init is applied to the claim when it created
-  claimInit:
-    spec:
-      actionSchedule:
-        destroy: "{{: timestamp.utcnow.add('8d') :}}"
-        stop: "{{: timestamp.utcnow.add('8h') :}}"
-      desiredState: started
   default:
     spec:
-      actionSchedule: {}
+      actionSchedule:
+        destroy: "{{: timestamp.utcnow.add('8d') if resource_claim else '' :}}"
+        stop: "{{: timestamp.utcnow.add('8h') if resource_claim else '' :}}"
       desiredState: started
   override:
     metadata:

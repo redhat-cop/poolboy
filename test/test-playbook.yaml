@@ -43,12 +43,7 @@
         success_msg: Operator build complete
 
   - name: Scale down operator
-    k8s_scale:
-      api_version: extensions/v1beta1
-      kind: Deployment
-      name: resource-claim-operator
-      namespace: "{{ operator_namespace }}"
-      replicas: 0
+    command: oc scale deployment resource-claim-operator -n {{ operator_namespace | quote }} --replicas=0
 
   - name: Wait for operator scale down
     k8s_facts:
@@ -101,7 +96,7 @@
       kind: ResourceHandle
       namespace: "{{ operator_namespace }}"
       label_selectors:
-      - gpte.redhat.com/resource-provider=test
+      - gpte.redhat.com/resource-provider-name=test
     register: test_handles
 
   - name: Remove finalizer from test resource handles
@@ -173,12 +168,7 @@
   - when: not local_test | bool
     block:
     - name: Scale up operator
-      k8s_scale:
-        api_version: extensions/v1beta1
-        kind: Deployment
-        name: resource-claim-operator
-        namespace: "{{ operator_namespace }}"
-        replicas: 1
+      command: oc scale deployment resource-claim-operator -n {{ operator_namespace | quote }} --replicas=1
 
     - name: Pause for operator start-up
       pause:
@@ -233,11 +223,12 @@
       that:
       - handle.metadata.finalizers[0] == 'gpte.redhat.com/resource-claim-operator'
       - handle.metadata.generateName == 'guid-'
-      - handle.metadata.labels['gpte.redhat.com/resource-provider'] == 'test'
-      - handle.spec.claim.name == 'test-1'
-      - handle.spec.claim.namespace == operator_test_namespace
-      - handle.spec.provider.name == 'test'
-      - handle.spec.provider.namespace == operator_namespace
+      - handle.metadata.labels['gpte.redhat.com/resource-provider-name'] == 'test'
+      - handle.metadata.labels['gpte.redhat.com/resource-provider-namespace'] == operator_namespace
+      - handle.spec.resourceClaim.name == 'test-1'
+      - handle.spec.resourceClaim.namespace == operator_test_namespace
+      - handle.spec.resourceProvider.name == 'test'
+      - handle.spec.resourceProvider.namespace == operator_namespace
       - handle.spec.template.kind == 'ResourceClaimTest'
       - handle.spec.template.spec.parameters.name == 'test-1'
       - handle.spec.template.spec.parameters.number == 23
@@ -338,11 +329,11 @@
       that:
       - handle.metadata.finalizers[0] == 'gpte.redhat.com/resource-claim-operator'
       - handle.metadata.generateName == 'guid-'
-      - handle.metadata.labels['gpte.redhat.com/resource-provider'] == 'test'
-      - handle.spec.claim.name == 'test-1'
-      - handle.spec.claim.namespace == operator_test_namespace
-      - handle.spec.provider.name == 'test'
-      - handle.spec.provider.namespace == operator_namespace
+      - handle.metadata.labels['gpte.redhat.com/resource-provider-name'] == 'test'
+      - handle.spec.resourceClaim.name == 'test-1'
+      - handle.spec.resourceClaim.namespace == operator_test_namespace
+      - handle.spec.resourceProvider.name == 'test'
+      - handle.spec.resourceProvider.namespace == operator_namespace
       - handle.spec.template.kind == 'ResourceClaimTest'
       - handle.spec.template.spec.parameters.name == 'test-1'
       - handle.spec.template.spec.parameters.number == 42

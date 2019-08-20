@@ -30,45 +30,14 @@ def create_patch(resource, update, update_filters):
         ) if filter_patch_item(update_filters, item)
     ]
 
-class CacheEntry(object):
-    def __init__(self, resource, cache_resource):
-        self.uid = resource['metadata']['uid']
-        self.resource_version = resource['metadata']['resourceVersion']
-        self.resource = resource if cache_resource else None
-
-class WatchEvent(object):
-    def __init__(self, event_type, resource):
-        self.event_type = event_type
-        self.resource = resource
-        self.cached_resource = None
-
-    @property
-    def delete_pending(self):
-        return 'deletionTimestamp' in self.resource['metadata']
-
-    @property
-    def added(self):
-        return self.event_type == 'ADDED'
-
-    @property
-    def modified(self):
-        return self.event_type == 'MODIFIED'
-
-    @property
-    def deleted(self):
-        return self.event_type == 'DELETED'
-
 class Watcher(object):
     def __init__(self, operative, plural,
-        cache_resources=False,
         group=None,
         name=None,
         namespace=None,
         preload=False,
         version='v1'
     ):
-        self.cache_resources = cache_resources
-        self.cache = {}
         self.name = name
         self.operative = operative
         self._preload = preload
@@ -109,50 +78,6 @@ class Watcher(object):
     def __call__(self, handler):
         self.handler=handler
 
-    def get_cached_resource(self, resource_name):
-        cache_hit = self.cache.get(resource_name, None)
-        if cache_hit:
-            return cache_hit.resource
-        else:
-            return None
-
-    def make_event(self, event_type, resource):
-        resource_name = resource['metadata']['name']
-        event = WatchEvent(
-            event_type=event_type,
-            resource=resource
-        )
-
-        cache_hit = self.cache.get(resource_name, None)
-        if cache_hit:
-            if cache_hit.uid == resource['metadata']['uid']:
-                if cache_hit.resource_version == resource['metadata']['resourceVersion']:
-                    # Resource has not changed since it was last seen
-                    return None
-
-                event.cached_resource = cache_hit.resource
-            else:
-                self.operative.logger.warn('Stale data found in cache for %s', resource_name)
-
-        if event_type == 'DELETED':
-            del self.cache[resource_name]
-        else:
-            self.cache[resource_name] = CacheEntry(resource, self.cache_resources)
-
-        return event
-
-    def preload(self):
-        if not self._preload:
-            return
-        res = self.method(*self.method_args)
-        for resource in res.get('items', []):
-            event = self.make_event('ADDED', resource)
-            if event:
-                try:
-                    self.handler(event)
-                except Exception as e:
-                    self.operative.logger.exception("Error handling event %s", event)
-
     def watch_loop(self):
         while True:
             try:
@@ -178,12 +103,10 @@ class Watcher(object):
                     else:
                         raise Exception("Watch failure: " + event_obj['message'])
             else:
-                event = self.make_event(event['type'], event_obj)
-                if event:
-                    try:
-                        self.handler(event)
-                    except Exception as e:
-                        self.operative.logger.exception("Error handling event %s", event)
+                try:
+                    self.handler(event)
+                except Exception as e:
+                    self.operative.logger.exception("Error handling event %s", event)
 
     def start(self):
         if not self.thread.is_alive():
@@ -439,38 +362,57 @@ class KubeOperative(object):
         raise Exception('Unable to find kind {} in {}/{}', kind, group, version)
 
     def patch_core_resource(self, kind, namespace, name, patch):
-        if namespace:
-            method = getattr(
-                self.core_v1_api,
-                'patch_namespaced_' + inflection.underscore(kind)
-            )
-            return method(name, namespace, patch)
-        else:
-            method = getattr(
-                self.core_v1_api,
-                'patch_' + inflection.underscore(kind)
-            )
-            return method(name, patch)
+
+        # Hack to allow json-patch, hopefully we can remove this in the future
+        save_select_header_content_type = self.custom_objects_api.api_client.select_header_content_type
+        self.custom_objects_api.api_client.select_header_content_type = lambda _ : 'application/json-patch+json'
+
+        try:
+            if namespace:
+                method = getattr(
+                    self.core_v1_api,
+                    'patch_namespaced_' + inflection.underscore(kind)
+                )
+                ret = method(name, namespace, patch)
+            else:
+                method = getattr(
+                    self.core_v1_api,
+                    'patch_' + inflection.underscore(kind)
+                )
+                ret = method(name, patch)
+        finally:
+            self.custom_objects_api.api_client.select_header_content_type = save_select_header_content_type
+        return ret
 
     def patch_custom_resource(self, group, version, kind, namespace, name, patch):
         plural = self.kind_to_plural(group, version, kind)
-        if namespace:
-            return self.custom_objects_api.patch_namespaced_custom_object(
-                group,
-                version,
-                namespace,
-                plural,
-                name,
-                patch
-            )
-        else:
-            return self.custom_objects_api.patch_cluster_custom_object(
-                group,
-                version,
-                plural,
-                name,
-                patch
-            )
+
+        # Hack to allow json-patch, hopefully we can remove this in the future
+        save_select_header_content_type = self.custom_objects_api.api_client.select_header_content_type
+        self.custom_objects_api.api_client.select_header_content_type = lambda _ : 'application/json-patch+json'
+
+        try:
+            if namespace:
+                ret = self.custom_objects_api.patch_namespaced_custom_object(
+                    group,
+                    version,
+                    namespace,
+                    plural,
+                    name,
+                    patch
+                )
+            else:
+                ret = self.custom_objects_api.patch_cluster_custom_object(
+                    group,
+                    version,
+                    plural,
+                    name,
+                    patch
+                )
+        finally:
+            self.custom_objects_api.api_client.select_header_content_type = save_select_header_content_type
+
+        return ret
 
     def patch_core_resource_status(
         self,
@@ -567,7 +509,7 @@ class KubeOperative(object):
         for w in self.watcher_list:
             w.start()
 
-    def watcher(self, plural, cache_resources=False, name=None, namespace=None, group=None, preload=False, version='v1'):
+    def watcher(self, plural, name=None, namespace=None, group=None, preload=False, version='v1'):
         if not name:
             if group:
                 if namespace:
@@ -581,7 +523,6 @@ class KubeOperative(object):
                     name = '{}:{}'.format(version, plural)
 
         w = Watcher(
-            cache_resources=cache_resources,
             group=group,
             name=name,
             namespace=namespace,

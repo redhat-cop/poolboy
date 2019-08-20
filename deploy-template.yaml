@@ -8,10 +8,10 @@ metadata:
 
 parameters:
 - name: NAMESPACE
-  value: resource-claim-operator
+  value: poolboy
 - name: IMAGE
-  #value: quay.io/gpte-devops-automation/resource-claim-operator:latest
-  value: docker-registry.default.svc:5000/resource-claim-operator/resource-claim-operator:latest
+  value: quay.io/gpte-devops-automation/poolboy:0.1.0
+  #value: docker-registry.default.svc:5000/resource-claim-operator/resource-claim-operator:latest
   #value: image-registry.openshift-image-registry.svc:5000/resource-claim-operator/resource-claim-operator:latest
 - name: SERVICE_NAME
   value: resource-claim-operator
@@ -139,7 +139,8 @@ objects:
   - apiGroups:
     - ${OPERATOR_DOMAIN}
     resources:
-    - resourceclaims
+    - resourcepools
+    - resourceproviders
     verbs:
     - get
     - list
@@ -149,13 +150,16 @@ objects:
     resources:
     - resourceclaims
     - resourceclaims/status
+    - resourcehandles
+    - resourcepools/status
+    - resourceproviders/status
     verbs:
     - create
     - get
     - list
     - patch
-    - watch
     - update
+    - watch
   - apiGroups:
     - ""
     resources:
@@ -191,58 +195,14 @@ objects:
     namespace: ${NAMESPACE}
   rules:
   - apiGroups:
-    - ${OPERATOR_DOMAIN}
+    - ""
+    attributeRestrictions: null
     resources:
-    - resourceproviders
-    - resourcepools
-    verbs:
-    - get
-    - list
-    - watch
-  - apiGroups:
-    - ${OPERATOR_DOMAIN}
-    resources:
-    - resourceproviders/status
-    - resourcepools/status
+    - events
     verbs:
     - create
-    - get
-    - list
-    - patch
-    - watch
-    - update
-  - apiGroups:
-    - ${OPERATOR_DOMAIN}
-    resources:
-    - resourcehandles
-    - resourcehandles/status
-    verbs:
-    - create
-    - delete
-    - deletecollection
-    - get
-    - list
     - patch
     - update
-    - watch
-  - apiGroups:
-    - ""
-    - image.openshift.io
-    resources:
-    - imagestreamimages
-    - imagestreams
-    - imagestreamtags
-    verbs:
-    - get
-    - list
-    - watch
-  - apiGroups:
-    - ""
-    - image.openshift.io
-    resources:
-    - imagestreams/layers
-    verbs:
-    - get
 
 - apiVersion: rbac.authorization.k8s.io/v1
   kind: RoleBinding
