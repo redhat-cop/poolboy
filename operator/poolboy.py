@@ -687,16 +687,16 @@ class ResourceProvider(object):
             })
         if requester_identity:
             resource['metadata']['annotations'].update({
-                runtime.operator_domain + '/resource-requester-email':
+                ko.operator_domain + '/resource-requester-email':
                     requester_identity.get('extra', {}).get('email', ''),
-                runtime.operator_domain + '/resource-requester-name':
+                ko.operator_domain + '/resource-requester-name':
                     requester_identity.get('extra', {}).get('name', ''),
-                runtime.operator_domain + '/resource-requester-preferred-username':
+                ko.operator_domain + '/resource-requester-preferred-username':
                     requester_identity.get('extra', {}).get('preferred_username', ''),
             })
         if requester_user:
             resource_definition['metadata']['annotations'].update({
-                runtime.operator_domain + '/resource-requester-user':
+                ko.operator_domain + '/resource-requester-user':
                     requester_user['metadata']['name']
             })
 

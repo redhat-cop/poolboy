@@ -67,8 +67,6 @@ spec:
               - stopped
               type: string
             governor:
-              enum:
-              - test
               type: string
             parameters:
               type: object

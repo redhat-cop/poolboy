@@ -196,7 +196,6 @@ objects:
   rules:
   - apiGroups:
     - ""
-    attributeRestrictions: null
     resources:
     - events
     verbs:

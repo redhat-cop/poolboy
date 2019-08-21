@@ -8,7 +8,7 @@ metadata:
 
 parameters:
 - name: NAMESPACE
-  value: resource-claim-operator
+  value: poolboy
 - name: SERVICE_NAME
   value: resource-claim-operator
 - name: OPERATOR_DOMAIN
