@@ -10,9 +10,9 @@ parameters:
 - name: NAMESPACE
   value: poolboy
 - name: SERVICE_NAME
-  value: resource-claim-operator
+  value: poolboy
 - name: OPERATOR_DOMAIN
-  value: gpte.redhat.com
+  value: poolboy.gpte.redhat.com
 - name: ANARCHY_NAMESPACE
   value: anarchy-operator
 - name: ANARCHY_SERVICE_NAME

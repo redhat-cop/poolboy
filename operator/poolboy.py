@@ -17,7 +17,9 @@ import time
 
 from gpte.util import dict_merge, recursive_process_template_strings
 
-ko = gpte.kubeoperative.KubeOperative()
+ko = gpte.kubeoperative.KubeOperative(
+    operator_domain = os.environ.get('OPERATOR_DOMAIN', 'poolboy.gpte.redhat.com')
+)
 providers = {}
 provider_init_delay = int(os.environ.get('PROVIDER_INIT_DELAY', 10))
 start_time = time.time()
@@ -485,7 +487,7 @@ class ResourceProvider(object):
                 'kind': 'ResourceHandle',
                 'metadata': {
                     'finalizers': [
-                        ko.operator_domain + '/resource-claim-operator'
+                        ko.operator_domain
                     ],
                     'generateName': 'guid-',
                     'labels': {

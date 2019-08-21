@@ -153,7 +153,7 @@ class KubeOperative(object):
             f = open('/run/secrets/kubernetes.io/serviceaccount/namespace')
             self.operator_namespace = f.read()
         else:
-            self.operator_namespace = 'resource-claim-operator'
+            self.operator_namespace = 'poolboy'
 
     def __init_kube_apis(self):
         if os.path.exists('/run/secrets/kubernetes.io/serviceaccount/token'):

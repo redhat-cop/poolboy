@@ -1,5 +1,5 @@
 ---
-apiVersion: gpte.redhat.com/v1
+apiVersion: poolboy.gpte.redhat.com/v1
 kind: ResourceClaim
 metadata:
   generateName: anarchy-subject-
@@ -10,7 +10,7 @@ spec:
     metadata:
       annotations:
         gpte.redhat.com/resource-provider-name: anarchy-subject
-        gpte.redhat.com/resource-provider-namespace: resource-claim-operator
+        gpte.redhat.com/resource-provider-namespace: poolboy
       namespace: anarchy-operator
     spec:
       parameters:

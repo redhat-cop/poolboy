@@ -3,8 +3,10 @@
   gather_facts: false
   vars:
     oc_cmd: oc
-    operator_namespace: resource-claim-operator
-    operator_test_namespace: resource-claim-operator-test
+    operator_domain: poolboy.gpte.redhat.com
+    operator_namespace: poolboy
+    operator_service_name: poolboy
+    operator_test_namespace: poolboy-test
     build: true
     local_test: false
   tasks:
@@ -12,15 +14,15 @@
     block:
     - name: Start operator build
       command: >-
-        {{ oc_cmd }} start-build resource-claim-operator
+        {{ oc_cmd }} start-build {{ operator_service_name }}
         -n {{ operator_namespace | quote }}
         --from-dir {{ playbook_dir }}/..
 
-    - name: Get resource-claim-operator BuildConfig
+    - name: Get BuildConfig
       k8s_facts:
         api_version: build.openshift.io/v1
         kind: BuildConfig
-        name: resource-claim-operator
+        name: "{{ operator_service_name }}"
         namespace: "{{ operator_namespace }}"
       register: operator_buildconfig
 
@@ -28,7 +30,7 @@
       k8s_facts:
         api_version: build.openshift.io/v1
         kind: Build
-        name: resource-claim-operator-{{ operator_buildconfig.resources[0].status.lastVersion }}
+        name: "{{ operator_service_name }}-{{ operator_buildconfig.resources[0].status.lastVersion }}"
         namespace: "{{ operator_namespace }}"
       register: operator_build
       until: operator_build.resources[0].status.phase in ['Complete', 'Failed']
@@ -43,7 +45,7 @@
         success_msg: Operator build complete
 
   - name: Scale down operator
-    command: oc scale deployment resource-claim-operator -n {{ operator_namespace | quote }} --replicas=0
+    command: oc scale deployment {{ operator_service_name }} -n {{ operator_namespace | quote }} --replicas=0
 
   - name: Wait for operator scale down
     k8s_facts:
@@ -51,7 +53,7 @@
       kind: Pod
       namespace: "{{ operator_namespace }}"
       label_selectors:
-      - name=resource-claim-operator
+      - name={{ operator_service_name }}
     register: get_operator_pod
     until: get_operator_pod.resources | length == 0
     retries: 30
@@ -59,14 +61,14 @@
 
   - name: Get test resource claims
     k8s_facts:
-      api_version: gpte.redhat.com/v1
+      api_version: "{{ operator_domain }}/v1"
       kind: ResourceClaim
       namespace: "{{ operator_test_namespace }}"
     register: test_claims
 
   - name: Remove finalizer from test resource claims
     command: >-
-      {{ oc_cmd }} patch resourceclaim.gpte.redhat.com {{ claim.metadata.name }}
+      {{ oc_cmd }} patch resourceclaim.{{ operator_domain }} {{ claim.metadata.name }}
       -n {{ operator_test_namespace }}
       --type=merge -p {{ patch | to_json | quote}}
     loop: "{{ test_claims.resources }}"
@@ -81,7 +83,7 @@
   - name: Remove test resource claims
     k8s:
       state: absent
-      api_version: gpte.redhat.com/v1
+      api_version: "{{ operator_domain }}/v1"
       kind: ResourceClaim
       name: "{{ claim.metadata.name }}"
       namespace: "{{ operator_test_namespace }}"
@@ -92,16 +94,16 @@
 
   - name: Get test resource handles
     k8s_facts:
-      api_version: gpte.redhat.com/v1
+      api_version: "{{ operator_domain }}/v1"
       kind: ResourceHandle
       namespace: "{{ operator_namespace }}"
       label_selectors:
-      - gpte.redhat.com/resource-provider-name=test
+      - "{{ operator_domain }}/resource-provider-name=test"
     register: test_handles
 
   - name: Remove finalizer from test resource handles
     command: >-
-      {{ oc_cmd }} patch resourcehandle.gpte.redhat.com {{ handle.metadata.name }}
+      {{ oc_cmd }} patch resourcehandle.{{ operator_domain }} {{ handle.metadata.name }}
       -n {{ operator_namespace }}
       --type=merge -p {{ patch | to_json | quote}}
     loop: "{{ test_handles.resources }}"
@@ -116,7 +118,7 @@
   - name: Remove test resource handles
     k8s:
       state: absent
-      api_version: gpte.redhat.com/v1
+      api_version: "{{ operator_domain }}/v1"
       kind: ResourceHandle
       name: "{{ handle.metadata.name }}"
       namespace: "{{ operator_namespace }}"
@@ -127,7 +129,7 @@
 
   - name: Get resource claim tests
     k8s_facts:
-      api_version: gpte.redhat.com/v1
+      api_version: "{{ operator_domain }}/v1"
       kind: ResourceClaimTest
       namespace: "{{ operator_test_namespace }}"
     register: resource_claim_tests
@@ -135,7 +137,7 @@
   - name: Remove resource claim tests
     k8s:
       state: absent
-      api_version: gpte.redhat.com/v1
+      api_version: "{{ operator_domain }}/v1"
       kind: ResourceClaimTest
       name: "{{ resource_claim_test.metadata.name }}"
       namespace: "{{ operator_test_namespace }}"
@@ -147,7 +149,7 @@
   - name: Remove test ResourceProvider
     k8s:
       state: absent
-      api_version: gpte.redhat.com/v1
+      api_version: "{{ operator_domain }}/v1"
       kind: ResourceProvider
       name: test
       namespace: "{{ operator_namespace }}"
@@ -155,10 +157,13 @@
   - name: Remove test-new ResourceProvider
     k8s:
       state: absent
-      api_version: gpte.redhat.com/v1
+      api_version: "{{ operator_domain }}/v1"
       kind: ResourceProvider
       name: test-new
       namespace: "{{ operator_namespace }}"
+
+  - debug:
+      msg: "{{ lookup('template', 'test-resource-provider.yaml.j2') }}"
 
   - name: Create test ResourceProvider
     k8s:
@@ -168,7 +173,7 @@
   - when: not local_test | bool
     block:
     - name: Scale up operator
-      command: oc scale deployment resource-claim-operator -n {{ operator_namespace | quote }} --replicas=1
+      command: oc scale deployment {{ operator_service_name }} -n {{ operator_namespace | quote }} --replicas=1
 
     - name: Pause for operator start-up
       pause:
@@ -177,20 +182,22 @@
   - name: Create ResourceClaim test-1
     k8s:
       state: present
-      definition:
-        apiVersion: gpte.redhat.com/v1
+      definition: "{{ resource_definition | from_yaml }}"
+    vars:
+      resource_definition: |
+        apiVersion: {{ operator_domain }}/v1
         kind: ResourceClaim
         metadata:
           name: test-1
-          namespace: "{{ operator_test_namespace }}"
+          namespace: {{ operator_test_namespace }}
         spec:
           template:
-            apiVersion: gpte.redhat.com/v1
+            apiVersion: {{ operator_domain }}/v1
             kind: ResourceClaimTest
             metadata:
               annotations:
-                gpte.redhat.com/resource-provider-name: test
-                gpte.redhat.com/resource-provider-namespace: "{{ operator_namespace }}"
+                {{ operator_domain }}/resource-provider-name: test
+                {{ operator_domain }}/resource-provider-namespace: {{ operator_namespace }}
             spec:
               governor: test
               parameters:
@@ -203,12 +210,12 @@
 
   - name: Get resource handle for claim test-1
     k8s_facts:
-      api_version: gpte.redhat.com/v1
+      api_version: "{{ operator_domain }}/v1"
       kind: ResourceHandle
       namespace: "{{ operator_namespace }}"
       label_selectors:
-      - gpte.redhat.com/resource-claim-name=test-1
-      - gpte.redhat.com/resource-claim-namespace={{ operator_test_namespace }}
+      - "{{ operator_domain }}/resource-claim-name=test-1"
+      - "{{ operator_domain }}/resource-claim-namespace={{ operator_test_namespace }}"
     register: resource_handle_for_test_1
 
   - name: Assert that exactly one handle for test-1 was found
@@ -221,10 +228,10 @@
   - name: Check resource handle for test-1
     assert:
       that:
-      - handle.metadata.finalizers[0] == 'gpte.redhat.com/resource-claim-operator'
+      - handle.metadata.finalizers[0] == operator_domain
       - handle.metadata.generateName == 'guid-'
-      - handle.metadata.labels['gpte.redhat.com/resource-provider-name'] == 'test'
-      - handle.metadata.labels['gpte.redhat.com/resource-provider-namespace'] == operator_namespace
+      - handle.metadata.labels['{{ operator_domain }}/resource-provider-name'] == 'test'
+      - handle.metadata.labels['{{ operator_domain }}/resource-provider-namespace'] == operator_namespace
       - handle.spec.resourceClaim.name == 'test-1'
       - handle.spec.resourceClaim.namespace == operator_test_namespace
       - handle.spec.resourceProvider.name == 'test'
@@ -251,14 +258,14 @@
     assert:
       that:
       - resource.kind == 'ResourceClaimTest'
-      - resource.metadata.annotations['gpte.redhat.com/resource-claim-name'] == 'test-1'
-      - resource.metadata.annotations['gpte.redhat.com/resource-claim-namespace'] == operator_test_namespace
-      - resource.metadata.annotations['gpte.redhat.com/resource-handle-name'] == handle.metadata.name
-      - resource.metadata.annotations['gpte.redhat.com/resource-handle-namespace'] == handle.metadata.namespace
-      - resource.metadata.annotations['gpte.redhat.com/resource-handle-uid'] == handle.metadata.uid
-      - resource.metadata.annotations['gpte.redhat.com/resource-handle-version'] == handle.metadata.resourceVersion
-      - resource.metadata.annotations['gpte.redhat.com/resource-provider-name'] == 'test'
-      - resource.metadata.annotations['gpte.redhat.com/resource-provider-namespace'] == operator_namespace
+      - resource.metadata.annotations['{{ operator_domain }}/resource-claim-name'] == 'test-1'
+      - resource.metadata.annotations['{{ operator_domain }}/resource-claim-namespace'] == operator_test_namespace
+      - resource.metadata.annotations['{{ operator_domain }}/resource-handle-name'] == handle.metadata.name
+      - resource.metadata.annotations['{{ operator_domain }}/resource-handle-namespace'] == handle.metadata.namespace
+      - resource.metadata.annotations['{{ operator_domain }}/resource-handle-uid'] == handle.metadata.uid
+      - resource.metadata.annotations['{{ operator_domain }}/resource-handle-version'] == handle.metadata.resourceVersion
+      - resource.metadata.annotations['{{ operator_domain }}/resource-provider-name'] == 'test'
+      - resource.metadata.annotations['{{ operator_domain }}/resource-provider-namespace'] == operator_namespace
       fail_msg: test-1 resource not found as expected
       success_msg: test-1 resource looks good
     vars:
@@ -267,7 +274,7 @@
 
   - name: Get resource claim test-1
     k8s_facts:
-      api_version: gpte.redhat.com/v1
+      api_version: "{{ operator_domain }}/v1"
       kind: ResourceClaim
       name: test-1
       namespace: "{{ operator_test_namespace }}"
@@ -288,20 +295,22 @@
   - name: Update ResourceClaim test-1
     k8s:
       state: present
-      definition:
-        apiVersion: gpte.redhat.com/v1
+      definition: "{{ resource_definition }}"
+    vars:
+      resource_definition: |
+        apiVersion: {{ operator_domain }}/v1
         kind: ResourceClaim
         metadata:
           name: test-1
-          namespace: "{{ operator_test_namespace }}"
+          namespace: {{ operator_test_namespace }}
         spec:
           template:
-            apiVersion: gpte.redhat.com/v1
+            apiVersion: {{ operator_domain }}/v1
             kind: ResourceClaimTest
             metadata:
               annotations:
-                gpte.redhat.com/resource-provider-name: test
-                gpte.redhat.com/resource-provider-namespace: "{{ operator_namespace }}"
+                {{ operator_domain }}/resource-provider-name: test
+                {{ operator_domain }}/resource-provider-namespace: {{ operator_namespace }}
             spec:
               desiredState: started
               governor: test
@@ -316,20 +325,20 @@
 
   - name: Get resource handle for claim test-1
     k8s_facts:
-      api_version: gpte.redhat.com/v1
+      api_version: "{{ operator_domain }}/v1"
       kind: ResourceHandle
       namespace: "{{ operator_namespace }}"
       label_selectors:
-      - gpte.redhat.com/resource-claim-name=test-1
-      - gpte.redhat.com/resource-claim-namespace={{ operator_test_namespace }}
+      - "{{ operator_domain }}/resource-claim-name=test-1"
+      - "{{ operator_domain }}/resource-claim-namespace={{ operator_test_namespace }}"
     register: resource_handle_for_test_1
 
   - name: Check update of resource handle for test-1
     assert:
       that:
-      - handle.metadata.finalizers[0] == 'gpte.redhat.com/resource-claim-operator'
+      - handle.metadata.finalizers[0] == operator_domain
       - handle.metadata.generateName == 'guid-'
-      - handle.metadata.labels['gpte.redhat.com/resource-provider-name'] == 'test'
+      - handle.metadata.labels['{{ operator_domain }}/resource-provider-name'] == 'test'
       - handle.spec.resourceClaim.name == 'test-1'
       - handle.spec.resourceClaim.namespace == operator_test_namespace
       - handle.spec.resourceProvider.name == 'test'
@@ -344,7 +353,7 @@
 
   - name: Get resource claim test-1
     k8s_facts:
-      api_version: gpte.redhat.com/v1
+      api_version: "{{ operator_domain }}/v1"
       kind: ResourceClaim
       name: test-1
       namespace: "{{ operator_test_namespace }}"
@@ -368,7 +377,7 @@
   - name: Delete resource claim test-1
     k8s:
       state: absent
-      api_version: gpte.redhat.com/v1
+      api_version: "{{ operator_domain }}/v1"
       kind: ResourceClaim
       name: test-1
       namespace: "{{ operator_test_namespace }}"

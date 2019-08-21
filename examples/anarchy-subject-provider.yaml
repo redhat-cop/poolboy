@@ -1,9 +1,9 @@
 ---
-apiVersion: gpte.redhat.com/v1
+apiVersion: poolboy.gpte.redhat.com/v1
 kind: ResourceProvider
 metadata:
   name: anarchy-subject
-  namespace: resource-claim-operator
+  namespace: poolbay
 spec:
   match:
     apiVersion: gpte.redhat.com/v1
@@ -11,7 +11,7 @@ spec:
     metadata:
       annotations:
         gpte.redhat.com/resource-provider-name: anarchy-subject
-        gpte.redhat.com/resource-provider-namespace: resource-claim-operator
+        gpte.redhat.com/resource-provider-namespace: poolboy
   default: {}
   override:
     metadata:

@@ -4,7 +4,7 @@ items:
 - apiVersion: rbac.authorization.k8s.io/v1
   kind: ClusterRole
   metadata:
-    name: resource-claim-operator-anarchy
+    name: poolboy-anarchy
   rules:
   - apiGroups:
     - gpte.redhat.com
@@ -22,12 +22,12 @@ items:
 - apiVersion: rbac.authorization.k8s.io/v1
   kind: ClusterRoleBinding
   metadata:
-    name: resource-claim-operator-anarchy
+    name: poolboy-anarchy
   roleRef:
     apiGroup: rbac.authorization.k8s.io
     kind: ClusterRole
-    name: resource-claim-operator-anarchy
+    name: poolboy-anarchy
   subjects:
   - kind: ServiceAccount
-    name: resource-claim-operator
-    namespace: resource-claim-operator
+    name: poolboy
+    namespace: poolboy

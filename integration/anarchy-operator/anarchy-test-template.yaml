@@ -14,7 +14,7 @@ metadata:
   name: anarchy-test
 parameters: []
 objects:
-- apiVersion: gpte.redhat.com/v1
+- apiVersion: poolboy.gpte.redhat.com/v1
   kind: ResourceClaim
   metadata:
     generateName: anarchy-test-
@@ -25,14 +25,14 @@ objects:
       metadata:
         annotations:
           gpte.redhat.com/resource-provider-name: anarchy-test
-          gpte.redhat.com/resource-provider-namespace: resource-claim-operator
+          gpte.redhat.com/resource-provider-namespace: poolboy
       spec:
         desiredState: started
         governor: test
         parameters:
-          account_id: gpte
           aws_hosted_zone_id: Z3IHLWJZOU9SRT
           aws_region: us-east-1
+          babylon_organization: gpte
           babylon_scm_reference: three-tier-app-prod-1.14
           cloud_provider: ec2
           email: babylon@example.com

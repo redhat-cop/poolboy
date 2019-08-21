@@ -1,17 +1,17 @@
 ---
-apiVersion: gpte.redhat.com/v1
+apiVersion: {{ operator_domain }}/v1
 kind: ResourceProvider
 metadata:
   name: {{ name | default('test') }}
   namespace: {{ operator_namespace }}
 spec:
   match:
-    apiVersion: gpte.redhat.com/v1
+    apiVersion: {{ operator_domain }}/v1
     kind: ResourceClaimTest
     metadata:
       annotations:
-        gpte.redhat.com/resource-provider-name: {{ name | default('test') }}
-        gpte.redhat.com/resource-provider-namespace: {{ operator_namespace }}
+        {{ operator_domain }}/resource-provider-name: {{ name | default('test') }}
+        {{ operator_domain }}/resource-provider-namespace: {{ operator_namespace }}
 {% raw %}
   matchIgnore:
   - /spec/desiredState
@@ -55,7 +55,9 @@ spec:
         apiVersion:
           type: string
           enum:
-          - gpte.redhat.com/v1
+{% endraw %}
+          - "{{ operator_domain }}/v1"
+{% raw %}
         kind:
           type: string
           enum:
