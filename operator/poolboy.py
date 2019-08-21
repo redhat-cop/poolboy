@@ -695,7 +695,7 @@ class ResourceProvider(object):
                     requester_identity.get('extra', {}).get('preferred_username', ''),
             })
         if requester_user:
-            resource_definition['metadata']['annotations'].update({
+            resource['metadata']['annotations'].update({
                 ko.operator_domain + '/resource-requester-user':
                     requester_user['metadata']['name']
             })
