@@ -178,26 +178,6 @@ objects:
     - identities
     verbs:
     - get
-
-- apiVersion: rbac.authorization.k8s.io/v1
-  kind: ClusterRoleBinding
-  metadata:
-    name: ${SERVICE_NAME}
-  roleRef:
-    apiGroup: rbac.authorization.k8s.io
-    kind: ClusterRole
-    name: ${SERVICE_NAME}
-  subjects:
-  - kind: ServiceAccount
-    name: ${SERVICE_NAME}
-    namespace: ${NAMESPACE}
-
-- apiVersion: rbac.authorization.k8s.io/v1
-  kind: Role
-  metadata:
-    name: ${SERVICE_NAME}
-    namespace: ${NAMESPACE}
-  rules:
   - apiGroups:
     - ""
     resources:
@@ -208,13 +188,12 @@ objects:
     - update
 
 - apiVersion: rbac.authorization.k8s.io/v1
-  kind: RoleBinding
+  kind: ClusterRoleBinding
   metadata:
     name: ${SERVICE_NAME}
-    namespace: ${NAMESPACE}
   roleRef:
     apiGroup: rbac.authorization.k8s.io
-    kind: Role
+    kind: ClusterRole
     name: ${SERVICE_NAME}
   subjects:
   - kind: ServiceAccount

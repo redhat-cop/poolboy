@@ -162,9 +162,6 @@
       name: test-new
       namespace: "{{ operator_namespace }}"
 
-  - debug:
-      msg: "{{ lookup('template', 'test-resource-provider.yaml.j2') }}"
-
   - name: Create test ResourceProvider
     k8s:
       state: present

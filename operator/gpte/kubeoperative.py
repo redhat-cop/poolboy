@@ -201,11 +201,6 @@ class KubeOperative(object):
         namespace = resource_definition['metadata'].get('namespace', None)
         plural = self.kind_to_plural(group, version, resource_definition['kind'])
         if namespace:
-            self.logger.warn("group: %s", group)
-            self.logger.warn("version: %s", version)
-            self.logger.warn("namespace: %s", namespace)
-            self.logger.warn("plural: %s", plural)
-            self.logger.warn("resource: %s", resource_definition)
             return self.custom_objects_api.create_namespaced_custom_object(
                 group,
                 version,

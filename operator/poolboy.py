@@ -335,6 +335,11 @@ class ResourceProvider(object):
         ResourceProvider.providers[provider.name] = provider
 
     @staticmethod
+    def unregister_provider(provider_name):
+        if provider_name in ResoruceProvider.providers:
+            del ResoruceProvider.providers[provider_name]
+
+    @staticmethod
     def reject_claim(msg, claim, logger):
         logger.info(
             "Rejecting ResourceClaim %s in %s: %s",
@@ -788,9 +793,14 @@ class ResourceProvider(object):
 
 @kopf.on.event(ko.operator_domain, 'v1', 'resourceproviders')
 def watch_providers(event, logger, **_):
-    if event['type']:
-        logger.warning(event)
-    else:
+    if event['type'] == 'DELETED':
+        provider = event['object']
+        provider_name = provider['metadata']['name']
+        provider_namespace = provider['metadata']['namespace']
+        if provider_namespace == ko.operator_namespace:
+            ResourceProvider.unregister_provider(provider_name)
+            logger.info('Removed ResourceProvider %s', provider_name)
+    elif event['type'] in ['ADDED', 'MODIFIED', None]:
         provider = event['object']
         provider_name = provider['metadata']['name']
         provider_namespace = provider['metadata']['namespace']
@@ -798,15 +808,16 @@ def watch_providers(event, logger, **_):
             ResourceProvider.register_provider(provider)
             logger.info('Discovered ResourceProvider %s', provider_name)
         else:
-            logger.warning(
+            logger.debug(
                 'Ignoring ResourceProvider %s in namespace %s',
                 provider_name, provider_namespace
             )
+    else:
+        logger.warning(event)
 
 @kopf.on.event(ko.operator_domain, 'v1', 'resourceclaims')
 def watch_resource_claims(event, logger, **_):
     pause_for_provider_init()
-    logger.warning(event)
     if event['type'] == 'DELETED':
         claim = event['object']
         ResourceProvider.manage_claim_deleted(claim, logger)
@@ -831,3 +842,5 @@ def watch_resource_handles(event, logger, **_):
             ResourceProvider.manage_handle_pending_delete(handle, logger)
         else:  
             ResourceProvider.manage_handle(handle, logger)
+    else:
+        logger.warning(event)
