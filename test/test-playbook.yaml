@@ -10,7 +10,7 @@
     build: true
     local_test: false
   tasks:
-  - when: build
+  - when: build | bool
     block:
     - name: Start operator build
       command: >-

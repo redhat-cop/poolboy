@@ -4,6 +4,7 @@
   vars:
     oc_cmd: oc
     anarchy_namespace: anarchy-operator
+    anarchy_operator_domain: gpte.redhat.com
     operator_domain: poolboy.gpte.redhat.com
     operator_namespace: poolboy
     operator_test_namespace: poolboy-test
@@ -42,7 +43,7 @@
           namespace: {{ operator_namespace }}
         spec:
           match:
-            apiVersion: gpte.redhat.com/v1
+            apiVersion: {{ anarchy_operator_domain }}/v1
             kind: AnarchySubject
             metadata:
               annotations:
@@ -74,7 +75,7 @@
                 apiVersion:
                   type: string
                   enum:
-                  - gpte.redhat.com/v1
+                  - {{ anarchy_operator_domain }}/v1
                 kind:
                   type: string
                   enum:
@@ -112,22 +113,24 @@
   - name: Create ResourceClaim anarchy-test-1
     k8s:
       state: present
-      definition:
-        apiVersion: "{{ operator_domain }}/v1"
+      definition: "{{ resource_definition | from_yaml }}"
+    vars:
+      resource_definition: |
+        apiVersion: {{ operator_domain }}/v1
         kind: ResourceClaim
         metadata:
           name: anarchy-test-1
-          namespace: "{{ operator_test_namespace }}"
+          namespace: {{ operator_test_namespace }}
           labels:
             test: anarchy-integration
         spec:
           template:
-            apiVersion: gpte.redhat.com/v1
+            apiVersion: {{ anarchy_operator_domain }}/v1
             kind: AnarchySubject
             metadata:
               annotations:
-                gpte.redhat.com/resource-provider-name: anarchy-test
-                gpte.redhat.com/resource-provider-namespace: "{{ operator_namespace }}"
+                {{ operator_domain }}/resource-provider-name: anarchy-test
+                {{ operator_domain }}/resource-provider-namespace: {{ operator_namespace }}
             spec:
               desiredState: started
               governor: test
@@ -160,7 +163,7 @@
       that:
       - claim.status.resource.kind == 'AnarchySubject'
       - claim.status.resource.metadata.namespace == anarchy_namespace
-      - claim.status.resource.spec.parameters.guid == claim.status.handle.name[-5:]
+      - claim.status.resource.spec.parameters.guid == claim.status.resourceHandle.name[-5:]
       - claim.status.resource.status.state == 'started'
       fail_msg: anarchy-test-1 resource not found as expected
       success_msg: anarchy-test-1 resource looks good
