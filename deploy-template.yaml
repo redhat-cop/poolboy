@@ -10,7 +10,7 @@ parameters:
 - name: NAMESPACE
   value: poolboy
 - name: IMAGE
-  value: quay.io/gpte-devops-automation/poolboy:0.1.3
+  value: quay.io/gpte-devops-automation/poolboy:0.1.4
   #value: docker-registry.default.svc:5000/poolboy/poolboy:latest
   #value: image-registry.openshift-image-registry.svc:5000/poolboy/poolboy:latest
 - name: IMAGE_PULL_POLICY
@@ -142,7 +142,6 @@ objects:
   - apiGroups:
     - ${OPERATOR_DOMAIN}
     resources:
-    - resourcepools
     - resourceproviders
     verbs:
     - get
@@ -154,6 +153,7 @@ objects:
     - resourceclaims
     - resourceclaims/status
     - resourcehandles
+    - resourcepools
     - resourcepools/status
     - resourceproviders/status
     verbs:

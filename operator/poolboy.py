@@ -4,6 +4,7 @@ import copy
 import datetime
 import gpte.kubeoperative
 import json
+import jsonpatch
 import kopf
 import kubernetes
 import openapi_core.shortcuts
@@ -34,6 +35,16 @@ class ResourceProvider(object):
     resource_watchers = {}
 
     @staticmethod
+    def add_finalizer_to_pool(pool, logger):
+        pool_meta = pool['metadata']
+        pool_namespace = pool_meta['namespace']
+        pool_name = pool_meta['name']
+        ko.custom_objects_api.patch_namespaced_custom_object(
+            ko.operator_domain, 'v1', pool_namespace, 'resourcepools', pool_name,
+            { 'metadata': { 'finalizers': [ko.operator_domain] } }
+        )
+
+    @staticmethod
     def delete_handle_on_lost_claim(handle, logger):
         claim_ref = handle['spec']['resourceClaim']
         claim_name = claim_ref['name']
@@ -52,6 +63,18 @@ class ResourceProvider(object):
             'resourcehandles', handle_name,
             kubernetes.client.V1DeleteOptions()
         )
+
+    @staticmethod
+    def delete_unbound_handles_for_pool(pool, logger):
+        pool_meta = pool['metadata']
+        pool_name = pool_meta['name']
+        for handle in ResourceProvider.get_unbound_handles_for_pool(pool_name, logger):
+             handle_meta = handle['metadata']
+             handle_name = handle_meta['name']
+             ko.custom_objects_api.delete_namespaced_custom_object(
+                 ko.operator_domain, 'v1', ko.operator_namespace, 'resourcehandles', handle_name,
+                 kubernetes.client.V1DeleteOptions()
+             )
 
     @staticmethod
     def find_provider_by_name(name):
@@ -113,6 +136,19 @@ class ResourceProvider(object):
 
         return requester_identity, requester_user
 
+    @staticmethod
+    def get_unbound_handles_for_pool(pool_name, logger):
+        return ko.custom_objects_api.list_namespaced_custom_object(
+             ko.operator_domain, 'v1', ko.operator_namespace, 'resourcehandles',
+             label_selector='{0}/resource-pool-name={1},!{0}/resource-claim-name'.format(ko.operator_domain, pool_name)
+        ).get('items', [])
+    @staticmethod
+
+    def get_unbound_handles_for_provider(provider_name, logger):
+        return ko.custom_objects_api.list_namespaced_custom_object(
+             ko.operator_domain, 'v1', ko.operator_namespace, 'resourcehandles',
+             label_selector='{0}/resource-provider-name={1},!{0}/resource-claim-name'.format(ko.operator_domain, provider_name)
+        ).get('items', [])
 
     @staticmethod
     def log_claim_event(claim, logger, msg):
@@ -201,7 +237,6 @@ class ResourceProvider(object):
             ko.logger.info('ResourceClaim {} in {} lost resource {} {}'.format(
                 claim_name, claim_namespace, resource_kind, resource_name
             ))
-            
         try:
             claim = ko.custom_objects_api.get_namespaced_custom_object(
                 ko.operator_domain,
@@ -239,7 +274,7 @@ class ResourceProvider(object):
             ko.logger.info('ResourceClaim {} in {} resource status change for {} {}'.format(
                 claim_name, claim_namespace, resource_kind, resource_name
             ))
-            
+
         try:
             claim = ko.custom_objects_api.get_namespaced_custom_object(
                 ko.operator_domain, 'v1', claim_namespace, 'resourceclaims', claim_name
@@ -330,12 +365,55 @@ class ResourceProvider(object):
         )
 
     @staticmethod
-    def register_provider(provider):
+    def manage_pool_deleted(pool, logger):
+        pool_meta = pool['metadata']
+        pool_name = pool_meta['name']
+        logger.info('ResourcePool %s deleted', pool_name)
+
+    @staticmethod
+    def manage_pool_pending_delete(pool, logger):
+        pool_meta = pool['metadata']
+        pool_name = pool_meta['name']
+        ResourceProvider.delete_unbound_handles_for_pool(pool, logger)
+        handle = ko.custom_objects_api.patch_namespaced_custom_object(
+            ko.operator_domain, 'v1', ko.operator_namespace, 'resourcepools', pool_name,
+            { 'metadata': { 'finalizers': None } }
+        )
+
+    @staticmethod
+    def manage_pool(pool, logger):
+        pool_meta = pool['metadata']
+        pool_namespace = pool_meta['namespace']
+        pool_name = pool_meta['name']
+        provider_ref = pool['spec']['resourceProvider']
+        provider_namespace = provider_ref['namespace']
+        provider_name = provider_ref['name']
+        provider = ResourceProvider.find_provider_by_name(provider_name)
+        if pool_namespace != ko.operator_namespace:
+            logger.info(
+                'Ignoring ResourcePool %s in namespace %s',
+                pool_name, pool_namespace
+            )
+        elif provider_namespace != ko.operator_namespace:
+            logger.warning(
+                'Invalid configuration, ResourcePool %s references ResourceProvider %s in namespace %s',
+                pool_name, provider_name, provider_namespace
+            )
+        elif not provider:
+            logger.warning(
+                'Invalid configuration, ResourcePool %s references invalid ResourceProvider %s',
+                pool_name, provider_name
+            )
+        else:
+            provider._manage_pool(pool, logger)
+
+    @staticmethod
+    def manage_provider(provider):
         provider = ResourceProvider(provider)
         ResourceProvider.providers[provider.name] = provider
 
     @staticmethod
-    def unregister_provider(provider_name):
+    def manage_provider_deleted(provider_name):
         if provider_name in ResoruceProvider.providers:
             del ResoruceProvider.providers[provider_name]
 
@@ -452,12 +530,44 @@ class ResourceProvider(object):
         return self.metadata['namespace']
 
     @property
+    def match_ignore(self):
+        return self.spec.get('matchIgnore', [])
+
+    @property
     def override(self):
         return self.spec.get('override', {})
 
-    def bind_available_handle_to_claim(self, claim):
-        # FIXME
-        pass
+    def bind_available_handle_to_claim(self, claim, logger):
+        for handle in self.get_unbound_handles(logger):
+            if self.check_handle_matches_claim(handle, claim, logger):
+                return self.bind_handle_to_claim(handle, claim, logger)
+
+    def bind_handle_to_claim(self, handle, claim, logger):
+        claim_meta = claim['metadata']
+        claim_namespace = claim_meta['namespace']
+        claim_name = claim_meta['name']
+        handle_meta = handle['metadata']
+        handle_name = handle_meta['name']
+
+        return ko.custom_objects_api.patch_namespaced_custom_object(
+            ko.operator_domain, 'v1', ko.operator_namespace, 'resourcehandles', handle_name,
+            {
+                'metadata': {
+                    'labels': {
+                        ko.operator_domain + '/resource-claim-namespace': claim_namespace,
+                        ko.operator_domain + '/resource-claim-name': claim_name
+                    }
+                },
+                'spec': {
+                    'resourceClaim': {
+                        'apiVersion': 'v1',
+                        'kind': 'ResourceClaim',
+                        'name': claim_name,
+                        'namespace': claim_namespace
+                    }
+                }
+            }
+        )
 
     def bind_or_create_handle_for_claim(self, claim, logger):
         claim_name = claim['metadata']['name']
@@ -471,12 +581,31 @@ class ResourceProvider(object):
                 claim_name
             )
         else:
-            handle = self.bind_available_handle_to_claim(claim)
+            handle = self.bind_available_handle_to_claim(claim, logger)
             if not handle:
-                handle = self.create_handle_for_claim(claim)
+                handle = self.create_handle_for_claim(claim, logger)
         self.set_handle_in_claim_status(claim, handle, logger)
 
-    def create_handle_for_claim(self, claim):
+    def check_handle_matches_claim(self, handle, claim, logger):
+        # Get template differences between the claim and the handle
+        patch = [
+            item for item in jsonpatch.JsonPatch.from_diff(
+                handle['spec']['template'], claim['spec']['template']
+            ) if item['op'] in ['add', 'replace']
+        ]
+        # Return false if any item from the patch is not ignored
+        ignore_re_list = [ re.compile(pattern + '$') for pattern in self.match_ignore ]
+        for item in patch:
+            ignored = False
+            for ignore_re in ignore_re_list:
+                if ignore_re.match(item['path']):
+                    ignored = True
+            if not ignored:
+                logger.warning(item)
+                return False
+        return True
+
+    def create_handle_for_claim(self, claim, logger):
         provider_name = self.name
         provider_namespace = self.namespace
         claim_name = claim['metadata']['name']
@@ -520,6 +649,52 @@ class ResourceProvider(object):
             }
         )
 
+    def create_handle_for_pool(self, pool, logger):
+        provider_name = self.name
+        provider_namespace = self.namespace
+        pool_meta = pool['metadata']
+        pool_spec = pool['spec']
+        pool_namespace = pool_meta['namespace']
+        pool_name = pool_meta['name']
+
+        return ko.custom_objects_api.create_namespaced_custom_object(
+            ko.operator_domain,
+            'v1',
+            ko.operator_namespace,
+            'resourcehandles',
+            {
+                'apiVersion': ko.operator_domain + '/v1',
+                'kind': 'ResourceHandle',
+                'metadata': {
+                    'finalizers': [
+                        ko.operator_domain
+                    ],
+                    'generateName': 'guid-',
+                    'labels': {
+                        ko.operator_domain + '/resource-pool-namespace': pool_namespace,
+                        ko.operator_domain + '/resource-pool-name': pool_name,
+                        ko.operator_domain + '/resource-provider-namespace': provider_namespace,
+                        ko.operator_domain + '/resource-provider-name': provider_name
+                    }
+                },
+                'spec': {
+                    'resourcePool': {
+                        'apiVersion': 'v1',
+                        'kind': 'ResourcePool',
+                        'name': pool_name,
+                        'namespace': pool_namespace
+                    },
+                    'resourceProvider': {
+                        'apiVersion': 'v1',
+                        'kind': 'ResourceProvider',
+                        'name': provider_name,
+                        'namespace': provider_namespace
+                    },
+                    'template': pool_spec['template']
+                }
+            }
+        )
+
     def create_resource_for_handle(self, handle, resource_definition, logger):
         resource_meta = resource_definition['metadata']
         resource_ref = {
@@ -558,6 +733,9 @@ class ResourceProvider(object):
         ).get('items', [])
         if items:
             return items[0]
+
+    def get_unbound_handles(self, logger):
+        return ResourceProvider.get_unbound_handles_for_provider(self.name, logger)
 
     def initialize_claim(self, claim, logger):
         # FIXME - log
@@ -620,6 +798,20 @@ class ResourceProvider(object):
             self.manage_handle_for_claim(claim, logger)
         else:
             self.bind_or_create_handle_for_claim(claim, logger)
+
+    def _manage_pool(self, pool, logger):
+        pool_meta = pool['metadata']
+        pool_name = pool_meta['name']
+        if not pool['metadata'].get('finalizers', None):
+            ResourceProvider.add_finalizer_to_pool(pool, logger)
+            return
+
+        unbound_handle_count = len(ResourceProvider.get_unbound_handles_for_pool(pool_name, logger))
+        handle_deficit = pool['spec'].get('minAvailable', 0) - unbound_handle_count
+        if handle_deficit <= 0:
+            return
+        for i in range(handle_deficit):
+             self.create_handle_for_pool(pool, logger)
 
     def manage_handle_for_claim(self, claim, logger):
         handle_name = claim['status']['resourceHandle']['name']
@@ -798,17 +990,17 @@ def watch_providers(event, logger, **_):
         provider_name = provider['metadata']['name']
         provider_namespace = provider['metadata']['namespace']
         if provider_namespace == ko.operator_namespace:
-            ResourceProvider.unregister_provider(provider_name)
+            ResourceProvider.manage_provider_deleted(provider_name)
             logger.info('Removed ResourceProvider %s', provider_name)
     elif event['type'] in ['ADDED', 'MODIFIED', None]:
         provider = event['object']
         provider_name = provider['metadata']['name']
         provider_namespace = provider['metadata']['namespace']
         if provider_namespace == ko.operator_namespace:
-            ResourceProvider.register_provider(provider)
+            ResourceProvider.manage_provider(provider)
             logger.info('Discovered ResourceProvider %s', provider_name)
         else:
-            logger.debug(
+            logger.info(
                 'Ignoring ResourceProvider %s in namespace %s',
                 provider_name, provider_namespace
             )
@@ -840,7 +1032,22 @@ def watch_resource_handles(event, logger, **_):
         handle = event['object']
         if 'deletionTimestamp' in handle['metadata']:
             ResourceProvider.manage_handle_pending_delete(handle, logger)
-        else:  
+        else:
             ResourceProvider.manage_handle(handle, logger)
+    else:
+        logger.warning(event)
+
+@kopf.on.event(ko.operator_domain, 'v1', 'resourcepools')
+def watch_resource_pools(event, logger, **_):
+    pause_for_provider_init()
+    if event['type'] == 'DELETED':
+        pool = event['object']
+        ResourceProvider.manage_pool_deleted(pool, logger)
+    elif event['type'] in ['ADDED', 'MODIFIED', None]:
+        pool = event['object']
+        if 'deletionTimestamp' in pool['metadata']:
+            ResourceProvider.manage_pool_pending_delete(pool, logger)
+        else:
+            ResourceProvider.manage_pool(pool, logger)
     else:
         logger.warning(event)

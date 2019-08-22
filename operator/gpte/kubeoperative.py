@@ -21,7 +21,7 @@ def filter_patch_item(update_filters, item):
             return True
     return False
 
-def create_patch(resource, update, update_filters):
+def create_patch(resource, update, update_filters=None):
     # FIXME - There should be some sort of warning about patch items being rejected?
     return [
         item for item in jsonpatch.JsonPatch.from_diff(
@@ -116,7 +116,7 @@ class KubeOperative(object):
 
     def __init__(
         self,
-        logging_format='%(asctime)s %(threadName)s %(levelname)s - %(message)s',
+        logging_format='[%(asctime)s] %(threadName)s [%(levelname)8s] - %(message)s',
         logging_level=logging.INFO,
         operator_domain=None,
         operator_namespace=None
