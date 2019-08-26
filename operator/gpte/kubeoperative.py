@@ -133,7 +133,7 @@ class KubeOperative(object):
         if operator_domain:
             self.operator_domain = operator_domain
         else:
-            self.operator_domain = os.environ.get('OPERATOR_DOMAIN', 'gpte.redhat.com')
+            self.operator_domain = os.environ.get('OPERATOR_DOMAIN', 'poolboy.gpte.redhat.com')
 
     def __init_logger(self, logging_format, logging_level):
         handler = logging.StreamHandler()

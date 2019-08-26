@@ -20,12 +20,12 @@ objects:
     generateName: anarchy-test-
   spec:
     template:
-      apiVersion: gpte.redhat.com/v1
+      apiVersion: anarchy.gpte.redhat.com/v1
       kind: AnarchySubject
       metadata:
         annotations:
-          gpte.redhat.com/resource-provider-name: anarchy-test
-          gpte.redhat.com/resource-provider-namespace: poolboy
+          poolboy.gpte.redhat.com/resource-provider-name: anarchy-test
+          poolboy.gpte.redhat.com/resource-provider-namespace: poolboy
       spec:
         desiredState: started
         governor: test

@@ -18,7 +18,7 @@ parameters:
 - name: ANARCHY_SERVICE_NAME
   value: anarchy-operator
 - name: ANARCHY_OPERATOR_DOMAIN
-  value: gpte.redhat.com
+  value: anarchy.gpte.redhat.com
 
 objects:
 - kind: ClusterRole

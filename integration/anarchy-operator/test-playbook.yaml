@@ -4,7 +4,7 @@
   vars:
     oc_cmd: oc
     anarchy_namespace: anarchy-operator
-    anarchy_operator_domain: gpte.redhat.com
+    anarchy_operator_domain: anarchy.gpte.redhat.com
     operator_domain: poolboy.gpte.redhat.com
     operator_namespace: poolboy
     operator_test_namespace: poolboy-test
