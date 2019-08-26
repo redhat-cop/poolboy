@@ -1,10 +1,12 @@
-Resource Claim Operator
------------------------
+# Poolboy
 
-The resource claim operator provides a structure to manage any OpenShift
-resource types through with ResourceClaim resources created in any
-namespace which are handled according to the configuration in ResourceHandler
-resources to create ResourceHandle resources which can then create cluster
-resources or resources in any namespace.
+Poolboy provides a structure to manage OpenShift resources by allowing users to request resources which are then satisfied by resource providers and from pre-provisioned resource pools.
 
-`ResourceClaim` in user namespace -> `ResourceHandle` in operator namespace -> _Any Resource Kind_
+Users create ResourceClaims which contain a template which defines the desired resource.
+The ResourceClaim is matched to a ResourceProvider and defaults are applied from the provider to the ResourceClaim.
+The ResourceProvider then checks the validity of the resulting resource template.
+If valid, then either an existing unclaimed ResourceHandle provided by a ResourcePool is matched to the ResourceClaim or a new ResourceHandle is created.
+ResourceHandles provide a registry of managed resources cluster resources or resources in any namespace.
+Updates to ResourceClaims are always rechecked for validity and updates to the target resources are controlled by update filters.
+
+image::docs/diagram.png[Poolboy Diagram]
