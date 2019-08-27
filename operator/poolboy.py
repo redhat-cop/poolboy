@@ -830,6 +830,7 @@ class ResourceProvider(object):
         self.update_handle_for_claim(claim, handle, logger)
 
     def manage_resource_for_handle(self, handle, claim, logger):
+        handle_meta = handle['metadata']
         resource_definition = self.resource_definition_from_template(handle, claim, logger)
         ResourceProvider.start_resource_watch(resource_definition)
         if 'resource' in handle['spec']:
