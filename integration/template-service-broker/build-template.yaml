@@ -1,0 +1,52 @@
+---
+apiVersion: template.openshift.io/v1
+kind: Template
+metadata:
+  annotations:
+    description: poolboy template service broker build
+  name: boolboy-tsb-build
+
+parameters:
+- name: GIT_REPO
+  value: https://github.com/redhat-gpte-devopsautomation/poolboy.git
+- name: SERVICE_NAME
+  value: poolboy-tsb
+- name: NAMESPACE
+  value: poolboy
+
+objects:
+- apiVersion: image.openshift.io/v1
+  kind: ImageStream
+  metadata:
+    name: ${SERVICE_NAME}
+    namespace: ${NAMESPACE}
+  spec:
+    lookupPolicy:
+      local: false
+
+- apiVersion: v1
+  kind: BuildConfig
+  metadata:
+    name: ${SERVICE_NAME}
+    namespace: ${NAMESPACE}
+  spec:
+    output:
+      to:
+        kind: ImageStreamTag
+        name: ${SERVICE_NAME}:latest
+    postCommit: {}
+    resources: {}
+    runPolicy: Serial
+    source:
+      contextDir: integration/template-service-broker/operator
+      git:
+        uri: ${GIT_REPO}
+        ref: master
+    strategy:
+      type: Docker
+      dockerStrategy:
+        from:
+          kind: DockerImage
+          #name: registry.access.redhat.com/ubi8/python-37:latest
+          name: docker.io/library/python:3.7
+    triggers: []
