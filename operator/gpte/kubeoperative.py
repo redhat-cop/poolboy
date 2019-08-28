@@ -174,6 +174,12 @@ class KubeOperative(object):
         self.custom_objects_api = kubernetes.client.CustomObjectsApi(
             kubernetes.client.ApiClient(kube_config)
         )
+        # Hack to allow json-patch, hopefully we can remove this in the future
+        self.custom_objects_api_jsonpatch = kubernetes.client.CustomObjectsApi(
+            kubernetes.client.ApiClient(kube_config)
+        )
+        self.custom_objects_api_jsonpatch.api_client.select_header_content_type = \
+            lambda _ : 'application/json-patch+json'
 
     def create_resource(self, resource_definition):
         if '/' in resource_definition['apiVersion']:
@@ -360,7 +366,6 @@ class KubeOperative(object):
 
         # Hack to allow json-patch, hopefully we can remove this in the future
         save_select_header_content_type = self.custom_objects_api.api_client.select_header_content_type
-        self.custom_objects_api.api_client.select_header_content_type = lambda _ : 'application/json-patch+json'
 
         try:
             if namespace:
@@ -382,30 +387,23 @@ class KubeOperative(object):
     def patch_custom_resource(self, group, version, kind, namespace, name, patch):
         plural = self.kind_to_plural(group, version, kind)
 
-        # Hack to allow json-patch, hopefully we can remove this in the future
-        save_select_header_content_type = self.custom_objects_api.api_client.select_header_content_type
-        self.custom_objects_api.api_client.select_header_content_type = lambda _ : 'application/json-patch+json'
-
-        try:
-            if namespace:
-                ret = self.custom_objects_api.patch_namespaced_custom_object(
-                    group,
-                    version,
-                    namespace,
-                    plural,
-                    name,
-                    patch
-                )
-            else:
-                ret = self.custom_objects_api.patch_cluster_custom_object(
-                    group,
-                    version,
-                    plural,
-                    name,
-                    patch
-                )
-        finally:
-            self.custom_objects_api.api_client.select_header_content_type = save_select_header_content_type
+        if namespace:
+            ret = self.custom_objects_api_jsonpatch.patch_namespaced_custom_object(
+                group,
+                version,
+                namespace,
+                plural,
+                name,
+                patch
+            )
+        else:
+            ret = self.custom_objects_api_jsonpatch.patch_cluster_custom_object(
+                group,
+                version,
+                plural,
+                name,
+                patch
+            )
 
         return ret
 

@@ -177,7 +177,7 @@
       name: anarchy-test-1
       namespace: "{{ operator_test_namespace }}"
       state: absent
- 
+
   - name: Pause for AnarchySubject destroy
     pause:
       seconds: 45

@@ -4,7 +4,7 @@ kind: Template
 metadata:
   annotations:
     description: poolboy deploy
-  name: boolboy-build
+  name: poolboy-build
 
 parameters:
 - name: GIT_REPO
