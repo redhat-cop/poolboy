@@ -139,15 +139,15 @@ class ResourceProvider(object):
     @staticmethod
     def get_unbound_handles_for_pool(pool_name, logger):
         return ko.custom_objects_api.list_namespaced_custom_object(
-             ko.operator_domain, 'v1', ko.operator_namespace, 'resourcehandles',
-             label_selector='{0}/resource-pool-name={1},!{0}/resource-claim-name'.format(ko.operator_domain, pool_name)
+            ko.operator_domain, 'v1', ko.operator_namespace, 'resourcehandles',
+            label_selector='{0}/resource-pool-name={1},!{0}/resource-claim-name'.format(ko.operator_domain, pool_name)
         ).get('items', [])
     @staticmethod
 
     def get_unbound_handles_for_provider(provider_name, logger):
         return ko.custom_objects_api.list_namespaced_custom_object(
-             ko.operator_domain, 'v1', ko.operator_namespace, 'resourcehandles',
-             label_selector='{0}/resource-provider-name={1},!{0}/resource-claim-name'.format(ko.operator_domain, provider_name)
+            ko.operator_domain, 'v1', ko.operator_namespace, 'resourcehandles',
+            label_selector='{0}/resource-provider-name={1},!{0}/resource-claim-name'.format(ko.operator_domain, provider_name)
         ).get('items', [])
 
     @staticmethod

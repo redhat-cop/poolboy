@@ -1,5 +1,7 @@
 # Poolboy
 
+image::docs/poolboy.png[Poolboy Icon,200,200]
+
 Poolboy provides a structure to manage OpenShift resources by allowing users to request resources which are then satisfied by resource providers and from pre-provisioned resource pools.
 
 Users create ResourceClaims which contain a template which defines the desired resource.
@@ -9,4 +11,4 @@ If valid, then either an existing unclaimed ResourceHandle provided by a Resourc
 ResourceHandles provide a registry of managed resources cluster resources or resources in any namespace.
 Updates to ResourceClaims are always rechecked for validity and updates to the target resources are controlled by update filters.
 
-image::docs/diagram.png[Poolboy Diagram]
+image::docs/diagram.png[Poolboy Diagram,500,400]

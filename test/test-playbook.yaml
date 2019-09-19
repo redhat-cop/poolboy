@@ -7,8 +7,9 @@
     operator_namespace: poolboy
     operator_service_name: poolboy
     operator_test_namespace: poolboy-test
-    build: true
+    build: false
     local_test: false
+    restart: "{{ build }}"
   tasks:
   - when: build | bool
     block:
@@ -44,20 +45,22 @@
         fail_msg: Operator build did not complete
         success_msg: Operator build complete
 
-  - name: Scale down operator
-    command: oc scale deployment {{ operator_service_name }} -n {{ operator_namespace | quote }} --replicas=0
+  - when: restart | bool
+    block:
+    - name: Scale down operator
+      command: oc scale deployment {{ operator_service_name }} -n {{ operator_namespace | quote }} --replicas=0
 
-  - name: Wait for operator scale down
-    k8s_facts:
-      api_version: v1
-      kind: Pod
-      namespace: "{{ operator_namespace }}"
-      label_selectors:
-      - name={{ operator_service_name }}
-    register: get_operator_pod
-    until: get_operator_pod.resources | length == 0
-    retries: 30
-    delay: 5
+    - name: Wait for operator scale down
+      k8s_facts:
+        api_version: v1
+        kind: Pod
+        namespace: "{{ operator_namespace }}"
+        label_selectors:
+        - name={{ operator_service_name }}
+      register: get_operator_pod
+      until: get_operator_pod.resources | length == 0
+      retries: 30
+      delay: 5
 
   - name: Get test resource claims
     k8s_facts:
@@ -167,7 +170,9 @@
       state: present
       definition: "{{ lookup('template', 'test-resource-provider.yaml.j2') | from_yaml }}"
 
-  - when: not local_test | bool
+  - when:
+    - restart | bool
+    - not local_test | bool
     block:
     - name: Scale up operator
       command: oc scale deployment {{ operator_service_name }} -n {{ operator_namespace | quote }} --replicas=1
