@@ -124,27 +124,28 @@
           labels:
             test: anarchy-integration
         spec:
-          template:
-            apiVersion: {{ anarchy_operator_domain }}/v1
-            kind: AnarchySubject
-            metadata:
-              annotations:
-                {{ operator_domain }}/resource-provider-name: anarchy-test
-                {{ operator_domain }}/resource-provider-namespace: {{ operator_namespace }}
-            spec:
-              desiredState: started
-              governor: test
-              parameters:
-                account_id: gpte
-                aws_hosted_zone_id: Z3IHLWJZOU9SRT
-                aws_region: us-east-1
-                babylon_scm_reference: three-tier-app-prod-1.14
-                cloud_provider: ec2
-                email: babylon@example.com
-                env_type: three-tier-app
-                key_name: ocpkey
-                own_repo_path: http://admin.na.shared.opentlc.com/repos/ocp/3.6
-                subdomain_base_suffix: .example.opentlc.com
+          resources:
+          - template:
+              apiVersion: {{ anarchy_operator_domain }}/v1
+              kind: AnarchySubject
+              metadata:
+                annotations:
+                  {{ operator_domain }}/resource-provider-name: anarchy-test
+                  {{ operator_domain }}/resource-provider-namespace: {{ operator_namespace }}
+              spec:
+                desiredState: started
+                governor: test
+                parameters:
+                  account_id: gpte
+                  aws_hosted_zone_id: Z3IHLWJZOU9SRT
+                  aws_region: us-east-1
+                  babylon_scm_reference: three-tier-app-prod-1.14
+                  cloud_provider: ec2
+                  email: babylon@example.com
+                  env_type: three-tier-app
+                  key_name: ocpkey
+                  own_repo_path: http://admin.na.shared.opentlc.com/repos/ocp/3.6
+                  subdomain_base_suffix: .example.opentlc.com
 
   - name: Pause for AnarchySubject provision
     pause:
