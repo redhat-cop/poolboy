@@ -116,7 +116,7 @@ class KubeOperative(object):
 
     def __init__(
         self,
-        logging_format='[%(asctime)s] %(threadName)s [%(levelname)8s] - %(message)s',
+        logging_format='[%(asctime)s] %(threadName)s [%(levelname)-8s] - %(message)s',
         logging_level=logging.INFO,
         operator_domain=None,
         operator_namespace=None
@@ -134,6 +134,8 @@ class KubeOperative(object):
             self.operator_domain = operator_domain
         else:
             self.operator_domain = os.environ.get('OPERATOR_DOMAIN', 'poolboy.gpte.redhat.com')
+        self.version = 'v1'
+        self.api_version = self.operator_domain + '/' + self.version
 
     def __init_logger(self, logging_format, logging_level):
         handler = logging.StreamHandler()

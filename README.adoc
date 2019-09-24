@@ -4,7 +4,7 @@ image::docs/poolboy.png[Poolboy Icon,200,200]
 
 Poolboy provides a structure to manage OpenShift resources by allowing users to request resources which are then satisfied by resource providers and from pre-provisioned resource pools.
 
-Users create ResourceClaims which contain a template which defines the desired resource.
+Users create ResourceClaims which contain a list of resource templates which defines the desired resource.
 The ResourceClaim is matched to a ResourceProvider and defaults are applied from the provider to the ResourceClaim.
 The ResourceProvider then checks the validity of the resulting resource template.
 If valid, then either an existing unclaimed ResourceHandle provided by a ResourcePool is matched to the ResourceClaim or a new ResourceHandle is created.
@@ -12,3 +12,7 @@ ResourceHandles provide a registry of managed resources cluster resources or res
 Updates to ResourceClaims are always rechecked for validity and updates to the target resources are controlled by update filters.
 
 image::docs/diagram.png[Poolboy Diagram,500,400]
+
+## Credits
+
+Poolboy logo is original art by Lara Ditkoff
