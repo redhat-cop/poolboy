@@ -162,10 +162,10 @@
   - name: Check claim anarchy-test-1
     assert:
       that:
-      - claim.status.resource.kind == 'AnarchySubject'
-      - claim.status.resource.metadata.namespace == anarchy_namespace
-      - claim.status.resource.spec.parameters.guid == claim.status.resourceHandle.name[-5:]
-      - claim.status.resource.status.state == 'started'
+      - claim.status.resources[0].state.kind == 'AnarchySubject'
+      - claim.status.resources[0].state.metadata.namespace == anarchy_namespace
+      - claim.status.resources[0].state.spec.parameters.guid == claim.status.resourceHandle.name[-5:]
+      - claim.status.resources[0].state.status.state == 'started'
       fail_msg: anarchy-test-1 resource not found as expected
       success_msg: anarchy-test-1 resource looks good
     vars:
@@ -186,9 +186,9 @@
   - name: Check that anarchy subject has been deleted
     k8s_facts:
       api_version:  claim.status.resource.apiVersion
-      kind: claim.status.resource.kind
-      name: claim.status.resource.metadata.name
-      namespace: claim.status.resource.metadata.namespace
+      kind: claim.status.resources[0].state.kind
+      name: claim.status.resources[0].state.metadata.name
+      namespace: claim.status.resources[0].state.metadata.namespace
     vars:
       claim: "{{ test_1_claim.resources[0] }}"
     register: get_subject
