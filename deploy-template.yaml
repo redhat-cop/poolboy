@@ -112,6 +112,7 @@ objects:
     - resourceclaims
     verbs:
     - create
+    - delete
     - get
     - list
     - patch

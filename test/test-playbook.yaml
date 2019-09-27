@@ -400,3 +400,181 @@
       resource_ref: "{{ resource_handle_for_test_1.resources[0].spec.resources[0].reference }}"
     register: resource_for_test_1
     failed_when: resource_for_test_1.resources
+
+  - name: Create test resource pool
+    k8s:
+      state: present
+      definition: "{{ lookup('template', 'test-resource-pool.yaml.j2') | from_yaml }}"
+
+  - name: Pause for poool handle creation
+    pause:
+      seconds: 2
+
+  - name: Create ResourceClaim test-pool-match
+    k8s:
+      state: present
+      definition: "{{ resource_definition | from_yaml }}"
+    vars:
+      resource_definition: |
+        apiVersion: {{ operator_domain }}/v1
+        kind: ResourceClaim
+        metadata:
+          name: test-pool-match
+          namespace: {{ operator_test_namespace }}
+        spec:
+          resources:
+          - template:
+              apiVersion: {{ operator_domain }}/v1
+              kind: ResourceClaimTest
+              metadata:
+                annotations:
+                  {{ operator_domain }}/resource-provider-name: test
+                  {{ operator_domain }}/resource-provider-namespace: {{ operator_namespace }}
+              spec:
+                desiredState: started
+                governor: test
+                parameters:
+                  name: test-pool
+                  number: 23
+
+  - name: Create ResourceClaim test-pool-explicit
+    k8s:
+      state: present
+      definition: "{{ resource_definition | from_yaml }}"
+    vars:
+      resource_definition: |
+        apiVersion: {{ operator_domain }}/v1
+        kind: ResourceClaim
+        metadata:
+          name: test-pool-explicit
+          namespace: {{ operator_test_namespace }}
+        spec:
+          resources:
+          - provider:
+              apiVersion: {{ operator_domain }}/v1
+              kind: ResourceProvider
+              name: test
+              namespace: {{ operator_namespace }}
+            template:
+              apiVersion: {{ operator_domain }}/v1
+              kind: ResourceClaimTest
+              metadata:
+                annotations:
+                  {{ operator_domain }}/resource-provider-name: test
+                  {{ operator_domain }}/resource-provider-namespace: {{ operator_namespace }}
+              spec:
+                desiredState: started
+                governor: test
+                parameters:
+                  name: test-pool
+                  number: 23
+
+  - name: Pause for claim binding
+    pause:
+      seconds: 2
+
+  - name: Get resource claim test-pool-match
+    k8s_facts:
+      api_version: "{{ operator_domain }}/v1"
+      kind: ResourceClaim
+      name: test-pool-match
+      namespace: "{{ operator_test_namespace }}"
+    register: r_get_test_pool_match_claim
+
+  - name: Get resource claim test-pool-explicit
+    k8s_facts:
+      api_version: "{{ operator_domain }}/v1"
+      kind: ResourceClaim
+      name: test-pool-explicit
+      namespace: "{{ operator_test_namespace }}"
+    register: r_get_test_pool_explicit_claim
+
+  - name: Check claim test-pool-match
+    assert:
+      that:
+      - claim.status.resources[0].state.kind == 'ResourceClaimTest'
+      - claim.status.resources[0].state.metadata.name.startswith('test-pool-')
+      - claim.status.resources[0].state.metadata.namespace == operator_test_namespace
+      - claim.status.resources[0].state.spec.parameters.name == 'test-pool'
+      - claim.status.resources[0].state.spec.parameters.number == 23
+      fail_msg: test-pool-match resource not found as expected
+      success_msg: test-pool-match resource looks good
+    vars:
+      claim: "{{ r_get_test_pool_match_claim.resources[0] }}"
+
+  - name: Check claim test-pool-explicit
+    assert:
+      that:
+      - claim.status.resources[0].state.kind == 'ResourceClaimTest'
+      - claim.status.resources[0].state.metadata.name.startswith('test-pool-')
+      - claim.status.resources[0].state.metadata.namespace == operator_test_namespace
+      - claim.status.resources[0].state.spec.parameters.name == 'test-pool'
+      - claim.status.resources[0].state.spec.parameters.number == 23
+      fail_msg: test-pool-explicit resource not found as expected
+      success_msg: test-pool-explicit resource looks good
+    vars:
+      claim: "{{ r_get_test_pool_explicit_claim.resources[0] }}"
+
+  - name: Delete test resource pool
+    k8s:
+      state: absent
+      api_version: "{{ operator_domain }}/v1"
+      kind: ResourcePool
+      name: test
+      namespace: "{{ operator_namespace }}"
+
+  - name: Pause for pool clean-up
+    pause:
+      seconds: 2
+
+  - name: Get resource handles from test pool
+    k8s_facts:
+      api_version: "{{ operator_domain }}/v1"
+      kind: ResourceHandle
+      namespace: "{{ operator_namespace }}"
+      label_selectors:
+      - "{{ operator_domain }}/resource-pool-name=test"
+    register: r_get_test_pool_handles
+
+  - name: Check test-pool handles
+    assert:
+      that:
+      - r_get_test_pool_handles.resources | length == 2
+      fail_msg: did not find 2 remaining handles from test resource pool
+      success_msg: found 2 remaining handles from test resource pool
+
+  - name: Delete resource claim test-pool-match
+    k8s:
+      state: absent
+      api_version: "{{ operator_domain }}/v1"
+      kind: ResourceClaim
+      name: test-pool-match
+      namespace: "{{ operator_test_namespace }}"
+
+  - name: Delete resource claim test-pool-explicit
+    k8s:
+      state: absent
+      api_version: "{{ operator_domain }}/v1"
+      kind: ResourceClaim
+      name: test-pool-explicit
+      namespace: "{{ operator_test_namespace }}"
+
+  - name: Pause for claim clean-up
+    pause:
+      seconds: 2
+
+  - name: Get resource handles from test pool
+    k8s_facts:
+      api_version: "{{ operator_domain }}/v1"
+      kind: ResourceHandle
+      namespace: "{{ operator_namespace }}"
+      label_selectors:
+      - "{{ operator_domain }}/resource-pool-name=test"
+    register: r_get_test_pool_handles
+
+  - name: Check test-pool handles are removed
+    assert:
+      that:
+      - r_get_test_pool_handles.resources | length == 0
+      fail_msg: found remaining test pool handles
+      success_msg: all test pool handles have been cleaned up

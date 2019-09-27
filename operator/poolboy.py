@@ -261,7 +261,7 @@ def manage_claim_bind(claim, logger):
     """
     handle = match_handle_to_claim(claim, logger)
     if handle:
-        bind_handle_to_claim(claim, handle, logger)
+        bind_handle_to_claim(handle, claim, logger)
     else:
         handle = create_handle_for_claim(claim, logger)
 
