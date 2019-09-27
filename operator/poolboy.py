@@ -190,7 +190,7 @@ def get_requester_from_namespace(namespace):
     requester_user = requester_identity = None
     try:
         requester_user = ko.custom_objects_api.get_cluster_custom_object(
-            'user.openshift.io', 'v1', users, requester_user_name
+            'user.openshift.io', 'v1', 'users', requester_user_name
         )
         if requester_user.get('identities', None):
             requester_identity = ko.custom_objects_api.get_cluster_custom_object(
