@@ -25,8 +25,11 @@ objects:
         kind: AnarchySubject
         metadata:
           annotations:
+            babylon.gpte.redhat.com/description: Test AnarchySubject which integrates to the test backend to simulate Babylon.
+            babylon.gpte.redhat.com/name: anarchy-test
             poolboy.gpte.redhat.com/resource-provider-name: anarchy-test
             poolboy.gpte.redhat.com/resource-provider-namespace: poolboy
+          generateName: anarchy-test-
         spec:
           desiredState: started
           governor: test
