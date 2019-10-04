@@ -27,3 +27,23 @@ spec:
           name: test-pool
           foo: bar
           number: 23
+  - provider:
+      apiVersion: {{ operator_domain }}/v1
+      kind: ResourceProvider
+      name: test-claim-required
+      namespace: {{ operator_namespace }}
+    template:
+      apiVersion: {{ operator_domain }}/v1
+      kind: ResourceClaimTest
+      metadata:
+        generateName: test-claim-required-pool-
+        annotations:
+          {{ operator_domain }}/resource-provider-name: test-claim-required
+          {{ operator_domain }}/resource-provider-namespace: {{ operator_namespace }}
+      spec:
+        desiredState: stopped
+        governor: test
+        parameters:
+          name: test-pool
+          foo: bar
+          number: 2323

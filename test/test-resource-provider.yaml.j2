@@ -12,6 +12,7 @@ spec:
       annotations:
         {{ operator_domain }}/resource-provider-name: {{ name | default('test') }}
         {{ operator_domain }}/resource-provider-namespace: {{ operator_namespace }}
+  resourceRequiresClaim: {{ resource_requires_claim | default(False) }}
 {% raw %}
   matchIgnore:
   - /spec/desiredState
@@ -26,7 +27,9 @@ spec:
       desiredState: started
   override:
     metadata:
-      namespace: {% endraw %}{{ operator_test_namespace }}{% raw %}
+{% endraw %}
+      namespace: {{ resource_namespace | default(operator_test_namespace) | to_json }}
+{% raw %}
     spec:
       etc:
         guid: "{{: resource_handle.metadata.name[-5:] :}}"
@@ -70,6 +73,8 @@ spec:
               type: object
               additionalProperties:
                 type: string
+            generateName:
+              type: string
         spec:
           type: object
           required:

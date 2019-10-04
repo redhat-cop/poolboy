@@ -170,6 +170,15 @@
       state: present
       definition: "{{ lookup('template', 'test-resource-provider.yaml.j2') | from_yaml }}"
 
+  - name: Create test-claim ResourceProvider
+    k8s:
+      state: present
+      definition: "{{ lookup('template', 'test-resource-provider.yaml.j2') | from_yaml }}"
+    vars:
+      name: test-claim-required
+      resource_requires_claim: True
+      resource_namespace: '{% raw %}{{: resource_claim.metadata.namespace :}}{% endraw %}'
+
   - when:
     - restart | bool
     - not local_test | bool
@@ -201,11 +210,25 @@
                 annotations:
                   {{ operator_domain }}/resource-provider-name: test
                   {{ operator_domain }}/resource-provider-namespace: {{ operator_namespace }}
+                generateName: test-
               spec:
                 governor: test
                 parameters:
                   name: test-1
                   number: 23
+          - template:
+              apiVersion: {{ operator_domain }}/v1
+              kind: ResourceClaimTest
+              metadata:
+                annotations:
+                  {{ operator_domain }}/resource-provider-name: test-claim-required
+                  {{ operator_domain }}/resource-provider-namespace: {{ operator_namespace }}
+                generateName: test-claim-required-
+              spec:
+                governor: test
+                parameters:
+                  name: test-1
+                  number: 2323
 
   - name: Pause for resource generation
     pause:
@@ -322,6 +345,19 @@
                   name: test-1
                   foo: bar
                   number: 42
+          - template:
+              apiVersion: {{ operator_domain }}/v1
+              kind: ResourceClaimTest
+              metadata:
+                annotations:
+                  {{ operator_domain }}/resource-provider-name: test-claim-required
+                  {{ operator_domain }}/resource-provider-namespace: {{ operator_namespace }}
+                generateName: test-claim-required-
+              spec:
+                governor: test
+                parameters:
+                  name: test-1
+                  number: 4242
 
   - name: Pause for claim resource status update
     pause:
@@ -436,6 +472,19 @@
                 parameters:
                   name: test-pool
                   number: 23
+          - template:
+              apiVersion: {{ operator_domain }}/v1
+              kind: ResourceClaimTest
+              metadata:
+                annotations:
+                  {{ operator_domain }}/resource-provider-name: test-claim-required
+                  {{ operator_domain }}/resource-provider-namespace: {{ operator_namespace }}
+              spec:
+                desiredState: started
+                governor: test
+                parameters:
+                  name: test-pool
+                  number: 2323
 
   - name: Create ResourceClaim test-pool-explicit
     k8s:
@@ -468,6 +517,24 @@
                 parameters:
                   name: test-pool
                   number: 23
+          - provider:
+              apiVersion: {{ operator_domain }}/v1
+              kind: ResourceProvider
+              name: test-claim-required
+              namespace: {{ operator_namespace }}
+            template:
+              apiVersion: {{ operator_domain }}/v1
+              kind: ResourceClaimTest
+              metadata:
+                annotations:
+                  {{ operator_domain }}/resource-provider-name: test-claim-required
+                  {{ operator_domain }}/resource-provider-namespace: {{ operator_namespace }}
+              spec:
+                desiredState: started
+                governor: test
+                parameters:
+                  name: test-pool
+                  number: 2323
 
   - name: Pause for claim binding
     pause:

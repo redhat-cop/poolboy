@@ -245,6 +245,7 @@ def manage_claim(claim, logger):
     claim_status = claim.get('status', None)
     if not claim_status:
         manage_claim_create(claim, logger)
+        return
 
     annotations = claim['metadata'].get('annotations', {})
     if ko.operator_domain + '/resource-claim-init-timestamp' not in annotations:
@@ -533,10 +534,13 @@ def manage_handle(handle, logger):
             return
 
     have_handle_update = False
-    handle_resources_update = []
     resources_to_create = []
     for i, handle_resource in enumerate(handle_resources):
         provider = providers[i]
+
+        if provider.resource_requires_claim and not claim:
+            continue
+
         resource_definition = provider.resource_definition_from_template(
             handle, claim, i, logger
         )
@@ -870,6 +874,10 @@ class ResourceProvider(object):
     @property
     def override(self):
         return self.spec.get('override', {})
+
+    @property
+    def resource_requires_claim(self):
+        return self.spec.get('resourceRequiresClaim', False)
 
     def check_template_match(self, handle_resource, claim_resource, logger):
         """
