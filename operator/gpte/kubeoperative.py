@@ -31,7 +31,7 @@ def create_patch(resource, update, update_filters=None):
     ]
 
 class Watcher(object):
-    def __init__(self, operative, plural,
+    def __init__(self, operative, kind,
         group=None,
         name=None,
         namespace=None,
@@ -49,16 +49,32 @@ class Watcher(object):
             self.__init_custom_resource_watcher(
                 group=group,
                 namespace=namespace,
-                plural=plural,
+                kind=kind,
                 version=version
             )
         else:
             self.__init_core_resource_watcher(
-                plural=plural,
+                namespace=namespace,
+                kind=kind,
                 version=version
             )
 
-    def __init_custom_resource_watcher(self, group, namespace, plural, version):
+    def __init_core_resource_watcher(self, namespace, kind, version):
+        if namespace:
+            self.method = getattr(
+                self.operative.core_v1_api,
+                'list_namespaced_' + inflection.underscore(kind)
+            )
+            self.method_args = (namespace,)
+        else:
+            self.method = getattr(
+                self.operative.core_v1_api,
+                'list_' + inflection.underscore(kind)
+            )
+            self.method_args = ()
+
+    def __init_custom_resource_watcher(self, group, namespace, kind, version):
+        plural = self.operative.kind_to_plural(group, version, kind)
         if namespace:
             self.method = self.operative.custom_objects_api.list_namespaced_custom_object
             self.method_args = (
@@ -190,6 +206,7 @@ class KubeOperative(object):
             return self.create_core_resource(resource_definition)
 
     def create_core_resource(self, resource_definition):
+        kind = resource_definition['kind']
         namespace = resource_definition['metadata'].get('namespace', None)
         if namespace:
             method = getattr(
@@ -504,25 +521,25 @@ class KubeOperative(object):
         for w in self.watcher_list:
             w.start()
 
-    def watcher(self, plural, name=None, namespace=None, group=None, preload=False, version='v1'):
+    def watcher(self, kind, name=None, namespace=None, group=None, preload=False, version='v1'):
         if not name:
             if group:
                 if namespace:
-                    name = '{}/{}:{}:{}'.format(group, version, namespace, plural)
+                    name = '{}/{}:{}:{}'.format(group, version, namespace, kind)
                 else:
                     name = '{}/{}:{}'.format(group, version, name)
             else:
                 if namespace:
-                    name = '{}:{}:{}'.format(version, namespace, plural)
+                    name = '{}:{}:{}'.format(version, namespace, kind)
                 else:
-                    name = '{}:{}'.format(version, plural)
+                    name = '{}:{}'.format(version, kind)
 
         w = Watcher(
             group=group,
             name=name,
             namespace=namespace,
             operative=self,
-            plural=plural,
+            kind=kind,
             preload=preload,
             version=version
         )

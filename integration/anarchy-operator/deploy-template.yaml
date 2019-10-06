@@ -66,6 +66,18 @@ objects:
     - patch
     - watch
     - update
+  - apiGroups:
+    - ''
+    resources:
+    - configmaps
+    verbs:
+    - create
+    - delete
+    - get
+    - list
+    - patch
+    - watch
+    - update
 
 - kind: ClusterRoleBinding
   apiVersion: v1

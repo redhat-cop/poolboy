@@ -569,6 +569,8 @@ def manage_handle(handle, logger):
             name = resource_name,
             namespace = resource_namespace
         )
+        if hasattr(resource, 'to_dict'):
+            resource = resource.to_dict()
 
         if resource:
             provider.update_resource(handle, resource, resource_definition, logger)
@@ -734,7 +736,7 @@ def start_resource_watch(resource_definition):
 
     w = ko.watcher(
         name=watcher_name,
-        plural=ko.kind_to_plural(group, version, kind),
+        kind=kind,
         group=group,
         namespace=namespace,
         version=version
@@ -775,14 +777,18 @@ def watch_resource_event(event):
     event_type = event['type']
     if event_type in ['ADDED', 'DELETED', 'MODIFIED']:
         resource = event['object']
+        if hasattr(resource, 'to_dict'):
+            resource = resource.to_dict()
         metadata = resource['metadata']
-        annotations = metadata.get('annotations', {})
+        annotations = metadata.get('annotations', None)
+        if not annotations:
+            return
         annotation_prefix = ko.operator_domain + '/resource-'
         handle_name = annotations.get(annotation_prefix + 'handle-namespace', None)
         handle_namespace = annotations.get(annotation_prefix + 'handle-namespace', None)
         claim_name = annotations.get(annotation_prefix + 'claim-name', None)
         claim_namespace = annotations.get(annotation_prefix + 'claim-namespace', None)
-        resource_index = int(annotations.get(annotation_prefix + 'index', None))
+        resource_index = int(annotations.get(annotation_prefix + 'index', 0))
 
         if not handle_name \
         or handle_namespace != ko.operator_namespace:
@@ -830,6 +836,10 @@ class ResourceProvider(object):
         self.__init_resource_validator()
 
     def __init_resource_validator(self):
+        open_api_v3_schema = self.spec.get('validation', {}).get('openAPIV3Schema', None)
+        if not open_api_v3_schema:
+            self.resource_validator = None
+            return
         self.resource_validator = openapi_core.shortcuts.RequestValidator(
             openapi_core.shortcuts.create_spec({
                 "openapi": "3.0.0",
@@ -853,7 +863,7 @@ class ResourceProvider(object):
                 },
                 "components": {
                     "schemas": {
-                        "ClaimTemplate": self.spec['validation']['openAPIV3Schema']
+                        "ClaimTemplate": open_api_v3_schema
                     }
                 }
             })
@@ -933,10 +943,11 @@ class ResourceProvider(object):
             dict_merge(resource, self.override)
         if 'metadata' not in resource:
             resource['metadata'] = {}
-        if 'generateName' not in resource['metadata']:
-            resource['metadata']['generateName'] = 'guid{}-'.format(resource_index)
-        resource['metadata']['name'] = \
-            resource['metadata']['generateName'] + guid
+        if 'name' not in resource['metadata']:
+            if 'generateName' not in resource['metadata']:
+                resource['metadata']['generateName'] = 'guid{}-'.format(resource_index)
+            resource['metadata']['name'] = \
+                resource['metadata']['generateName'] + guid
         if 'annotations' not in resource['metadata']:
             resource['metadata']['annotations'] = {}
         resource['metadata']['annotations'].update({
@@ -994,14 +1005,15 @@ class ResourceProvider(object):
 
     def validate_resource_template(self, template, logger):
         try:
-            validation_result = self.resource_validator.validate(
-                openapi_core.wrappers.mock.MockRequest(
-                    'http://example.com', 'post', '/claimTemplate',
-                    path_pattern='/claimTemplate',
-                    data=json.dumps(template)
+            if self.resource_validator:
+                validation_result = self.resource_validator.validate(
+                    openapi_core.wrappers.mock.MockRequest(
+                        'http://example.com', 'post', '/claimTemplate',
+                        path_pattern='/claimTemplate',
+                        data=json.dumps(template)
+                    )
                 )
-            )
-            validation_result.raise_for_errors()
+                validation_result.raise_for_errors()
         except Exception as e:
             return str(e)
 
