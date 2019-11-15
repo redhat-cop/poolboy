@@ -33,7 +33,7 @@ objects:
         spec:
           desiredState: started
           governor: test
-          parameters:
+          vars:
             aws_hosted_zone_id: Z3IHLWJZOU9SRT
             aws_region: us-east-1
             babylon_organization: gpte

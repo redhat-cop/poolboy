@@ -369,7 +369,8 @@ class KubeOperative(object):
         resp = self.custom_objects_api.api_client.call_api(
             '/apis/{}/{}'.format(group,version),
             'GET',
-            response_type='object',
+            auth_settings=['BearerToken'],
+            response_type='object'
         )
         group_info = resp[0]
         if group not in self.api_groups:

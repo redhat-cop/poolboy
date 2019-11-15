@@ -20,7 +20,7 @@ spec:
     metadata:
       namespace: anarchy-operator
     spec:
-      parameters:
+      vars:
         guid: >-
           {{: resource_handle.metadata.name[-5:] :}}
         babylon_user_email: >-
@@ -76,5 +76,5 @@ spec:
               type: string
             governor:
               type: string
-            parameters:
+            vars:
               type: object

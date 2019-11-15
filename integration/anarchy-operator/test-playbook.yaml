@@ -58,7 +58,7 @@
             metadata:
               namespace: {{ anarchy_namespace }}
             spec:
-              parameters:
+              vars:
                 guid: "{% raw %}{{: resource_handle.metadata.name[-5:] :}}{% endraw %}"
           updateFilters:
           - pathMatch: /spec/desiredState
@@ -90,8 +90,6 @@
                         type: string
                     generateName:
                       type: string
-                      enum:
-                      - anarchy-test-
                     labels:
                       type: object
                       additionalProperties:
@@ -111,7 +109,7 @@
                       type: string
                       enum:
                       - test
-                    parameters:
+                    vars:
                       type: object
 
   - name: Create ResourceClaim anarchy-test-1
@@ -139,7 +137,7 @@
               spec:
                 desiredState: started
                 governor: test
-                parameters:
+                vars:
                   account_id: gpte
                   aws_hosted_zone_id: Z3IHLWJZOU9SRT
                   aws_region: us-east-1
@@ -168,7 +166,7 @@
       that:
       - claim.status.resources[0].state.kind == 'AnarchySubject'
       - claim.status.resources[0].state.metadata.namespace == anarchy_namespace
-      - claim.status.resources[0].state.spec.parameters.guid == claim.status.resourceHandle.name[-5:]
+      - claim.status.resources[0].state.spec.vars.guid == claim.status.resourceHandle.name[-5:]
       - claim.status.resources[0].state.status.state == 'started'
       fail_msg: anarchy-test-1 resource not found as expected
       success_msg: anarchy-test-1 resource looks good
