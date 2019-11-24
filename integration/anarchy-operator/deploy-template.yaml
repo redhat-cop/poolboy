@@ -16,7 +16,7 @@ parameters:
 - name: ANARCHY_NAMESPACE
   value: anarchy-operator
 - name: ANARCHY_SERVICE_NAME
-  value: anarchy-operator
+  value: anarchy-runner-default
 - name: ANARCHY_OPERATOR_DOMAIN
   value: anarchy.gpte.redhat.com
 
@@ -50,9 +50,10 @@ objects:
     name: ${ANARCHY_SERVICE_NAME}
 
 - apiVersion: rbac.authorization.k8s.io/v1
-  kind: ClusterRole
+  kind: Role
   metadata:
-    name: ${ANARCHY_SERVICE_NAME}:${NAMESPACE}:${SERVICE_NAME}
+    name: ${NAMESPACE}:${SERVICE_NAME}
+    namespace: ${ANARCHY_NAMESPACE}
   rules:
   - apiGroups:
     - ${ANARCHY_OPERATOR_DOMAIN}
@@ -66,25 +67,15 @@ objects:
     - patch
     - watch
     - update
-  - apiGroups:
-    - ''
-    resources:
-    - configmaps
-    verbs:
-    - create
-    - delete
-    - get
-    - list
-    - patch
-    - watch
-    - update
 
-- kind: ClusterRoleBinding
+- kind: RoleBinding
   apiVersion: v1
   metadata:
-    name: ${ANARCHY_SERVICE_NAME}:${NAMESPACE}:${SERVICE_NAME}
+    name: ${ANARCHY_NAMESPACE}:${NAMESPACE}:${SERVICE_NAME}
+    namespace:
   roleRef:
-    name: ${ANARCHY_SERVICE_NAME}:${NAMESPACE}:${SERVICE_NAME}
+    name: ${NAMESPACE}:${SERVICE_NAME}
+    namespace: ${ANARCHY_NAMESPACE}
   subjects:
   - kind: ServiceAccount
     namespace: ${NAMESPACE}

@@ -21,14 +21,15 @@ spec:
       namespace: anarchy-operator
     spec:
       vars:
-        guid: >-
-          {{: resource_handle.metadata.name[-5:] :}}
         babylon_user_email: >-
           {{: requester_identity.extra.email | default(None) if requester_identity else None :}}
         babylon_user_fullname: >-
           {{: requester_identity.extra.name | default(None) if requester_identity else None :}}
         babylon_username: >-
           {{: requester_user.metadata.name | default(None) if requester_user else None :}}
+        job_vars:
+          guid: >-
+            {{: resource_handle.metadata.name[-5:] :}}
   updateFilters:
   - pathMatch: /spec/desiredState
   validation:
