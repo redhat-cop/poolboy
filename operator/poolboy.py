@@ -578,10 +578,15 @@ def manage_handle(handle, logger):
             resources_to_create.append(resource_definition)
 
     if have_handle_update:
-        handle = ko.custom_objects_api.patch_namespaced_custom_object(
-            ko.operator_domain, ko.version, ko.operator_namespace, 'resourcehandles', handle_name,
-            { 'spec': { 'resources': handle_resources } }
-        )
+        try:
+            handle = ko.custom_objects_api.patch_namespaced_custom_object(
+                ko.operator_domain, ko.version, ko.operator_namespace, 'resourcehandles', handle_name,
+                { 'spec': { 'resources': handle_resources } }
+            )
+        except kubernetes.client.rest.ApiException as e:
+            if e.status != 404:
+                raise
+
     for resource_definition in resources_to_create:
         resource_definition['metadata']['annotations'][ko.operator_domain + '/resource-handle-version'] = \
             handle['metadata']['resourceVersion']
