@@ -178,8 +178,7 @@ class KubeOperative(object):
             f = open('/run/secrets/kubernetes.io/serviceaccount/token')
             kube_auth_token = f.read()
             kube_config = kubernetes.client.Configuration()
-            kube_config.api_key['authorization'] = kube_auth_token
-            kube_config.api_key_prefix['authorization'] = 'Bearer'
+            kube_config.api_key['authorization'] = 'Bearer ' + kube_auth_token
             kube_config.host = os.environ['KUBERNETES_PORT'].replace('tcp://', 'https://', 1)
             kube_config.ssl_ca_cert = '/run/secrets/kubernetes.io/serviceaccount/ca.crt'
         else:

@@ -25,6 +25,15 @@ providers = {}
 provider_init_delay = int(os.environ.get('PROVIDER_INIT_DELAY', 10))
 start_time = time.time()
 
+def add_finalizer_to_handle(handle, logger):
+    handle_meta = handle['metadata']
+    handle_namespace = handle_meta['namespace']
+    handle_name = handle_meta['name']
+    ko.custom_objects_api.patch_namespaced_custom_object(
+        ko.operator_domain, ko.version, handle_namespace, 'resourcehandles', handle_name,
+        { 'metadata': { 'finalizers': [ko.operator_domain] } }
+    )
+
 def add_finalizer_to_pool(pool, logger):
     pool_meta = pool['metadata']
     pool_namespace = pool_meta['namespace']
@@ -513,6 +522,9 @@ def manage_handle(handle, logger):
     handle_name = handle_meta['name']
     if 'deletionTimestamp' in handle['metadata']:
         manage_handle_pending_delete(handle, logger)
+        return
+    elif 'finalizers' not in handle_meta:
+        add_finalizer_to_handle(handle, logger)
         return
     elif 'resourceClaim' in handle['spec']:
         claim = get_claim_for_handle(handle, logger)
