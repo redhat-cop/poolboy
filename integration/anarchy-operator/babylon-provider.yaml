@@ -9,13 +9,14 @@ metadata:
 parameters:
 - name: NAMESPACE
   value: poolboy
-
+- name: ANARCHY_NAMESPACE
+  value: anarchy-operator
 
   apiVersion: poolboy.gpte.redhat.com/v1
   kind: ResourceProvider
   metadata:
     name: babylon
-    namespace: poolboy
+    namespace: "${NAMESPACE}" 
   spec:
     default:
       spec:
@@ -30,7 +31,7 @@ parameters:
     - /spec/desiredState
     override:
       metadata:
-        namespace: anarchy-operator
+        namespace: "${ANARCHY_NAMESPACE}"
       spec:
         vars:
           babylon_user_email: >-
