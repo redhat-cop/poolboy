@@ -72,7 +72,7 @@ objects:
   apiVersion: v1
   metadata:
     name: ${ANARCHY_NAMESPACE}:${NAMESPACE}:${SERVICE_NAME}
-    namespace:
+    namespace: ${ANARCHY_NAMESPACE}
   roleRef:
     name: ${NAMESPACE}:${SERVICE_NAME}
     namespace: ${ANARCHY_NAMESPACE}
