@@ -5,14 +5,8 @@ metadata:
   annotations:
     description: poolboy resourceprovider deploy
   name: poolboy-resourceprovider-deploy
-
-parameters:
-- name: NAMESPACE
-  value: poolboy
-- name: ANARCHY_NAMESPACE
-  value: anarchy-operator
-
-  apiVersion: poolboy.gpte.redhat.com/v1
+objects:
+- apiVersion: poolboy.gpte.redhat.com/v1
   kind: ResourceProvider
   metadata:
     name: babylon
@@ -92,3 +86,8 @@ parameters:
                 type: string
               vars:
                 type: object
+parameters:
+- name: NAMESPACE
+  value: poolboy
+- name: ANARCHY_NAMESPACE
+  value: anarchy-operator
