@@ -61,7 +61,11 @@
               namespace: {{ anarchy_namespace }}
             spec:
               vars:
-                guid: "{% raw %}{{: resource_handle.metadata.labels.guid | default(resource_handle.metadata.name[-5:]) :}}{% endraw %}"
+                guid: >-{% raw %}
+                  {{: resource_handle.metadata.name[5:]
+                   if resource_handle.metadata.name.startswith('guid-')
+                   else resource_handle.metadata.name :}}
+        {% endraw %}
           updateFilters:
           - pathMatch: /spec/vars/desired_state
           validation:

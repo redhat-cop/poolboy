@@ -22,7 +22,10 @@ spec:
     spec:
       governor: babylon1-agnosticd
       parameters:
-        guid: "{{: resource_handle.metadata.name[-5:] :}}"
+        guid: >-
+          {{: resource_handle.metadata.name[5:]
+           if resource_handle.metadata.name.startswith('guid-')
+           else resource_handle.metadata.name :}}
   updateFilters:
   - pathMatch: /spec/desiredState
   validation:
