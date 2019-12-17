@@ -213,7 +213,7 @@
                 generateName: test-
               spec:
                 governor: test
-                parameters:
+                vars:
                   name: test-1
                   number: 23
           - template:
@@ -226,7 +226,7 @@
                 generateName: test-claim-required-
               spec:
                 governor: test
-                parameters:
+                vars:
                   name: test-1
                   number: 2323
 
@@ -261,8 +261,8 @@
       - handle.spec.resources[0].provider.name == 'test'
       - handle.spec.resources[0].provider.namespace == operator_namespace
       - handle.spec.resources[0].template.kind == 'ResourceClaimTest'
-      - handle.spec.resources[0].template.spec.parameters.name == 'test-1'
-      - handle.spec.resources[0].template.spec.parameters.number == 23
+      - handle.spec.resources[0].template.spec.vars.name == 'test-1'
+      - handle.spec.resources[0].template.spec.vars.number == 23
       fail_msg: test-1 handle not found as expected
       success_msg: test-1 handle found as expected
     vars:
@@ -311,8 +311,8 @@
       that:
       - claim.status.resources[0].state.kind == 'ResourceClaimTest'
       - claim.status.resources[0].state.metadata.namespace == operator_test_namespace
-      - claim.status.resources[0].state.spec.parameters.name == 'test-1'
-      - claim.status.resources[0].state.spec.parameters.number == 23
+      - claim.status.resources[0].state.spec.vars.name == 'test-1'
+      - claim.status.resources[0].state.spec.vars.number == 23
       fail_msg: test-1 resource not found as expected
       success_msg: test-1 resource looks good
     vars:
@@ -339,9 +339,9 @@
                   {{ operator_domain }}/resource-provider-name: test
                   {{ operator_domain }}/resource-provider-namespace: {{ operator_namespace }}
               spec:
-                desiredState: started
                 governor: test
-                parameters:
+                vars:
+                  desired_state: started
                   name: test-1
                   foo: bar
                   number: 42
@@ -355,7 +355,7 @@
                 generateName: test-claim-required-
               spec:
                 governor: test
-                parameters:
+                vars:
                   name: test-1
                   number: 4242
 
@@ -383,8 +383,8 @@
       - handle.spec.resources[0].provider.name == 'test'
       - handle.spec.resources[0].provider.namespace == operator_namespace
       - handle.spec.resources[0].template.kind == 'ResourceClaimTest'
-      - handle.spec.resources[0].template.spec.parameters.name == 'test-1'
-      - handle.spec.resources[0].template.spec.parameters.number == 42
+      - handle.spec.resources[0].template.spec.vars.name == 'test-1'
+      - handle.spec.resources[0].template.spec.vars.number == 42
       fail_msg: test-1 handle not found as expected
       success_msg: test-1 handle found as expected
     vars:
@@ -403,11 +403,11 @@
       that:
       - status_resource.kind == 'ResourceClaimTest'
       - status_resource.metadata.namespace == operator_test_namespace
-      - status_resource.spec.parameters.name == 'test-1'
-      # Check changes to parameters are rejected on the resource
-      - status_resource.spec.parameters.number == 23
-      # Change to desiredState should go through
-      - status_resource.spec.desiredState == 'started'
+      - status_resource.spec.vars.name == 'test-1'
+      # Check changes to var are rejected on the resource
+      - status_resource.spec.vars.number == 23
+      # Change to desired_state should go through
+      - status_resource.spec.vars.desired_state == 'started'
       fail_msg: test-1 resource not found as expected
       success_msg: test-1 resource looks good
     vars:
@@ -467,9 +467,9 @@
                   {{ operator_domain }}/resource-provider-name: test
                   {{ operator_domain }}/resource-provider-namespace: {{ operator_namespace }}
               spec:
-                desiredState: started
                 governor: test
-                parameters:
+                vars:
+                  desired_state: started
                   name: test-pool
                   number: 23
           - template:
@@ -480,9 +480,9 @@
                   {{ operator_domain }}/resource-provider-name: test-claim-required
                   {{ operator_domain }}/resource-provider-namespace: {{ operator_namespace }}
               spec:
-                desiredState: started
                 governor: test
-                parameters:
+                vars:
+                  desired_state: started
                   name: test-pool
                   number: 2323
 
@@ -512,9 +512,9 @@
                   {{ operator_domain }}/resource-provider-name: test
                   {{ operator_domain }}/resource-provider-namespace: {{ operator_namespace }}
               spec:
-                desiredState: started
                 governor: test
-                parameters:
+                vars:
+                  desired_state: started
                   name: test-pool
                   number: 23
           - provider:
@@ -530,9 +530,9 @@
                   {{ operator_domain }}/resource-provider-name: test-claim-required
                   {{ operator_domain }}/resource-provider-namespace: {{ operator_namespace }}
               spec:
-                desiredState: started
                 governor: test
-                parameters:
+                vars:
+                  desired_state: started
                   name: test-pool
                   number: 2323
 
@@ -562,8 +562,8 @@
       - claim.status.resources[0].state.kind == 'ResourceClaimTest'
       - claim.status.resources[0].state.metadata.name.startswith('test-pool-')
       - claim.status.resources[0].state.metadata.namespace == operator_test_namespace
-      - claim.status.resources[0].state.spec.parameters.name == 'test-pool'
-      - claim.status.resources[0].state.spec.parameters.number == 23
+      - claim.status.resources[0].state.spec.vars.name == 'test-pool'
+      - claim.status.resources[0].state.spec.vars.number == 23
       fail_msg: test-pool-match resource not found as expected
       success_msg: test-pool-match resource looks good
     vars:
@@ -575,8 +575,8 @@
       - claim.status.resources[0].state.kind == 'ResourceClaimTest'
       - claim.status.resources[0].state.metadata.name.startswith('test-pool-')
       - claim.status.resources[0].state.metadata.namespace == operator_test_namespace
-      - claim.status.resources[0].state.spec.parameters.name == 'test-pool'
-      - claim.status.resources[0].state.spec.parameters.number == 23
+      - claim.status.resources[0].state.spec.vars.name == 'test-pool'
+      - claim.status.resources[0].state.spec.vars.number == 23
       fail_msg: test-pool-explicit resource not found as expected
       success_msg: test-pool-explicit resource looks good
     vars:

@@ -31,7 +31,6 @@ objects:
             poolboy.gpte.redhat.com/resource-provider-namespace: poolboy
           generateName: anarchy-test-
         spec:
-          desiredState: started
           governor: test
           vars:
             aws_hosted_zone_id: Z3IHLWJZOU9SRT
@@ -39,6 +38,7 @@ objects:
             babylon_organization: gpte
             babylon_scm_reference: three-tier-app-prod-1.14
             cloud_provider: ec2
+            desired_state: started
             email: babylon@example.com
             env_type: three-tier-app
             key_name: ocpkey

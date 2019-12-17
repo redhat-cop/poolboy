@@ -50,10 +50,12 @@
                 {{ operator_domain }}/resource-provider-name: anarchy-test
                 {{ operator_domain }}/resource-provider-namespace: {{ operator_namespace }}
           matchIgnore:
-          - /spec/desiredState
+          - /spec/vars/current_state
+          - /spec/vars/desired_state
           default:
             spec:
-              desiredState: started
+              vars:
+                desired_state: started
           override:
             metadata:
               namespace: {{ anarchy_namespace }}
@@ -61,7 +63,7 @@
               vars:
                 guid: "{% raw %}{{: resource_handle.metadata.name[-5:] :}}{% endraw %}"
           updateFilters:
-          - pathMatch: /spec/desiredState
+          - pathMatch: /spec/vars/desired_state
           validation:
             openAPIV3Schema:
               type: object
@@ -100,17 +102,18 @@
                   - governor
                   additionalProperties: false
                   properties:
-                    desiredState:
-                      type: string
-                      enum:
-                      - started
-                      - stopped
                     governor:
                       type: string
                       enum:
                       - test
                     vars:
                       type: object
+                      properties:
+                        desired_state:
+                          type: string
+                          enum:
+                          - started
+                          - stopped
 
   - name: Create ResourceClaim anarchy-test-1
     k8s:
@@ -135,7 +138,6 @@
                   {{ operator_domain }}/resource-provider-name: anarchy-test
                   {{ operator_domain }}/resource-provider-namespace: {{ operator_namespace }}
               spec:
-                desiredState: started
                 governor: test
                 vars:
                   account_id: gpte
@@ -143,6 +145,7 @@
                   aws_region: us-east-1
                   babylon_scm_reference: three-tier-app-prod-1.14
                   cloud_provider: ec2
+                  desired_state: started
                   email: babylon@example.com
                   env_type: three-tier-app
                   key_name: ocpkey
@@ -167,7 +170,7 @@
       - claim.status.resources[0].state.kind == 'AnarchySubject'
       - claim.status.resources[0].state.metadata.namespace == anarchy_namespace
       - claim.status.resources[0].state.spec.vars.guid == claim.status.resourceHandle.name[-5:]
-      - claim.status.resources[0].state.status.state == 'started'
+      - claim.status.resources[0].state.spec.vars.current_state == 'started'
       fail_msg: anarchy-test-1 resource not found as expected
       success_msg: anarchy-test-1 resource looks good
     vars:

@@ -15,16 +15,17 @@ spec:
   resourceRequiresClaim: {{ resource_requires_claim | default(False) }}
 {% raw %}
   matchIgnore:
-  - /spec/desiredState
-  - /spec/actionSchedule(/.*)?
+  - /spec/vars/desired_state
+  - /spec/vars/action_schedule(/.*)?
   # Override is automatically applied when handle is processed
   # Claim init is applied to the claim when it created
   default:
     spec:
-      actionSchedule:
-        destroy: "{{: timestamp.utcnow.add('8d') if resource_claim else '' :}}"
-        stop: "{{: timestamp.utcnow.add('8h') if resource_claim else '' :}}"
-      desiredState: started
+      vars:
+        action_schedule:
+          destroy: "{{: timestamp.utcnow.add('8d') if resource_claim else '' :}}"
+          stop: "{{: timestamp.utcnow.add('8h') if resource_claim else '' :}}"
+        desired_state: started
   override:
     metadata:
 {% endraw %}
@@ -34,19 +35,19 @@ spec:
       etc:
         guid: "{{: resource_handle.metadata.name[-5:] :}}"
   updateFilters:
-  - pathMatch: /spec/actionSchedule/destroy
+  - pathMatch: /spec/var/action_schedule/destroy
     allowedOps: ['add', 'replace']
-  - pathMatch: /spec/actionSchedule/stop
+  - pathMatch: /spec/var/action_schedule/stop
     allowedOps: ['add', 'replace']
-  - pathMatch: /spec/desiredState
+  - pathMatch: /spec/vars/desired_state
     allowedOps: ['add', 'replace']
   validation:
     # FIXME - Implement these...
     customValidation:
     - name: destroy schedule must be no more than 14 days from creation
-      check: spec.actionSchedule.destroy < timestamp(resource_claim.metadata.creationTimestamp).add('14d')
+      check: spec.vars.action_schedule.destroy < timestamp(resource_claim.metadata.creationTimestamp).add('14d')
     - name: stop schedule must be no more than 8 hours from now
-      check: spec.actionSchedule.stop < timestamp.utcnow.add('8h')
+      check: spec.vars.action_schedule.stop < timestamp.utcnow.add('8h')
     openAPIV3Schema:
       type: object
       required:
@@ -81,23 +82,24 @@ spec:
           - governor
           additionalProperties: false
           properties:
-            actionSchedule:
-              type: object
-              additionalProperties: false
-              properties:
-                destroy:
-                  pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$
-                  type: string
-                stop:
-                  pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$
-                  type: string
-            desiredState:
-              type: string
-              enum:
-              - started
-              - stopped
             governor:
               type: string
-            parameters:
+            vars:
               type: object
+              properties:
+                action_schedule:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    destroy:
+                      pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$
+                      type: string
+                    stop:
+                      pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$
+                      type: string
+                desired_state:
+                  type: string
+                  enum:
+                  - started
+                  - stopped
 {% endraw %}

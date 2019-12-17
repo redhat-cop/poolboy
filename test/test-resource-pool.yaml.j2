@@ -21,9 +21,9 @@ spec:
           {{ operator_domain }}/resource-provider-name: test
           {{ operator_domain }}/resource-provider-namespace: {{ operator_namespace }}
       spec:
-        desiredState: stopped
         governor: test
-        parameters:
+        vars:
+          desired_state: stopped
           name: test-pool
           foo: bar
           number: 23
@@ -41,9 +41,9 @@ spec:
           {{ operator_domain }}/resource-provider-name: test-claim-required
           {{ operator_domain }}/resource-provider-namespace: {{ operator_namespace }}
       spec:
-        desiredState: stopped
         governor: test
-        parameters:
+        vars:
+          desired_state: stopped
           name: test-pool
           foo: bar
           number: 2323
