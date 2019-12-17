@@ -32,8 +32,9 @@ spec:
       namespace: {{ resource_namespace | default(operator_test_namespace) | to_json }}
 {% raw %}
     spec:
-      etc:
-        guid: "{{: resource_handle.metadata.name[-5:] :}}"
+      vars:
+        guid: >-
+          {{: resource_handle.metadata.labels.guid | default(resource_handle.metadata.name[-5:]) :}}
   updateFilters:
   - pathMatch: /spec/var/action_schedule/destroy
     allowedOps: ['add', 'replace']

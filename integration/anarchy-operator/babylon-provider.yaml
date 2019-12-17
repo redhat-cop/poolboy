@@ -31,7 +31,7 @@ spec:
           {{: requester_user.metadata.name | default(None) if requester_user else None :}}
         job_vars:
           guid: >-
-            {{: resource_handle.metadata.name[-5:] :}}
+            {{: resource_handle.metadata.labels.guid | default(resource_handle.metadata.name[-5:]) :}}
   updateFilters:
   - pathMatch: /spec/desired_state
   validation:
