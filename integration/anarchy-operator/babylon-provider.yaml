@@ -7,7 +7,8 @@ metadata:
 spec:
   default:
     spec:
-      desiredState: started
+      vars:
+        desired_state: started
   match:
     apiVersion: anarchy.gpte.redhat.com/v1
     kind: AnarchySubject
@@ -15,7 +16,8 @@ spec:
       annotations:
         poolboy.gpte.redhat.com/resource-provider-name: babylon
   matchIgnore:
-  - /spec/desiredState
+  - /spec/vars/current_state
+  - /spec/vars/desired_state
   override:
     metadata:
       namespace: anarchy-operator
@@ -31,7 +33,7 @@ spec:
           guid: >-
             {{: resource_handle.metadata.name[-5:] :}}
   updateFilters:
-  - pathMatch: /spec/desiredState
+  - pathMatch: /spec/desired_state
   validation:
     openAPIV3Schema:
       type: object
@@ -70,12 +72,13 @@ spec:
           - governor
           additionalProperties: false
           properties:
-            desiredState:
-              enum:
-              - started
-              - stopped
-              type: string
             governor:
               type: string
             vars:
               type: object
+              properties:
+                desired_state:
+                  enum:
+                  - started
+                  - stopped
+                  type: string
