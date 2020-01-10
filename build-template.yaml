@@ -11,15 +11,12 @@ parameters:
   value: https://github.com/redhat-gpte-devopsautomation/poolboy.git
 - name: SERVICE_NAME
   value: poolboy
-- name: NAMESPACE
-  value: poolboy
 
 objects:
 - apiVersion: image.openshift.io/v1
   kind: ImageStream
   metadata:
     name: ${SERVICE_NAME}
-    namespace: ${NAMESPACE}
   spec:
     lookupPolicy:
       local: false
@@ -28,7 +25,6 @@ objects:
   kind: BuildConfig
   metadata:
     name: ${SERVICE_NAME}
-    namespace: ${NAMESPACE}
   spec:
     output:
       to:

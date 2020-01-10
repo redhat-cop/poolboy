@@ -58,6 +58,34 @@ Because the resource status is monitored and synced to the ResourceClaim status,
 
 Each AnarchySubject has a `spec.desiredState`. The ResourceProvider `spec.updateFilters` allow this field to be updated while the `spec.validation` OpenAPIv3 check enforces that it can only be set to explicitly permitted values.
 
+## Build
+
+### OpenShift Build
+
+. Process OpenShift build template to create BuildConfig and ImageStream
++
+----
+oc process --local -f build-template.yaml | oc apply -n poolboy -f -
+----
+
+. Build poolboy image
++
+----
+oc start-build poolboy --from-dir=.
+----
+
+. Deploy Poolboy from build image
++
+----
+IMAGE=$(oc get imagestream poolboy -o jsonpath='{.status.tags[?(@.tag=="latest")].items[0].dockerImageReference}')
+oc process \
+  -f deploy-template.yaml \
+  -p NAMESPACE=poolboy \
+  -p IMAGE=$IMAGE \
+  -p IMAGE_PULL_POLICY=Always \
+| oc apply -n poolboy -f -
+----
+
 ## Credits
 
 Poolboy logo is original art by Lara Ditkoff
