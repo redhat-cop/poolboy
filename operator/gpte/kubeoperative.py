@@ -99,7 +99,7 @@ class Watcher(object):
             try:
                 self.watch()
             except Exception as e:
-                self.operative.logger.exception("Error in watch_loop: %s", e)
+                self.operative.logger.exception("Error in watch loop: %s", e)
                 time.sleep(60)
 
     def watch(self):
@@ -114,10 +114,11 @@ class Watcher(object):
                     event_obj['message']
                 )
                 if event_obj['status'] == 'Failure':
-                    if event_obj['reason'] == 'Expired':
+                    if event_obj['reason'] in ('Expired', 'Gone'):
+                        self.operative.logger.info('Restarting watch %s, reason %s', self.method_args, event_obj['reason'])
                         return
                     else:
-                        raise Exception("Watch failure: " + event_obj['message'])
+                        raise Exception("Watch failure: reason {}, message {}", event_obj['reason'], event_obj['message'])
             else:
                 try:
                     self.handler(event)

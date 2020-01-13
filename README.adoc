@@ -71,7 +71,7 @@ oc process --local -f build-template.yaml | oc apply -n poolboy -f -
 . Build poolboy image
 +
 ----
-oc start-build poolboy --from-dir=.
+oc start-build poolboy --from-dir=. --follow
 ----
 
 . Deploy Poolboy from build image
