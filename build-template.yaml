@@ -8,7 +8,7 @@ metadata:
 
 parameters:
 - name: GIT_REPO
-  value: https://github.com/redhat-gpte-devopsautomation/poolboy.git
+  value: https://github.com/redhat-cop/poolboy.git
 - name: SERVICE_NAME
   value: poolboy
 

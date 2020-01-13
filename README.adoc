@@ -39,7 +39,7 @@ image::docs/diagram.png[Poolboy Diagram,500,400]
 ## Use Case - Project Babylon Anarchy Operator
 
 Poolboy was designed to manage custom resource types for the
-https://github.com/redhat-gpte-devopsautomation/anarchy-operator[Anarchy operator].
+https://github.com/redhat-cop/anarchy[Anarchy operator framework].
 The Anarchy Operator orchestrates API calls, tracking the state of remote resources in custom resource kinds.
 As part of Project Babylon, Anarchy is configured to manage cloud resources and environments.
 Poolboy allows for these cloud environments to be pre-provisioned and then claimed by users.
