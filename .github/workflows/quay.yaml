@@ -8,7 +8,7 @@ on:
     - 'v[0-9]*'
 jobs:
   build:
-    if: github.repository == 'jkupferer/poolboy'
+    if: github.repository == 'redhat-cop/poolboy'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@master
@@ -18,7 +18,7 @@ jobs:
     - name: Publish My Image to Quay
       uses: elgohr/Publish-Docker-Github-Action@master
       with:
-        name: jkupferer/poolboy
+        name: redhat-cop/poolboy
         username: ${{ secrets.QUAY_USERNAME }}
         password: ${{ secrets.QUAY_PASSWORD }}
         registry: quay.io
