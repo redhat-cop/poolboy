@@ -953,7 +953,14 @@ class ResourceProvider(object):
         else:
             requester_identity = requester_user = None
 
-        guid = handle['metadata']['name'][-5:]
+        handle_name = handle['metadata']['name']
+        handle_generate_name = handle['metadata'].get('generateName')
+        if handle_generate_name and handle_name.startswith(handle_generate_name):
+            guid = handle_name[len(handle_generate_name):]
+        elif handle_name.startswith('guid-'):
+            guid = handle_name[5:]
+        else:
+            guid = handle_name[-5:]
 
         resource = copy.deepcopy(handle['spec']['resources'][resource_index]['template'])
         if 'override' in self.spec:
@@ -961,6 +968,9 @@ class ResourceProvider(object):
         if 'metadata' not in resource:
             resource['metadata'] = {}
         if 'name' not in resource['metadata']:
+            # If name prefix was not given then use prefix "guidN-" with resource index to
+            # prevent name conflicts. If the resource template does specify a name prefix
+            # then it is expected that the template configuration prevents conflicts.
             if 'generateName' not in resource['metadata']:
                 resource['metadata']['generateName'] = 'guid{}-'.format(resource_index)
             resource['metadata']['name'] = \
