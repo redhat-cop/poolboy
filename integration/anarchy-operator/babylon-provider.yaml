@@ -35,7 +35,7 @@ spec:
              if resource_handle.metadata.name.startswith('guid-')
              else resource_handle.metadata.name :}}
   updateFilters:
-  - pathMatch: /spec/desired_state
+  - pathMatch: /spec/vars/desired_state
   validation:
     openAPIV3Schema:
       type: object
