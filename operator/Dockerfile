@@ -26,7 +26,6 @@ RUN yum install -y \
       ansible \
       inflection \
       jmespath \
-      jsonpatch \
       kopf \
       kubernetes \
       ndg-httpsclient \
