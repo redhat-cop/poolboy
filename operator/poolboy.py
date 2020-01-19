@@ -4,7 +4,6 @@ import copy
 import datetime
 import gpte.kubeoperative
 import json
-import jsonpatch
 import kopf
 import kubernetes
 import openapi_core.shortcuts
@@ -911,7 +910,7 @@ class ResourceProvider(object):
         Check if a resource in a handle matches a resource in a claim
         """
         patch = [
-            item for item in jsonpatch.JsonPatch.from_diff(
+            item for item in gpte.kubeoperative.jsonpatch_from_diff(
                 handle_resource, claim_resource
             ) if item['op'] in ['add', 'replace']
         ]

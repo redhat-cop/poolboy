@@ -1,5 +1,4 @@
 import inflection
-import jsonpatch
 import kubernetes
 import logging
 import os
@@ -7,6 +6,44 @@ import os.path
 import re
 import threading
 import time
+
+def _jsonpatch_path(*path):
+    return '/' + '/'.join([
+        p.replace('~', '~0').replace('/', '~1') for p in path
+    ])
+
+def _jsonpatch_from_diff(a, b, path):
+    if isinstance(a, dict) and isinstance(b, dict):
+        for op in _jsonpatch_from_dict_diff(a, b, path):
+            yield op
+    elif isinstance(a, list) and isinstance(b, list):
+        for op in _jsonpatch_from_list_diff(a, b, path):
+            yield op
+    elif a != b:
+        yield dict(op='replace', path=_jsonpatch_path(*path), value=b)
+
+def _jsonpatch_from_dict_diff(a, b, path):
+    for k, v in a.items():
+        if k in b:
+            for op in _jsonpatch_from_diff(v, b[k], path + [k]):
+                yield op
+        else:
+            yield dict(op='remove', path=_jsonpatch_path(*path, k))
+    for k, v in b.items():
+        if k not in a:
+            yield dict(op='add', path=_jsonpatch_path(*path, k), value=v)
+
+def _jsonpatch_from_list_diff(a, b, path):
+    for i in range(min(len(a), len(b))):
+        for op in _jsonpatch_from_diff(a[i], b[i], path + [str(i)]):
+            yield op
+    for i in range(len(a) - 1, len(b) -1, -1):
+        yield dict(op='remove', path=_jsonpatch_path(*path, str(i)))
+    for i in range(len(a), len(b)):
+        yield dict(op='add', path=_jsonpatch_path(*path, str(i)), value=b[i])
+
+def jsonpatch_from_diff(a, b):
+    return [ item for item in _jsonpatch_from_diff(a, b, []) ]
 
 def filter_patch_item(update_filters, item):
     if not update_filters:
@@ -24,7 +61,7 @@ def filter_patch_item(update_filters, item):
 def create_patch(resource, update, update_filters=None):
     # FIXME - There should be some sort of warning about patch items being rejected?
     return [
-        item for item in jsonpatch.JsonPatch.from_diff(
+        item for item in jsonpatch_from_diff(
             resource,
             update
         ) if filter_patch_item(update_filters, item)
