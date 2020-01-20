@@ -63,6 +63,14 @@ class TestJsonPatch(unittest.TestCase):
             {'op': 'add', 'path': '/1', 'value': 'c'}
         ])
 
+    def test_07_1(self):
+        a = ['a', 'b']
+        b = ['b', 'a']
+        self.assertEqual(jsonpatch_from_diff(a, b), [
+            {'op': 'replace', 'path': '/0', 'value': 'b'},
+            {'op': 'replace', 'path': '/1', 'value': 'a'}
+        ])
+
     def test_08(self):
         a = {'a': 'nocopy'}
         b = {'b': 'nocopy'}
@@ -84,6 +92,50 @@ class TestJsonPatch(unittest.TestCase):
         b = {"foo": "foo/bar~boo"}
         self.assertEqual(jsonpatch_from_diff(a, b), [
             {'op': 'add', 'path': '/foo', 'value': 'foo/bar~boo'}
+        ])
+
+    # nested
+    def test_11(self):
+        a = {'a': {'changeme':1}, 'b':{'removeme': 'foo', 'keep':'bar'}}
+        b = {'a': {'changeme':2}, 'b':{'keep':'bar','addme': 'b'}}
+        self.assertEqual(jsonpatch_from_diff(a, b), [
+            {'op': 'replace', 'path': '/a/changeme', 'value': 2},
+            {'op': 'remove', 'path': '/b/removeme'},
+            {'op': 'add', 'path': '/b/addme', 'value': 'b'}
+        ])
+
+    def test_12(self):
+        a = {'removeme': {'a':1, 'c':{'a':[1,2]}}}
+        b = {'addme': {'a':1, 'c':{'a':[1,2]}}}
+        self.assertEqual(jsonpatch_from_diff(a, b), [
+            {'op': 'remove', 'path': '/removeme'},
+            {'op': 'add', 'path': '/addme', 'value': {'a':1,'c':{'a':[1,2]}}}
+        ])
+
+    def test_13(self):
+        a = {'a': {'s':'v', 'b':{'c':[1,2]}}}
+        b = {'a': {'s':'v', 'b':{'c':[2,1]}}}
+        self.assertEqual(jsonpatch_from_diff(a, b), [
+            {'op': 'replace', 'path': '/a/b/c/0', 'value': 2},
+            {'op': 'replace', 'path': '/a/b/c/1', 'value': 1}
+        ])
+
+    def test_14(self):
+        a = {'a': {'s':'v', 'b':{'c':[1,{'changeme':'foo'}]}}}
+        b = {'a': {'s':'v', 'b':{'c':[1,{'changeme':'bar'}]}}}
+        self.assertEqual(jsonpatch_from_diff(a, b), [
+            {'op': 'replace', 'path': '/a/b/c/1/changeme', 'value': 'bar'}
+        ])
+
+    def test_15(self):
+        # update an array inside a dictionary inside an array
+        a = [{'a':1,'b':2,'c':{'foo':'bar'},'d':[1,2,3]}]
+        b = [{'d':[1,2,3,4]}]
+        self.assertEqual(jsonpatch_from_diff(a, b), [
+            {'op': 'remove', 'path': '/0/a'},
+            {'op': 'remove', 'path': '/0/b'},
+            {'op': 'remove', 'path': '/0/c'},
+            {'op': 'add', 'path': '/0/d/3', 'value':4},
         ])
 
 if __name__ == '__main__':
