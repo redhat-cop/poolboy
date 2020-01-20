@@ -82,7 +82,6 @@ oc process \
   -f deploy-template.yaml \
   -p NAMESPACE=poolboy \
   -p IMAGE=$IMAGE \
-  -p IMAGE_PULL_POLICY=Always \
 | oc apply -n poolboy -f -
 ----
 
