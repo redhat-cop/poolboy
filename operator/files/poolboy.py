@@ -205,7 +205,7 @@ def get_requester_from_namespace(namespace):
                 'user.openshift.io', 'v1', 'identities', requester_user['identities'][0]
             )
     except kubernetes.client.rest.ApiException as e:
-        if e.status != 404:
+        if e.status not in (404, 422):
             raise
 
     return requester_identity, requester_user
