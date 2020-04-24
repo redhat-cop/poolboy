@@ -85,6 +85,25 @@ oc process \
 | oc apply -n poolboy -f -
 ----
 
+### Using Helm
+
+Helm v3 support only.
+
+. Clone this repo to your local workstation and change directory:
++
+----
+git clone https://github.com/redhat-cop/poolboy.git
+cd poolboy
+----
+
+. Install with Helm
++
+----
+helm template helm | oc apply -f -
+----
+
+CAUTION: The anarchy namespace must already exist as we will create objects in that namespace. The default is `anarchy-operator` but can be configured in `value.yaml` or with `--set anarchy.namespace=<anarchy namespace>` above.
+
 ## Credits
 
 Poolboy logo is original art by Lara Ditkoff
