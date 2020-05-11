@@ -34,14 +34,13 @@ objects:
     resources: {}
     runPolicy: Serial
     source:
-      contextDir: operator
       git:
         uri: ${GIT_REPO}
         ref: master
     strategy:
-      type: Docker
-      dockerStrategy:
+      type: Source
+      sourceStrategy:
         from:
           kind: DockerImage
-          name: registry.access.redhat.com/ubi8:latest
+          name: quay.io/jkupferer/python-kopf-s2i:v0.28
     triggers: []

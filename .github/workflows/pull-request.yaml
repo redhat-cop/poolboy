@@ -1,0 +1,32 @@
+---
+name: pull-request
+on:
+  pull_request:
+    branches:
+      - master
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout source
+      uses: actions/checkout@master
+
+    #- name: Static tests
+    #  run: |
+
+    - name: Build image
+      uses: docker/build-push-action@v1
+      with:
+        push: false
+        repository: poolboy
+        tags: ${{ steps.check_version.outputs.VERSION }}
+
+    - name: Build example from s2i image
+      uses: docker/build-push-action@v1
+      with:
+        push: false
+        repository: poolboy
+        tags: ${{ github.sha }}
+
+    #- name: Test image
+    #  run: |

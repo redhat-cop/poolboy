@@ -1,4 +1,3 @@
-ansible
 inflection
 jmespath
 kopf
