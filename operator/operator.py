@@ -6,10 +6,7 @@ import gpte.kubeoperative
 import json
 import kopf
 import kubernetes
-import openapi_core.shortcuts
-import openapi_core.wrappers.mock
-import openapi_core.extensions.models.models
-import openapi_core.schema.schemas.exceptions
+import openapi_schema_validator
 import os
 import prometheus_client
 import re
@@ -151,8 +148,7 @@ def create_handle_for_pool(pool, logger):
 def delete_resource_handle(name, logger):
     try:
         ko.custom_objects_api.delete_namespaced_custom_object(
-            ko.operator_domain, ko.version, ko.operator_namespace, 'resourcehandles', name,
-            kubernetes.client.V1DeleteOptions()
+            ko.operator_domain, ko.version, ko.operator_namespace, 'resourcehandles', name
         )
     except kubernetes.client.rest.ApiException as e:
         if e.status != 404:
@@ -165,8 +161,7 @@ def delete_unbound_handles_for_pool(pool, logger):
          handle_meta = handle['metadata']
          handle_name = handle_meta['name']
          ko.custom_objects_api.delete_namespaced_custom_object(
-             ko.operator_domain, ko.version, ko.operator_namespace, 'resourcehandles', handle_name,
-             kubernetes.client.V1DeleteOptions()
+             ko.operator_domain, ko.version, ko.operator_namespace, 'resourcehandles', handle_name
          )
 
 def get_claim_for_handle(handle, logger):
@@ -856,34 +851,7 @@ class ResourceProvider(object):
         if not open_api_v3_schema:
             self.resource_validator = None
             return
-        self.resource_validator = openapi_core.shortcuts.RequestValidator(
-            openapi_core.shortcuts.create_spec({
-                "openapi": "3.0.0",
-                "info": { "title": "", "version": "0.1" },
-                "paths": {
-                    "/claimTemplate": {
-                        "post": {
-                            "requestBody": {
-                                "required": True,
-                                "content": {
-                                    "application/json": {
-                                        "schema": {
-                                            "$ref": "#/components/schemas/ClaimTemplate"
-                                        }
-                                    }
-                                }
-                            },
-                            "responses": {}
-                        }
-                    }
-                },
-                "components": {
-                    "schemas": {
-                        "ClaimTemplate": open_api_v3_schema
-                    }
-                }
-            })
-        )
+        self.resource_validator = openapi_schema_validator.OAS30Validator(open_api_v3_schema)
 
     @property
     def name(self):
@@ -1032,14 +1000,7 @@ class ResourceProvider(object):
     def validate_resource_template(self, template, logger):
         try:
             if self.resource_validator:
-                validation_result = self.resource_validator.validate(
-                    openapi_core.wrappers.mock.MockRequest(
-                        'http://example.com', 'post', '/claimTemplate',
-                        path_pattern='/claimTemplate',
-                        data=json.dumps(template)
-                    )
-                )
-                validation_result.raise_for_errors()
+                validation_result = self.resource_validator.validate(template)
         except Exception as e:
             return str(e)
 

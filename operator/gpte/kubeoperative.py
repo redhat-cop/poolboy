@@ -296,27 +296,25 @@ class KubeOperative(object):
             )
 
     def delete_core_resource(self, kind, namespace, name):
-        delete_options = kubernetes.client.V1DeleteOptions()
         try:
             if namespace:
                 method = getattr(
                     self.core_v1_api,
                     'delete_namespaced_' + inflection.underscore(kind)
                 )
-                return method(name, namespace, body=delete_options)
+                return method(name, namespace)
             else:
                 method = getattr(
                     self.core_v1_api,
                     'delete_' + inflection.underscore(kind)
                 )
-                return method(name, body=delete_options)
+                return method(name)
         except kubernetes.client.rest.ApiException as e:
             if e.status != 404:
                 raise
 
     def delete_custom_resource(self, group, version, kind, namespace, name):
         plural = self.kind_to_plural(group, version, kind)
-        delete_options = kubernetes.client.V1DeleteOptions()
         try:
             if namespace:
                 return self.custom_objects_api.delete_namespaced_custom_object(
@@ -324,16 +322,14 @@ class KubeOperative(object):
                     version,
                     namespace,
                     plural,
-                    name,
-                    delete_options
+                    name
                 )
             else:
                 return self.custom_objects_api.delete_cluster_custom_object(
                     group,
                     version,
                     plural,
-                    name,
-                    delete_options
+                    name
                 )
         except kubernetes.client.rest.ApiException as e:
             if e.status != 404:
