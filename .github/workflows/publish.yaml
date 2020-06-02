@@ -14,7 +14,7 @@ jobs:
       uses: actions/checkout@master
 
     - name: Get the version
-      id: get_version
+      id: image_tags
       run: |
         # Version is based on a semantic version tag
         VERSION=${GITHUB_REF#refs/tags/}
@@ -28,6 +28,8 @@ jobs:
       with:
         registry: ${{ secrets.REGISTRY_URI }}
         repository: ${{ secrets.REGISTRY_REPOSITORY }}/poolboy
-        username: ${{ secrets.REGISTRY_USERNAME }}
-        password: ${{ secrets.REGISTRY_PASSWORD }}
+        username: ${{ secrets.QUAY_USERNAME }}
+        password: ${{ secrets.QUAY_PASSWORD }}
+        #username: ${{ secrets.REGISTRY_USERNAME }}
+        #password: ${{ secrets.REGISTRY_PASSWORD }}
         tags: "${{ steps.image_tags.outputs.IMAGE_TAGS }}"
