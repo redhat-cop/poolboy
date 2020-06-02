@@ -9,6 +9,8 @@ metadata:
 parameters:
 - name: GIT_REPO
   value: https://github.com/redhat-cop/poolboy.git
+- name: KOPF_S2I_IMAGE
+  value: quay.io/redhat-cop/python-kopf-s2i:v0.28
 - name: SERVICE_NAME
   value: poolboy
 
@@ -34,14 +36,13 @@ objects:
     resources: {}
     runPolicy: Serial
     source:
-      contextDir: operator
       git:
         uri: ${GIT_REPO}
         ref: master
     strategy:
-      type: Docker
-      dockerStrategy:
+      type: Source
+      sourceStrategy:
         from:
           kind: DockerImage
-          name: registry.access.redhat.com/ubi8:latest
+          name: ${KOPF_S2I_IMAGE}
     triggers: []

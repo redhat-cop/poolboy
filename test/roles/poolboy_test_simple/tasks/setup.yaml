@@ -1,0 +1,24 @@
+---
+- name: Create ResourceClaimTest CRD
+  k8s:
+    definition: "{{ lookup('template', 'resourceclaimtests.crd.yaml') }}"
+
+- name: Create test namespace
+  k8s:
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ poolboy_test_namespace }}"
+
+- name: Create poolboy-test ClusterRole and ClusteRoleBinding
+  k8s:
+    definition: "{{ lookup('template', _template) }}"
+  loop:
+  - clusterrole.yaml.j2
+  - clusterrolebinding.yaml.j2
+  loop_control:
+    loop_var: _template
+
+- name: Cleanup Test Resources
+  include_tasks: cleanup-resources.yaml

@@ -1,0 +1,480 @@
+---
+- name: Create test ResourceProvider
+  k8s:
+    state: present
+    definition: "{{ lookup('template', 'resource-provider.yaml.j2') | from_yaml }}"
+  vars:
+    _name: test
+    _resource_namespace: '{% raw %}{{: resource_claim.metadata.namespace :}}{% endraw %}'
+
+- name: Create test-claim-required ResourceProvider
+  k8s:
+    state: present
+    definition: "{{ lookup('template', 'resource-provider.yaml.j2') | from_yaml }}"
+  vars:
+    _name: test-claim-required
+    _resource_requires_claim: True
+    _resource_namespace: '{% raw %}{{: resource_claim.metadata.namespace :}}{% endraw %}'
+
+- name: Create ResourceClaim test-1
+  k8s:
+    state: present
+    definition: "{{ _resource_definition | from_yaml }}"
+  vars:
+    _resource_definition: |
+      apiVersion: {{ poolboy_domain }}/v1
+      kind: ResourceClaim
+      metadata:
+        name: test-1
+        namespace: {{ poolboy_test_namespace }}
+        labels:
+          {{ poolboy_domain }}/test: simple
+      spec:
+        resources:
+        - template:
+            apiVersion: {{ poolboy_domain }}/v1
+            kind: ResourceClaimTest
+            metadata:
+              annotations:
+                {{ poolboy_domain }}/resource-provider-name: test
+                {{ poolboy_domain }}/resource-provider-namespace: {{ poolboy_namespace }}
+              generateName: test-
+            spec:
+              governor: test
+              vars:
+                name: test-1
+                number: 23
+        - template:
+            apiVersion: {{ poolboy_domain }}/v1
+            kind: ResourceClaimTest
+            metadata:
+              annotations:
+                {{ poolboy_domain }}/resource-provider-name: test-claim-required
+                {{ poolboy_domain }}/resource-provider-namespace: {{ poolboy_namespace }}
+              generateName: test-claim-required-
+            spec:
+              governor: test
+              vars:
+                name: test-1
+                number: 2323
+
+- name: Get resource handle for claim test-1
+  k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceHandle
+    namespace: "{{ poolboy_namespace }}"
+    label_selectors:
+    - "{{ poolboy_domain }}/resource-claim-name=test-1"
+    - "{{ poolboy_domain }}/resource-claim-namespace={{ poolboy_test_namespace }}"
+  register: r_resource_handle_for_test_1
+  until: r_resource_handle_for_test_1.resources | length > 0
+  retries: 5
+  delay: 2
+
+- name: Assert that exactly one handle for test-1 was found
+  assert:
+    that:
+    - r_resource_handle_for_test_1.resources | length == 1
+    fail_msg: One test-1 resource handle not found
+    success_msg: One test-1 resource handle found
+
+- name: Check resource handle for test-1
+  assert:
+    that:
+    - _handle.metadata.finalizers[0] == poolboy_domain
+    - _handle.metadata.generateName == 'guid-'
+    - _handle.spec.resourceClaim.name == 'test-1'
+    - _handle.spec.resourceClaim.namespace == poolboy_test_namespace
+    - _handle.spec.resources[0].provider.name == 'test'
+    - _handle.spec.resources[0].provider.namespace == poolboy_namespace
+    - _handle.spec.resources[0].template.kind == 'ResourceClaimTest'
+    - _handle.spec.resources[0].template.spec.vars.name == 'test-1'
+    - _handle.spec.resources[0].template.spec.vars.number == 23
+    fail_msg: test-1 handle not found as expected
+    success_msg: test-1 handle found as expected
+  vars:
+    _handle: "{{ r_resource_handle_for_test_1.resources[0] }}"
+
+- name: Get resource from handle for test-1
+  k8s_facts:
+    api_version: "{{ resource_ref.apiVersion }}"
+    kind: "{{ resource_ref.kind }}"
+    name: "{{ resource_ref.name }}"
+    namespace: "{{ resource_ref.namespace | default('') }}"
+  vars:
+    handle: "{{ r_resource_handle_for_test_1.resources[0] }}"
+    resource_ref: "{{ handle.spec.resources[0].reference }}"
+  register: resource_for_test_1
+
+- name: Check resource for test-1
+  assert:
+    that:
+    - resource.kind == 'ResourceClaimTest'
+    - resource_annotations['{{ poolboy_domain }}/resource-claim-name'] == 'test-1'
+    - resource_annotations['{{ poolboy_domain }}/resource-claim-namespace'] == poolboy_test_namespace
+    - resource_annotations['{{ poolboy_domain }}/resource-handle-name'] == handle.metadata.name
+    - resource_annotations['{{ poolboy_domain }}/resource-handle-namespace'] == handle.metadata.namespace
+    - resource_annotations['{{ poolboy_domain }}/resource-handle-uid'] == handle.metadata.uid
+    - resource_annotations['{{ poolboy_domain }}/resource-handle-version'] == handle.metadata.resourceVersion
+    - resource_annotations['{{ poolboy_domain }}/resource-provider-name'] == 'test'
+    - resource_annotations['{{ poolboy_domain }}/resource-provider-namespace'] == poolboy_namespace
+    fail_msg: test-1 resource not found as expected
+    success_msg: test-1 resource looks good
+  vars:
+    handle: "{{ r_resource_handle_for_test_1.resources[0] }}"
+    resource: "{{ resource_for_test_1.resources[0] }}"
+    resource_annotations: "{{ resource_for_test_1.resources[0].metadata.annotations }}"
+
+- name: Get resource claim test-1
+  k8s_facts:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-1
+    namespace: "{{ poolboy_test_namespace }}"
+  register: test_1_claim
+
+- name: Check claim test-1
+  assert:
+    that:
+    - claim.status.resources[0].state.kind == 'ResourceClaimTest'
+    - claim.status.resources[0].state.metadata.namespace == poolboy_test_namespace
+    - claim.status.resources[0].state.spec.vars.name == 'test-1'
+    - claim.status.resources[0].state.spec.vars.number == 23
+    fail_msg: test-1 resource not found as expected
+    success_msg: test-1 resource looks good
+  vars:
+    claim: "{{ test_1_claim.resources[0] }}"
+
+- name: Update ResourceClaim test-1
+  k8s:
+    state: present
+    definition: "{{ resource_definition }}"
+  vars:
+    resource_definition: |
+      apiVersion: {{ poolboy_domain }}/v1
+      kind: ResourceClaim
+      metadata:
+        name: test-1
+        namespace: {{ poolboy_test_namespace }}
+        labels:
+          {{ poolboy_domain }}/test: simple
+      spec:
+        resources:
+        - template:
+            apiVersion: {{ poolboy_domain }}/v1
+            kind: ResourceClaimTest
+            metadata:
+              annotations:
+                {{ poolboy_domain }}/resource-provider-name: test
+                {{ poolboy_domain }}/resource-provider-namespace: {{ poolboy_namespace }}
+            spec:
+              governor: test
+              vars:
+                desired_state: started
+                name: test-1
+                foo: bar
+                number: 42
+        - template:
+            apiVersion: {{ poolboy_domain }}/v1
+            kind: ResourceClaimTest
+            metadata:
+              annotations:
+                {{ poolboy_domain }}/resource-provider-name: test-claim-required
+                {{ poolboy_domain }}/resource-provider-namespace: {{ poolboy_namespace }}
+              generateName: test-claim-required-
+            spec:
+              governor: test
+              vars:
+                name: test-1
+                number: 4242
+
+- name: Pause for claim resource status update
+  pause:
+    seconds: 5
+
+- name: Get resource handle for claim test-1
+  k8s_facts:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceHandle
+    namespace: "{{ poolboy_namespace }}"
+    label_selectors:
+    - "{{ poolboy_domain }}/resource-claim-name=test-1"
+    - "{{ poolboy_domain }}/resource-claim-namespace={{ poolboy_test_namespace }}"
+  register: r_resource_handle_for_test_1
+
+- name: Check update of resource handle for test-1
+  assert:
+    that:
+    - handle.metadata.finalizers[0] == poolboy_domain
+    - handle.metadata.generateName == 'guid-'
+    - handle.spec.resourceClaim.name == 'test-1'
+    - handle.spec.resourceClaim.namespace == poolboy_test_namespace
+    - handle.spec.resources[0].provider.name == 'test'
+    - handle.spec.resources[0].provider.namespace == poolboy_namespace
+    - handle.spec.resources[0].template.kind == 'ResourceClaimTest'
+    - handle.spec.resources[0].template.spec.vars.name == 'test-1'
+    - handle.spec.resources[0].template.spec.vars.number == 42
+    fail_msg: test-1 handle not found as expected
+    success_msg: test-1 handle found as expected
+  vars:
+    handle: "{{ r_resource_handle_for_test_1.resources[0] }}"
+
+- name: Get resource claim test-1
+  k8s_facts:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-1
+    namespace: "{{ poolboy_test_namespace }}"
+  register: test_1_claim
+
+- name: Check claim test-1 update
+  assert:
+    that:
+    - status_resource.kind == 'ResourceClaimTest'
+    - status_resource.metadata.namespace == poolboy_test_namespace
+    - status_resource.spec.vars.name == 'test-1'
+    # Check changes to var are rejected on the resource
+    - status_resource.spec.vars.number == 23
+    # Change to desired_state should go through
+    - status_resource.spec.vars.desired_state == 'started'
+    fail_msg: test-1 resource not found as expected
+    success_msg: test-1 resource looks good
+  vars:
+    claim: "{{ test_1_claim.resources[0] }}"
+    status_resource: "{{ claim.status.resources[0].state }}"
+
+- name: Delete resource claim test-1
+  k8s:
+    state: absent
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-1
+    namespace: "{{ poolboy_test_namespace }}"
+
+- name: Pause for delete cascade
+  pause:
+    seconds: 2
+
+- name: Confirm resource deletion for test-1
+  k8s_facts:
+    api_version: "{{ resource_ref.apiVersion }}"
+    kind: "{{ resource_ref.kind }}"
+    name: "{{ resource_ref.name }}"
+    namespace: "{{ resource_ref.namespace | default('') }}"
+  vars:
+    resource_ref: "{{ r_resource_handle_for_test_1.resources[0].spec.resources[0].reference }}"
+  register: resource_for_test_1
+  failed_when: resource_for_test_1.resources
+
+- name: Create test resource pool
+  k8s:
+    state: present
+    definition: "{{ lookup('template', 'resource-pool.yaml.j2') | from_yaml }}"
+
+- name: Pause for poool handle creation
+  pause:
+    seconds: 2
+
+- name: Create ResourceClaim test-pool-match
+  k8s:
+    state: present
+    definition: "{{ resource_definition | from_yaml }}"
+  vars:
+    resource_definition: |
+      apiVersion: {{ poolboy_domain }}/v1
+      kind: ResourceClaim
+      metadata:
+        name: test-pool-match
+        namespace: {{ poolboy_test_namespace }}
+        labels:
+          {{ poolboy_domain }}/test: simple
+      spec:
+        resources:
+        - template:
+            apiVersion: {{ poolboy_domain }}/v1
+            kind: ResourceClaimTest
+            metadata:
+              annotations:
+                {{ poolboy_domain }}/resource-provider-name: test
+                {{ poolboy_domain }}/resource-provider-namespace: {{ poolboy_namespace }}
+            spec:
+              governor: test
+              vars:
+                desired_state: started
+                name: test-pool
+                number: 23
+        - template:
+            apiVersion: {{ poolboy_domain }}/v1
+            kind: ResourceClaimTest
+            metadata:
+              annotations:
+                {{ poolboy_domain }}/resource-provider-name: test-claim-required
+                {{ poolboy_domain }}/resource-provider-namespace: {{ poolboy_namespace }}
+            spec:
+              governor: test
+              vars:
+                desired_state: started
+                name: test-pool
+                number: 2323
+
+- name: Create ResourceClaim test-pool-explicit
+  k8s:
+    state: present
+    definition: "{{ resource_definition | from_yaml }}"
+  vars:
+    resource_definition: |
+      apiVersion: {{ poolboy_domain }}/v1
+      kind: ResourceClaim
+      metadata:
+        name: test-pool-explicit
+        namespace: {{ poolboy_test_namespace }}
+        labels:
+          {{ poolboy_domain }}/test: simple
+      spec:
+        resources:
+        - provider:
+            apiVersion: {{ poolboy_domain }}/v1
+            kind: ResourceProvider
+            name: test
+            namespace: {{ poolboy_namespace }}
+          template:
+            apiVersion: {{ poolboy_domain }}/v1
+            kind: ResourceClaimTest
+            metadata:
+              annotations:
+                {{ poolboy_domain }}/resource-provider-name: test
+                {{ poolboy_domain }}/resource-provider-namespace: {{ poolboy_namespace }}
+            spec:
+              governor: test
+              vars:
+                desired_state: started
+                name: test-pool
+                number: 23
+        - provider:
+            apiVersion: {{ poolboy_domain }}/v1
+            kind: ResourceProvider
+            name: test-claim-required
+            namespace: {{ poolboy_namespace }}
+          template:
+            apiVersion: {{ poolboy_domain }}/v1
+            kind: ResourceClaimTest
+            metadata:
+              annotations:
+                {{ poolboy_domain }}/resource-provider-name: test-claim-required
+                {{ poolboy_domain }}/resource-provider-namespace: {{ poolboy_namespace }}
+            spec:
+              governor: test
+              vars:
+                desired_state: started
+                name: test-pool
+                number: 2323
+
+- name: Pause for claim binding
+  pause:
+    seconds: 2
+
+- name: Get resource claim test-pool-match
+  k8s_facts:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-pool-match
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_test_pool_match_claim
+
+- name: Get resource claim test-pool-explicit
+  k8s_facts:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-pool-explicit
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_test_pool_explicit_claim
+
+- name: Check claim test-pool-match
+  assert:
+    that:
+    - claim.status.resources[0].state.kind == 'ResourceClaimTest'
+    - claim.status.resources[0].state.metadata.name.startswith('test-pool-')
+    - claim.status.resources[0].state.metadata.namespace == poolboy_test_namespace
+    - claim.status.resources[0].state.spec.vars.name == 'test-pool'
+    - claim.status.resources[0].state.spec.vars.number == 23
+    fail_msg: test-pool-match resource not found as expected
+    success_msg: test-pool-match resource looks good
+  vars:
+    claim: "{{ r_get_test_pool_match_claim.resources[0] }}"
+
+- name: Check claim test-pool-explicit
+  assert:
+    that:
+    - claim.status.resources[0].state.kind == 'ResourceClaimTest'
+    - claim.status.resources[0].state.metadata.name.startswith('test-pool-')
+    - claim.status.resources[0].state.metadata.namespace == poolboy_test_namespace
+    - claim.status.resources[0].state.spec.vars.name == 'test-pool'
+    - claim.status.resources[0].state.spec.vars.number == 23
+    fail_msg: test-pool-explicit resource not found as expected
+    success_msg: test-pool-explicit resource looks good
+  vars:
+    claim: "{{ r_get_test_pool_explicit_claim.resources[0] }}"
+
+- name: Delete test resource pool
+  k8s:
+    state: absent
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourcePool
+    name: test
+    namespace: "{{ poolboy_namespace }}"
+
+- name: Pause for pool clean-up
+  pause:
+    seconds: 2
+
+- name: Get resource handles from test pool
+  k8s_facts:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceHandle
+    namespace: "{{ poolboy_namespace }}"
+    label_selectors:
+    - "{{ poolboy_domain }}/resource-pool-name=test"
+  register: r_get_test_pool_handles
+
+- name: Check test-pool handles
+  assert:
+    that:
+    - r_get_test_pool_handles.resources | length == 2
+    fail_msg: did not find 2 remaining handles from test resource pool
+    success_msg: found 2 remaining handles from test resource pool
+
+- name: Delete resource claim test-pool-match
+  k8s:
+    state: absent
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-pool-match
+    namespace: "{{ poolboy_test_namespace }}"
+
+- name: Delete resource claim test-pool-explicit
+  k8s:
+    state: absent
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-pool-explicit
+    namespace: "{{ poolboy_test_namespace }}"
+
+- name: Pause for claim clean-up
+  pause:
+    seconds: 2
+
+- name: Get resource handles from test pool
+  k8s_facts:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceHandle
+    namespace: "{{ poolboy_namespace }}"
+    label_selectors:
+    - "{{ poolboy_domain }}/resource-pool-name=test"
+  register: r_get_test_pool_handles
+
+- name: Check test-pool handles are removed
+  assert:
+    that:
+    - r_get_test_pool_handles.resources | length == 0
+    fail_msg: found remaining test pool handles
+    success_msg: all test pool handles have been cleaned up

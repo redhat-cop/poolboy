@@ -1,0 +1,5 @@
+---
+poolboy_domain: poolboy.gpte.redhat.com
+poolboy_namespace: poolboy
+poolboy_test_namespace: poolboy-test
+poolboy_test_cleanup: true

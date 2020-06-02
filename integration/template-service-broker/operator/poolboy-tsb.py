@@ -27,8 +27,7 @@ def delete_resource_claim(resource_claim, logger):
     logger.info("Deleting ResourceClaim %s in %s", resource_claim_name, resource_claim_namespace)
     custom_objects_api.delete_namespaced_custom_object(
         operator_domain, 'v1', resource_claim_namespace,
-        'resourceclaims', resource_claim_name,
-        kubernetes.client.V1DeleteOptions()
+        'resourceclaims', resource_claim_name
     )
 
 def remove_template_instance_finalizers(template_instance_name, template_instance_namespace, logger):
