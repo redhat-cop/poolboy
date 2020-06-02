@@ -35,6 +35,14 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          livenessProbe:
+            initialDelaySeconds: 30
+            tcpSocket:
+              port: 8080
+            timeoutSeconds: 1
+          ports:
+          - name: metrics
+            containerPort: 8000
       restartPolicy: Always
       securityContext: {}
       serviceAccountName: {{ include "poolboy.serviceAccountName" . }}

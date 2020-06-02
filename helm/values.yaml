@@ -21,6 +21,8 @@ operator_domain:
   name:
 
 anarchy:
+  # Control whether anarchy integration should be created
+  create: false
   domain: anarchy.gpte.redhat.com
   namespace: anarchy-operator
   service: anarchy-operator

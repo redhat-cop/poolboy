@@ -5,6 +5,4 @@ metadata:
   name: {{ include "poolboy.namespaceName" . }}
   labels:
     {{- include "poolboy.labels" . | nindent 4 }}
-  annotations:
-    openshift-provision/action: create
 {{- end -}}
