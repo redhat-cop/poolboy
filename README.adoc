@@ -71,19 +71,17 @@ oc process --local -f build-template.yaml | oc apply -n poolboy -f -
 . Build poolboy image
 +
 ----
-oc start-build poolboy --from-dir=. --follow
+oc start-build poolboy -n poolboy --from-dir=. --follow
 ----
 
 . Deploy Poolboy from build image
 +
 ----
-NAMESPACE=poolboy
-IMAGE=$(oc get imagestream $NAMESPACE -o jsonpath='{.status.tags[?(@.tag=="latest")].items[0].dockerImageReference}')
-oc process \
+oc process --local \
   -f deploy-template.yaml \
-  -p NAMESPACE=$NAMESPACE \
-  -p IMAGE=$IMAGE \
-| oc apply -n $NAMESPACE -f -
+  -p NAMESPACE=poolboy \
+  -p IMAGE=$(oc get imagestream poolboy -n poolboy -o jsonpath='{.status.tags[?(@.tag=="latest")].items[0].dockerImageReference}') \
+| oc apply -n poolboy -f -
 ----
 
 ## Credits
