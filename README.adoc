@@ -98,7 +98,7 @@ cd poolboy
 . Install with Helm
 +
 ----
-helm template helm | oc apply -f -
+helm template poolboy helm/ | oc apply -f -
 ----
 
 CAUTION: The anarchy namespace must already exist as we will create objects in that namespace. The default is `anarchy-operator` but can be configured in `value.yaml` or with `--set anarchy.namespace=<anarchy namespace>` above.
