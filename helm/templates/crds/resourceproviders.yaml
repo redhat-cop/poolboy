@@ -71,7 +71,7 @@ spec:
               items:
                 type: object
                 required:
-                - patchMatch
+                - pathMatch
                 properties:
                   allowedOps:
                     description: >-
