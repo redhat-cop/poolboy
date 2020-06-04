@@ -1,0 +1,19 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ poolboy_test_namespace }}:anarchy
+  namespace: {{ poolboy_test_anarchy_namespace }}
+rules:
+- apiGroups:
+  - {{ anarchy_domain }}
+  resources:
+  - anarchysubjects
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - watch
+  - update

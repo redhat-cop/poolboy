@@ -1,0 +1,30 @@
+---
+- name: Create test namespace
+  k8s:
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ poolboy_test_namespace }}"
+
+- name: Create anarchy test namespace
+  k8s:
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ poolboy_test_anarchy_namespace }}"
+
+- name: Create poolboy/anarchy RBAC
+  k8s:
+    definition: "{{ lookup('template', _template) }}"
+  loop:
+  - clusterrole.yaml.j2
+  - clusterrolebinding.yaml.j2
+  - role.yaml.j2
+  - rolebinding.yaml.j2
+  loop_control:
+    loop_var: _template
+
+- name: Cleanup Test Resources
+  include_tasks: cleanup-resources.yaml
