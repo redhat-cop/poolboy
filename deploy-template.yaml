@@ -129,7 +129,7 @@ objects:
       name: ${SERVICE_NAME}
     sessionAffinity: None
     type: ClusterIP
-- apiVersion: extensions/v1beta1
+- apiVersion: apps/v1
   kind: Deployment
   metadata:
     labels:
@@ -170,7 +170,7 @@ objects:
         securityContext: {}
         serviceAccountName: ${SERVICE_NAME}
         terminationGracePeriodSeconds: 30
-- apiVersion: apiextensions.k8s.io/v1beta1
+- apiVersion: apiextensions.k8s.io/v1
   kind: CustomResourceDefinition
   metadata:
     name: resourceclaims.${OPERATOR_DOMAIN}
@@ -275,7 +275,7 @@ objects:
         - spec
         type: object
     version: v1
-- apiVersion: apiextensions.k8s.io/v1beta1
+- apiVersion: apiextensions.k8s.io/v1
   kind: CustomResourceDefinition
   metadata:
     name: resourcehandles.${OPERATOR_DOMAIN}
@@ -378,7 +378,7 @@ objects:
         - spec
         type: object
     version: v1
-- apiVersion: apiextensions.k8s.io/v1beta1
+- apiVersion: apiextensions.k8s.io/v1
   kind: CustomResourceDefinition
   metadata:
     name: resourcepools.${OPERATOR_DOMAIN}
@@ -451,7 +451,7 @@ objects:
         - spec
         type: object
     version: v1
-- apiVersion: apiextensions.k8s.io/v1beta1
+- apiVersion: apiextensions.k8s.io/v1
   kind: CustomResourceDefinition
   metadata:
     name: resourceproviders.${OPERATOR_DOMAIN}
