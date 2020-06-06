@@ -3,5 +3,5 @@ poolboy_domain: poolboy.gpte.redhat.com
 anarchy_domain: anarchy.gpte.redhat.com
 poolboy_namespace: poolboy
 poolboy_test_namespace: poolboy-test
-poolboy_test_anarchy_namespace: poolboy-anarchy-test
+poolboy_test_babylon_anarchy_namespace: poolboy-test-babylon-anarchy
 poolboy_test_cleanup: true

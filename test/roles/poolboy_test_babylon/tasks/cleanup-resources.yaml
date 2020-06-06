@@ -5,7 +5,7 @@
     kind: ResourceClaim
     namespace: "{{ poolboy_test_namespace }}"
     label_selectors:
-    - "{{ poolboy_domain }}/test=simple"
+    - "{{ poolboy_domain }}/test=babylon"
   register: r_test_claims
 
 - name: Remove finalizer from test ResourceClaims
@@ -41,7 +41,7 @@
     kind: ResourceHandle
     namespace: "{{ poolboy_namespace }}"
     label_selectors:
-    - "{{ poolboy_domain }}/resource-provider-name=test-simple"
+    - "{{ poolboy_domain }}/resource-provider-name=test-babylon"
   register: r_test_handles
 
 - name: Remove test ResourceHandles
