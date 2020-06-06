@@ -55,3 +55,30 @@
   loop_control:
     loop_var: _resource
     label: "{{ _resource.kind }} {{ _resource.metadata.name }}"
+
+- name: Wait for Anarchy Deployment to become ready
+  k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: anarchy
+    namespace: "{{ poolboy_test_babylon_anarchy_namespace }}"
+  register: r_get_anarchy_deployment
+  failed_when: >-
+    r_get_anarchy_deployment.resources[0].status.availableReplicas | default(0) == 0
+  until: r_get_anarchy_deployment is success
+  retries: 5
+  delay: 3
+
+- name: Wait for Anarchy Runner Pods to become available
+  k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ poolboy_test_babylon_anarchy_namespace }}"
+    label_selectors:
+    - anarchy.gpte.redhat.com/runner=default
+  register: r_get_anarchy_runner_pods
+  failed_when: >-
+    r_get_anarchy_runner_pods.resources | default([]) | length == 0
+  until: r_get_anarchy_runner_pods is success
+  retries: 5
+  delay: 3
