@@ -737,7 +737,7 @@ def start_resource_watch(resource_definition):
     else:
         watcher_name = '{}:{}'.format(api_version, kind)
 
-    if watcher_name in ResourceProvider.resource_watchers:
+    if watcher_name in ko.watchers:
         return
 
     if '/' in api_version:
@@ -745,14 +745,13 @@ def start_resource_watch(resource_definition):
     else:
         group, version = None, api_version
 
-    w = ko.watcher(
+    w = ko.create_watcher(
         name=watcher_name,
         kind=kind,
         group=group,
         namespace=namespace,
         version=version
     )
-    ResourceProvider.resource_watchers[watcher_name] = w
     w.handler = watch_resource_event
     w.start()
 

@@ -2,3 +2,5 @@
 *.swp
 *.pyc
 __pycache__
+.odo/
+.odo/odo-file-index.json

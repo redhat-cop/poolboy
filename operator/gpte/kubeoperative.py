@@ -136,12 +136,23 @@ class Watcher(object):
             try:
                 self.watch()
             except Exception as e:
-                self.operative.logger.exception("Error in watch loop: %s", e)
-                time.sleep(60)
+                if isinstance(e, kubernetes.client.rest.ApiException) \
+                and e.status == 403:
+                    self.operative.logger.exception("Forbidden response on watch: %s", e)
+                    del self.operative.watchers[self.name]
+                    return
+                else:
+                    self.operative.logger.exception("Error in watch loop: %s", e)
+                    time.sleep(30)
 
     def watch(self):
         stream = kubernetes.watch.Watch().stream(self.method, *self.method_args)
         for event in stream:
+            # Exit without processing if watch was removed
+            if not self.name in self.operative.watchers:
+                return
+
+            # Handle event object
             event_obj = event['object']
             if event['type'] == 'ERROR' \
             and event_obj['kind'] == 'Status':
@@ -176,7 +187,6 @@ class KubeOperative(object):
         operator_namespace=None
     ):
         self.api_groups = {}
-        self.watcher_list = []
         self.watchers = {}
         self.__init_logger(logging_format, logging_level)
         self.__init_domain(operator_domain)
@@ -548,14 +558,7 @@ class KubeOperative(object):
                 patch=patch
             )
 
-    def start_watchers(self):
-        for w in self.watcher_list:
-            w.preload()
-
-        for w in self.watcher_list:
-            w.start()
-
-    def watcher(self, kind, name=None, namespace=None, group=None, preload=False, version='v1'):
+    def create_watcher(self, kind, name=None, namespace=None, group=None, preload=False, version='v1'):
         if not name:
             if group:
                 if namespace:
@@ -578,6 +581,5 @@ class KubeOperative(object):
             version=version
         )
 
-        self.watcher_list.append(w)
         self.watchers[name] = w
         return w

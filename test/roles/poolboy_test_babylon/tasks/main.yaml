@@ -1,0 +1,10 @@
+---
+- name: Setup for test
+  include_tasks: setup.yaml
+
+- name: Run test
+  include_tasks: test.yaml
+
+- name: Cleanup for test
+  include_tasks: cleanup.yaml
+  when: poolboy_test_cleanup | bool

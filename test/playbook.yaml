@@ -5,6 +5,7 @@
     poolboy_test_oc_cmd: oc
     poolboy_tests:
     - simple
+    - babylon
   tasks:
   - name: Run tests
     include_role:

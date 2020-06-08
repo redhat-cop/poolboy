@@ -1,0 +1,108 @@
+---
+# FIXME - This should go from a local template to pulling configuration from the redhat-cop/babylon repo
+- name: Create test-babylon ResourceProvider
+  k8s:
+    state: present
+    definition: "{{ lookup('template', 'resource-provider.yaml.j2') | from_yaml }}"
+  vars:
+    _name: test-babylon
+
+- name: Create ResourceClaim test-babylon-1
+  k8s:
+    definition: "{{ resource_definition | from_yaml }}"
+  vars:
+    resource_definition: |
+      apiVersion: {{ poolboy_domain }}/v1
+      kind: ResourceClaim
+      metadata:
+        name: test-babylon-1
+        namespace: {{ poolboy_test_namespace }}
+      spec:
+        resources:
+        - template:
+            apiVersion: {{ anarchy_domain }}/v1
+            kind: AnarchySubject
+            metadata:
+              annotations:
+                {{ poolboy_domain }}/resource-provider-name: test-babylon
+                {{ poolboy_domain }}/resource-provider-namespace: {{ poolboy_namespace }}
+              labels:
+                anarchy.gpte.redhat.com/test: babylon-poolboy
+            spec:
+              governor: test-babylon
+              vars:
+                desired_state: started
+                job_vars:
+                  account_id: gpte
+                  aws_hosted_zone_id: Z3IHLWJZOU9SRT
+                  aws_region: us-east-1
+                  babylon_scm_reference: three-tier-app-prod-1.14
+                  cloud_provider: ec2
+                  email: babylon@example.com
+                  env_type: three-tier-app
+                  key_name: ocpkey
+                  subdomain_base_suffix: .example.opentlc.com
+
+- name: Get ResourceClaim test-babylon-1
+  k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-babylon-1
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_test_1_claim
+  vars:
+    _claim: "{{ r_test_1_claim.resources[0] }}"
+  failed_when: >-
+    'status' not in _claim or
+    _claim.status.resources | default([]) | length != 1 or
+    'state' not in _claim.status.resources[0]
+  until: r_test_1_claim is success
+  retries: 10
+  delay: 5
+
+- name: Check claim test-babylon-1
+  assert:
+    that:
+    - _claim.status.resources[0].state.kind == 'AnarchySubject'
+    - _claim.status.resources[0].state.metadata.namespace == anarchy_namespace
+    - _claim.status.resources[0].state.spec.vars.job_vars.guid == _claim.status.resourceHandle.name[-5:]
+    fail_msg: test-babylon-1 resource not found as expected
+    success_msg: test-babylon-1 resource looks good
+  vars:
+    _claim: "{{ r_test_1_claim.resources[0] }}"
+
+- name: Wait for ResourceClaim test-babylon-1 AnarchySubject started
+  k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-babylon-1
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_test_1_claim
+  vars:
+    _claim: "{{ r_test_1_claim.resources[0] }}"
+  failed_when: >-
+    _claim.status.resources[0].state.spec.vars.current_state | default('') != 'started'
+  until: r_test_1_claim is success
+  retries: 10
+  delay: 5
+
+- name: Delete claim test-babylon-1
+  k8s:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-babylon-1
+    namespace: "{{ poolboy_test_namespace }}"
+    state: absent
+
+- name: Check that anarchy subject has been deleted
+  k8s_info:
+    api_version: _claim.status.resource.apiVersion
+    kind: _claim.status.resources[0].state.kind
+    name: _claim.status.resources[0].state.metadata.name
+    namespace: _claim.status.resources[0].state.metadata.namespace
+  vars:
+    _claim: "{{ r_test_1_claim.resources[0] }}"
+  register: r_get_subject
+  failed_when: r_get_subject.resources
+  retries: 10
+  delay: 5
