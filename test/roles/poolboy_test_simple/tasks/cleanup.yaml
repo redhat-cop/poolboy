@@ -23,3 +23,13 @@
     api_version: v1
     kind: Namespace
     name: "{{ poolboy_test_namespace }}"
+
+- name: Wait for namespace deletion
+  k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: "{{ poolboy_test_namespace }}"
+  register: r_get_namespace
+  until: r_get_namespace.resources | default([]) | length == 0
+  delay: 5
+  retries: 10

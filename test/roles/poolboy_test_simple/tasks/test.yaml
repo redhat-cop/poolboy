@@ -137,7 +137,7 @@
   failed_when: >-
     'state' not in _claim.status.resources[0]
   until: r_get_test_1 is success
-  retries: 5
+  retries: 10
   delay: 3
 
 - name: Check ResourceClaim test-1 resource in status values

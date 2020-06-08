@@ -15,6 +15,20 @@
       metadata:
         name: "{{ poolboy_test_babylon_anarchy_namespace }}"
 
+- name: Clone redhat-cop/anarchy repository
+  git:
+    repo: https://github.com/redhat-cop/anarchy.git
+    dest: "{{ poolboy_test_babylon_anarchy_git_path }}"
+
+- name: Create symlink for anarchy babylon test role
+  file:
+    state: link
+    dest: "{{ role_path }}/../{{ item }}"
+    src: "{{ poolboy_test_babylon_anarchy_git_path }}/test/roles/{{ item }}"
+  loop:
+  - anarchy_test_babylon
+  - anarchy_test_cleanup
+
 - name: Create poolboy/anarchy RBAC
   k8s:
     definition: "{{ lookup('template', _template) }}"
@@ -82,3 +96,23 @@
   until: r_get_anarchy_runner_pods is success
   retries: 5
   delay: 3
+
+- name: Get Route for anarchy
+  k8s_info:
+    api_version: route.openshift.io/v1
+    kind: Route
+    name: anarchy
+    namespace: "{{ poolboy_test_babylon_anarchy_namespace }}"
+  register: r_get_route
+  failed_when: r_get_route.resources | length != 1
+
+- name: Set facts for anarchy variables
+  set_fact:
+    anarchy_namespace: "{{ poolboy_test_babylon_anarchy_namespace }}"
+    anarchy_callback_base_url: "https://{{ r_get_route.resources[0].spec.host }}"
+    anarchy_test_babylon_server_path: "{{ poolboy_test_babylon_anarchy_git_path }}/test/server"
+
+- name: Run anarchy babylon test setup
+  include_role:
+    name: anarchy_test_babylon
+    tasks_from: setup.yaml
