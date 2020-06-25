@@ -570,7 +570,7 @@ parameters:
 - name: NAMESPACE
   value: poolboy
 - name: IMAGE
-  value: quay.io/redhat-cop/poolboy:latest
+  value: quay.io/redhat-cop/poolboy:v0.3.7
 - name: IMAGE_PULL_POLICY
   value: IfNotPresent
 - name: SERVICE_NAME
