@@ -100,8 +100,6 @@ spec:
                         type: string
                       namespace:
                         type: string
-                        state:
-                          type: object
                   state:
                     description: Resource state synchronized from managed resource
                     type: object
