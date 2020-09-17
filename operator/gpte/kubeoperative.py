@@ -166,7 +166,7 @@ class Watcher(object):
                         self.operative.logger.info('Restarting watch %s, reason %s', self.method_args, event_obj['reason'])
                         return
                     else:
-                        raise Exception("Watch failure: reason {}, message {}", event_obj['reason'], event_obj['message'])
+                        raise Exception("Watch failure: reason {}, message {}".format(event_obj['reason'], event_obj['message']))
             else:
                 try:
                     self.handler(event)
