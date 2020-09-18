@@ -17,6 +17,10 @@ spec:
     storage: true
     subresources:
       status: {}
+    additionalPrinterColumns:
+    - name: Handle
+      type: string
+      jsonPath: .status.resourceHandle.name
     schema:
       openAPIV3Schema:
         description: >-

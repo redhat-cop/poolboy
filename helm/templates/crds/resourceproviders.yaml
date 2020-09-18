@@ -17,6 +17,13 @@ spec:
     storage: true
     subresources:
       status: {}
+    additionalPrinterColumns:
+    - name: Api Version
+      type: string
+      jsonPath: .spec.match.apiVersion
+    - name: Kind
+      type: string
+      jsonPath: .spec.match.kind
     schema:
       openAPIV3Schema:
         description: >-
