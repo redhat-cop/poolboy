@@ -45,7 +45,7 @@ def bind_handle_to_claim(handle, claim, logger):
     claim_name = claim_meta['name']
     handle_meta = handle['metadata']
     handle_name = handle_meta['name']
-    pool_ref = handle['spec'].get('resourcePool', {})
+    pool_ref = handle['spec'].get('resourcePool')
 
     logger.info(
         'binding ResourceHandle %s to RsourceClaim %s in %s',
@@ -608,6 +608,13 @@ def manage_handle_deleted(handle, logger):
     handle_meta = handle['metadata']
     handle_name = handle_meta['name']
     logger.info('ResourceHandle %s deleted', handle_name)
+
+    claim_ref = handle['spec'].get('resourceClaim')
+    pool_ref = handle['spec'].get('resourcePool')
+
+    # Delete of unclaimed handle from pool may require replacement
+    if pool_ref and not claim_ref:
+        manage_pool_by_ref(pool_ref, logger)
 
 def manage_handle_lost_resource(handle_name, resource, resource_index):
     try:
