@@ -74,3 +74,17 @@ helm template poolboy helm/ \
 --set=image.repository=$(oc get imagestream poolboy -o jsonpath='{.status.tags[?(@.tag=="latest")].items[0].dockerImageReference}') \
 | oc apply -f -
 ----
+
+## Testing
+
+Deploy test prerequisites:
+
+----
+oc process -f test/test-setup-template.yaml | oc apply -f -
+----
+
+Run tests with Ansible:
+
+----
+ansbile-playbook test/test-playbook.yaml
+----
