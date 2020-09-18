@@ -45,13 +45,14 @@ def bind_handle_to_claim(handle, claim, logger):
     claim_name = claim_meta['name']
     handle_meta = handle['metadata']
     handle_name = handle_meta['name']
+    pool_ref = handle['spec'].get('resourcePool', {})
 
     logger.info(
         'binding ResourceHandle %s to RsourceClaim %s in %s',
         handle_name, claim_name, claim_namespace
     )
 
-    return ko.custom_objects_api.patch_namespaced_custom_object(
+    handle = ko.custom_objects_api.patch_namespaced_custom_object(
         ko.operator_domain, ko.version, ko.operator_namespace, 'resourcehandles', handle_name,
         {
             'metadata': {
@@ -70,6 +71,11 @@ def bind_handle_to_claim(handle, claim, logger):
             }
         }
     )
+
+    if pool_ref:
+        manage_pool_by_ref(pool_ref, logger)
+
+    return handle
 
 def create_handle_for_claim(claim, logger):
     """
@@ -665,6 +671,20 @@ def manage_pool(pool, logger):
         return
     for i in range(handle_deficit):
          create_handle_for_pool(pool, logger)
+
+def manage_pool_by_ref(ref, logger):
+    try:
+        pool = ko.custom_objects_api.get_namespaced_custom_object(
+            ko.operator_domain, ko.version, ref['namespace'],
+            'resourcepools', ref['name']
+        )
+    except kubernetes.client.rest.ApiException as e:
+        if e.status == 404:
+            logger.warning('Unable to find ResourcePool %s/%s', ref['namespace'], ref['name'])
+            return
+        else:
+            raise
+    manage_pool(pool, logger)
 
 def manage_pool_deleted(pool, logger):
     pool_meta = pool['metadata']

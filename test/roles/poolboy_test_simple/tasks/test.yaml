@@ -2,19 +2,12 @@
 - name: Create test ResourceProvider
   k8s:
     state: present
-    definition: "{{ lookup('template', 'resource-provider.yaml.j2') | from_yaml }}"
-  vars:
-    _name: test
-    _resource_namespace: '{% raw %}{{: resource_claim.metadata.namespace :}}{% endraw %}'
+    definition: "{{ lookup('template', 'test-resource-provider.yaml.j2') | from_yaml }}"
 
 - name: Create test-claim-required ResourceProvider
   k8s:
     state: present
-    definition: "{{ lookup('template', 'resource-provider.yaml.j2') | from_yaml }}"
-  vars:
-    _name: test-claim-required
-    _resource_requires_claim: True
-    _resource_namespace: '{% raw %}{{: resource_claim.metadata.namespace :}}{% endraw %}'
+    definition: "{{ lookup('template', 'test-claim-required-resource-provider.yaml.j2') | from_yaml }}"
 
 - name: Create ResourceClaim test-1
   k8s:
@@ -39,6 +32,7 @@
                 {{ poolboy_domain }}/resource-provider-name: test
                 {{ poolboy_domain }}/resource-provider-namespace: {{ poolboy_namespace }}
               generateName: test-
+              namespace: {{ poolboy_test_namespace }}
             spec:
               governor: test
               vars:
@@ -174,6 +168,8 @@
               annotations:
                 {{ poolboy_domain }}/resource-provider-name: test
                 {{ poolboy_domain }}/resource-provider-namespace: {{ poolboy_namespace }}
+              generateName: test-
+              namespace: {{ poolboy_test_namespace }}
             spec:
               governor: test
               vars:
@@ -304,6 +300,7 @@
               annotations:
                 {{ poolboy_domain }}/resource-provider-name: test
                 {{ poolboy_domain }}/resource-provider-namespace: {{ poolboy_namespace }}
+              namespace: {{ poolboy_test_namespace }}
             spec:
               governor: test
               vars:
@@ -351,6 +348,7 @@
               annotations:
                 {{ poolboy_domain }}/resource-provider-name: test
                 {{ poolboy_domain }}/resource-provider-namespace: {{ poolboy_namespace }}
+              namespace: {{ poolboy_test_namespace }}
             spec:
               governor: test
               vars:

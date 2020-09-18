@@ -90,8 +90,8 @@
   failed_when: >-
     r_get_anarchy_deployment.resources[0].status.availableReplicas | default(0) == 0
   until: r_get_anarchy_deployment is success
-  retries: 5
-  delay: 3
+  retries: 10
+  delay: 5
 
 - name: Wait for Anarchy Runner Pods to become available
   k8s_info:
@@ -104,8 +104,8 @@
   failed_when: >-
     r_get_anarchy_runner_pods.resources | default([]) | length == 0
   until: r_get_anarchy_runner_pods is success
-  retries: 5
-  delay: 3
+  retries: 10
+  delay: 5
 
 - name: Get Route for anarchy
   k8s_info:

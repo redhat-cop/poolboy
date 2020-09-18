@@ -3,6 +3,14 @@
 Poolboy development can be performed in the `odo` OpenShift developer CLI or building with OpenShift build configs.
 Use of `odo` is recommended for fast iterative development.
 
+== Prerequisite
+
+Poolboy uses [Kopf](https://github.com/zalando-incubator/kopf) and needs the kopf peering CRDs installed.
+
+----
+oc apply -f https://raw.githubusercontent.com/zalando-incubator/kopf/master/peering.yaml
+----
+
 ## Using odo
 
 The `odo` developer CLI can be installed as described in the OpenShift documentation:
@@ -86,5 +94,5 @@ oc process -f test/test-setup-template.yaml | oc apply -f -
 Run tests with Ansible:
 
 ----
-ansbile-playbook test/test-playbook.yaml
+ansible-playbook test/playbook.yaml
 ----

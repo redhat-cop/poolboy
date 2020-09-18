@@ -1,18 +1,17 @@
 ---
-apiVersion: {{ operator_domain }}/v1
+apiVersion: {{ poolboy_domain }}/v1
 kind: ResourceProvider
 metadata:
-  name: {{ name | default('test') }}
-  namespace: {{ operator_namespace }}
+  name: test-claim-required
+  namespace: {{ poolboy_namespace }}
 spec:
   match:
-    apiVersion: {{ operator_domain }}/v1
+    apiVersion: {{ poolboy_domain }}/v1
     kind: ResourceClaimTest
     metadata:
       annotations:
-        {{ operator_domain }}/resource-provider-name: {{ name | default('test') }}
-        {{ operator_domain }}/resource-provider-namespace: {{ operator_namespace }}
-  resourceRequiresClaim: {{ resource_requires_claim | default(False) }}
+        {{ poolboy_domain }}/resource-provider-name: test-claim-required
+        {{ poolboy_domain }}/resource-provider-namespace: {{ poolboy_namespace }}
 {% raw %}
   matchIgnore:
   - /spec/vars/desired_state
@@ -23,20 +22,19 @@ spec:
     spec:
       vars:
         action_schedule:
-          destroy: "{{: timestamp.utcnow.add('8d') if resource_claim else '' :}}"
-          stop: "{{: timestamp.utcnow.add('8h') if resource_claim else '' :}}"
+          destroy: "{{: timestamp.utcnow.add('8d') :}}"
+          stop: "{{: timestamp.utcnow.add('8h') :}}"
         desired_state: started
   override:
     metadata:
-{% endraw %}
-      namespace: {{ resource_namespace | default(operator_test_namespace) | to_json }}
-{% raw %}
+      namespace: "{{: resource_claim.metadata.namespace :}}"
     spec:
       vars:
         guid: >-
           {{: resource_handle.metadata.name[5:]
            if resource_handle.metadata.name.startswith('guid-')
            else resource_handle.metadata.name :}}
+  resourceRequiresClaim: true
   updateFilters:
   - pathMatch: /spec/var/action_schedule/destroy
     allowedOps: ['add', 'replace']
@@ -63,7 +61,7 @@ spec:
           type: string
           enum:
 {% endraw %}
-          - "{{ operator_domain }}/v1"
+          - "{{ poolboy_domain }}/v1"
 {% raw %}
         kind:
           type: string

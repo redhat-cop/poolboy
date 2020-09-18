@@ -20,6 +20,7 @@ spec:
         annotations:
           {{ poolboy_domain }}/resource-provider-name: test
           {{ poolboy_domain }}/resource-provider-namespace: {{ poolboy_namespace }}
+        namespace: {{ poolboy_test_namespace }}
       spec:
         governor: test
         vars:
