@@ -222,27 +222,16 @@ class KubeOperative(object):
             self.operator_namespace = 'poolboy'
 
     def __init_kube_apis(self):
-        if os.path.exists('/run/secrets/kubernetes.io/serviceaccount/token'):
-            f = open('/run/secrets/kubernetes.io/serviceaccount/token')
-            kube_auth_token = f.read()
-            kube_config = kubernetes.client.Configuration()
-            kube_config.api_key['authorization'] = 'Bearer ' + kube_auth_token
-            kube_config.host = os.environ['KUBERNETES_PORT'].replace('tcp://', 'https://', 1)
-            kube_config.ssl_ca_cert = '/run/secrets/kubernetes.io/serviceaccount/ca.crt'
+        if os.path.exists('/run/secrets/kubernetes.io/serviceaccount'):
+            kubernetes.config.load_incluster_config()
         else:
             kubernetes.config.load_kube_config()
-            kube_config = None
 
-        self.core_v1_api = kubernetes.client.CoreV1Api(
-            kubernetes.client.ApiClient(kube_config)
-        )
-        self.custom_objects_api = kubernetes.client.CustomObjectsApi(
-            kubernetes.client.ApiClient(kube_config)
-        )
+        self.core_v1_api = kubernetes.client.CoreV1Api()
+        self.custom_objects_api = kubernetes.client.CustomObjectsApi()
+
         # Hack to allow json-patch, hopefully we can remove this in the future
-        self.custom_objects_api_jsonpatch = kubernetes.client.CustomObjectsApi(
-            kubernetes.client.ApiClient(kube_config)
-        )
+        self.custom_objects_api_jsonpatch = kubernetes.client.CustomObjectsApi()
         self.custom_objects_api_jsonpatch.api_client.select_header_content_type = \
             lambda _ : 'application/json-patch+json'
 
