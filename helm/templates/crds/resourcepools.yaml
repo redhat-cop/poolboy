@@ -17,6 +17,10 @@ spec:
     storage: true
     subresources:
       status: {}
+    additionalPrinterColumns:
+    - name: Min
+      type: integer
+      jsonPath: .spec.minAvailable
     schema:
       openAPIV3Schema:
         description: >-
