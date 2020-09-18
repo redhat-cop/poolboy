@@ -85,7 +85,6 @@ spec:
                   Flag to indicate that creation of resource for handle should waint until a claim
                   is bound.
                 type: boolean
-                default: false
               updateFilters:
                 description: >-
                   Restrictions to apply to changes which can propagate from the ResourceClaim
