@@ -1,125 +1,133 @@
 {{- if .Values.crds.create -}}
----
-apiVersion: apiextensions.k8s.io/v1beta1
+apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   name: resourceproviders.{{ include "poolboy.operatorDomain" . }}
 spec:
   group: {{ include "poolboy.operatorDomain" . }}
-  version: v1
   scope: Namespaced
   names:
     plural: resourceproviders
     singular: resourceprovider
     kind: ResourceProvider
     shortNames: []
-  validation:
-    openAPIV3Schema:
-      description: >-
-        ResourceProviders describe how to manage resources from settings in ResourceClaims and
-        ResourceHandles.
-      type: object
-      required:
-      - apiVersion
-      - kind
-      - metadata
-      - spec
-      properties:
-        apiVersion:
-          type: string
-        kind:
-          type: string
-        metadata:
-          type: object
-        spec:
-          description: >-
-            Specification of how the ResourceProvider should manage resources.
-          type: object
-          required:
-          - match
-          properties:
-            match:
-              description: >-
-                Partial resource definition used to check if a resource in a handle or claim
-                matches this provider.
-              type: object
-            matchIgnore:
-              description: >-
-                Regular expressions used to filter out differences between a resources in
-                a claim or when matching to a handle. Comparison is made by generating a
-                JSON Patch (RFC 6902) comparison between the resource definitions. If any
-                of these regular expressions matches the JSON Pointer (IETF 6901) path
-                component of the patch then it is ignored.
-              type: array
-              items:
-                type: string
-            default:
-              description:
-                Template applied to resource claims immediately after matching to the provider
-                to set default values into the claim when not present.
-              type: object
-            override:
-              description: >-
-                Override template that is merged with the ResourceHandle resource template to
-                generate the final resource definition.
-              type: object
-            updateFilters:
-              description: >-
-                Restrictions to apply to changes which can propagate from the ResourceClaim
-                resource template to the ResourceHandle resource template.
-              type: array
-              items:
+  versions:
+  - name: v1
+    served: true
+    storage: true
+    subresources:
+      status: {}
+    schema:
+      openAPIV3Schema:
+        description: >-
+          ResourceProviders describe how to manage resources from settings in ResourceClaims and
+          ResourceHandles.
+        type: object
+        required:
+        - apiVersion
+        - kind
+        - metadata
+        - spec
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: >-
+              Specification of how the ResourceProvider should manage resources.
+            type: object
+            required:
+            - match
+            properties:
+              match:
+                description: >-
+                  Partial resource definition used to check if a resource in a handle or claim
+                  matches this provider.
                 type: object
-                required:
-                - pathMatch
+                x-kubernetes-preserve-unknown-fields: true
+              matchIgnore:
+                description: >-
+                  Regular expressions used to filter out differences between a resources in
+                  a claim or when matching to a handle. Comparison is made by generating a
+                  JSON Patch (RFC 6902) comparison between the resource definitions. If any
+                  of these regular expressions matches the JSON Pointer (IETF 6901) path
+                  component of the patch then it is ignored.
+                type: array
+                items:
+                  type: string
+              default:
+                description:
+                  Template applied to resource claims immediately after matching to the provider
+                  to set default values into the claim when not present.
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+              override:
+                description: >-
+                  Override template that is merged with the ResourceHandle resource template to
+                  generate the final resource definition.
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+              updateFilters:
+                description: >-
+                  Restrictions to apply to changes which can propagate from the ResourceClaim
+                  resource template to the ResourceHandle resource template.
+                type: array
+                items:
+                  type: object
+                  required:
+                  - pathMatch
+                  properties:
+                    allowedOps:
+                      description: >-
+                        List of operations that are allowed propagate from the ResourceClaim to the
+                        ResourceHandle resource definition. These are checked against the generated
+                        JSON Patch items which may have verbs "add", "replace", and "remove". If
+                        not given, then all operations are allowed.
+                      type: array
+                      items:
+                        type: string
+                    pathMatch:
+                      description: >-
+                        Regular expression used to match against the calculated JSON Patch path.
+                        Regular expressions must match the entire path.
+                      type: string
+              validation:
+                description: >-
+                  Validation to apply to ResourceClaim resource templates.
+                type: object
                 properties:
-                  allowedOps:
+                  customValidation:
                     description: >-
-                      List of operations that are allowed propagate from the ResourceClaim to the
-                      ResourceHandle resource definition. These are checked against the generated
-                      JSON Patch items which may have verbs "add", "replace", and "remove". If
-                      not given, then all operations are allowed.
+                      WARNING! This feature is not yet implemented!
+                      Custom validation of ResourceClaim resource template using Jinja2 expressions.
                     type: array
                     items:
-                      type: string
-                  pathMatch:
+                      type: object
+                      required:
+                      - name
+                      - check
+                      properties:
+                        name:
+                          description: >-
+                            Descriptive name of what is checked to communicate when check fails.
+                          type: string
+                        check:
+                          description: >-
+                            Jinja2 expression which must evaluate to a true value for the ResourceClaim
+                            resource template.
+                          type: string
+                  openAPIV3Schema:
                     description: >-
-                      Regular expression used to match against the calculated JSON Patch path.
-                      Regular expressions must match the entire path.
-                    type: string
-            validation:
-              description: >-
-                Validation to apply to ResourceClaim resource templates.
-              type: object
-              properties:
-                customValidation:
-                  description: >-
-                    WARNING! This feature is not yet implemented!
-                    Custom validation of ResourceClaim resource template using Jinja2 expressions.
-                  type: array
-                  items:
+                      OpenAPI 3.0 data model (schema) used to validate ResourceClaim resource templates.
+                      This is the same schema specification used by CustomResourceDefinitions (CRDs)
+                      but with support for additional features supported such as disallowing
+                      additional properties of objects. These schemas can be used to place limits
+                      on resource definitions beyond the definition of the cluster API such as to
+                      restrict a string field to a particular set of allowed values or numeric
+                      fields to specific numeric ranges.
                     type: object
-                    required:
-                    - name
-                    - check
-                    properties:
-                      name:
-                        description: >-
-                          Descriptive name of what is checked to communicate when check fails.
-                        type: string
-                      check:
-                        description: >-
-                          Jinja2 expression which must evaluate to a true value for the ResourceClaim
-                          resource template.
-                        type: string
-                openAPIV3Schema:
-                  description: >-
-                    OpenAPI 3.0 data model (schema) used to validate ResourceClaim resource templates.
-                    This is the same schema specification used by CustomResourceDefinitions (CRDs)
-                    but with support for additional features supported such as disallowing
-                    additional properties of objects. These schemas can be used to place limits
-                    on resource definitions beyond the definition of the cluster API such as to
-                    restrict a string field to a particular set of allowed values or numeric
-                    fields to specific numeric ranges.
-                  type: object
+                    x-kubernetes-preserve-unknown-fields: true
 {{- end -}}

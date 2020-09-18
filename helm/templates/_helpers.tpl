@@ -48,7 +48,9 @@ Selector labels
 */}}
 {{- define "poolboy.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "poolboy.name" . }}
+{{-   if (ne .Release.Name "RELEASE-NAME") }}
 app.kubernetes.io/instance: {{ .Release.Name }}
+{{-   end -}}
 {{- end -}}
 
 {{/*
@@ -89,5 +91,9 @@ Create the operator domain to use
 Define the image to deploy
 */}}
 {{- define "poolboy.image" -}}
-{{- printf "%s:%s" .Values.image.repository (default .Chart.AppVersion .Values.image.tagOverride) -}}
+  {{- if eq .Values.image.tagOverride "-" -}}
+    {{- .Values.image.repository -}}
+  {{- else -}}
+    {{- printf "%s:%s" .Values.image.repository (default .Chart.AppVersion .Values.image.tagOverride) -}}
+  {{- end -}}
 {{- end -}}

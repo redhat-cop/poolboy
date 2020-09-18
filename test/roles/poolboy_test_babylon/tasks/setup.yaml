@@ -43,29 +43,39 @@
 - name: Cleanup Test Resources
   include_tasks: cleanup-resources.yaml
 
-- name: Process template for Anarchy CRDs and ClusterRoles
-  command: >-
-    oc process --local -f https://raw.githubusercontent.com/redhat-cop/anarchy/master/install-template.yaml -o json
-  register: r_oc_process_anarchy_install
+- name: Create tempfile for test
+  tempfile:
+    state: directory
+  register: r_tempfile
+  changed_when: false
 
-- name: Create anarchy install resources
+- name: Set test_tempdir
+  set_fact:
+    test_tempdir: "{{ r_tempfile.path }}"
+
+- name: Clone Anarchy Repository
+  git:
+    repo: https://github.com/redhat-cop/anarchy.git
+    dest: "{{ test_tempdir }}/anarchy"
+  changed_when: false
+
+- name: Process Anarchy helm Template
+  command: >-
+    helm template {{ (test_tempdir ~ '/anarchy/helm') | quote }}
+    --set namespace.name={{ poolboy_test_babylon_anarchy_namespace | quote }}
+    --include-crds
+  changed_when: false
+  register: r_anarchy_helm_template
+
+- name: Remove test tempdir
+  file:
+    path: test_tempdir
+    state: absent
+
+- name: Create anarchy resources
   k8s:
     definition: "{{ _resource }}"
-  loop: "{{ r_oc_process_anarchy_install.stdout | from_json | json_query('items') }}"
-  loop_control:
-    loop_var: _resource
-    label: "{{ _resource.kind }} {{ _resource.metadata.name }}"
-
-- name: Process template for Anarchy Deployment
-  command: >-
-    oc process --local -f https://raw.githubusercontent.com/redhat-cop/anarchy/master/deploy-template.yaml -o json
-  register: r_oc_process_anarchy_deploy
-
-- name: Deploy Anarchy for Poolboy Test
-  k8s:
-    namespace: "{{ poolboy_test_babylon_anarchy_namespace }}"
-    definition: "{{ _resource }}"
-  loop: "{{ r_oc_process_anarchy_deploy.stdout | from_json | json_query('items') }}"
+  loop: "{{ r_anarchy_helm_template.stdout | from_yaml_all | list }}"
   loop_control:
     loop_var: _resource
     label: "{{ _resource.kind }} {{ _resource.metadata.name }}"

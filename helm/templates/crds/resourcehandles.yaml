@@ -1,111 +1,114 @@
 {{- if .Values.crds.create -}}
----
-apiVersion: apiextensions.k8s.io/v1beta1
+apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   name: resourcehandles.{{ include "poolboy.operatorDomain" . }}
 spec:
   group: {{ include "poolboy.operatorDomain" . }}
-  version: v1
   scope: Namespaced
   names:
     plural: resourcehandles
     singular: resourcehandle
     kind: ResourceHandle
     shortNames: []
-  validation:
-    openAPIV3Schema:
-      description: >-
-        ResourceHandles describe resources managed by Poolboy and ResourceProviders used
-        to manage those resources. All ResourceHandles should exist in the poolboy namespace
-        with names beginning with the string "guid-" to prevent naming conflicts in generated
-        resource names.
-      type: object
-      required:
-      - apiVersion
-      - kind
-      - metadata
-      - spec
-      properties:
-        apiVersion:
-          type: string
-        kind:
-          type: string
-        metadata:
-          type: object
-        spec:
-          description: ResourceHandle specification
-          type: object
-          required:
-          - resources
-          properties:
-            resourceClaim:
-              description: >-
-                ResourceClaim reference for claim matched to this ResourceHandle
-                when the handle has been claimed.
-              type: object
-              required:
-              - apiVersion
-              - kind
-              - name
-              - namespace
-              properties:
-                apiVersion:
-                  type: string
-                kind:
-                  type: string
-                name:
-                  type: string
-                namespace:
-                  type: string
-            resources:
-              description: >-
-                List of resources managed by a ResourceHandle
-              type: array
-              items:
+  versions:
+  - name: v1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        description: >-
+          ResourceHandles describe resources managed by Poolboy and ResourceProviders used
+          to manage those resources. All ResourceHandles should exist in the poolboy namespace
+          with names beginning with the string "guid-" to prevent naming conflicts in generated
+          resource names.
+        type: object
+        required:
+        - apiVersion
+        - kind
+        - metadata
+        - spec
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: ResourceHandle specification
+            type: object
+            required:
+            - resources
+            properties:
+              resourceClaim:
+                description: >-
+                  ResourceClaim reference for claim matched to this ResourceHandle
+                  when the handle has been claimed.
                 type: object
                 required:
-                - provider
-                - template
+                - apiVersion
+                - kind
+                - name
+                - namespace
                 properties:
-                  provider:
-                    description: >-
-                      Reference to ResourceProvider
-                    type: object
-                    required:
-                    - apiVersion
-                    - kind
-                    - name
-                    - namespace
-                    properties:
-                      apiVersion:
-                        type: string
-                      kind:
-                        type: string
-                      name:
-                        type: string
-                      namespace:
-                        type: string
-                  reference:
-                    description: >-
-                      Reference to managed resource
-                    type: object
-                    required:
-                    - apiVersion
-                    - kind
-                    - name
-                    properties:
-                      apiVersion:
-                        type: string
-                      kind:
-                        type: string
-                      name:
-                        type: string
-                      namespace:
-                        type: string
-                  template:
-                    description: >-
-                      Resource template. Once a ResourceClaim is matched to a handle the
-                      claim's template is used to manage the handle template.
-                    type: object
+                  apiVersion:
+                    type: string
+                  kind:
+                    type: string
+                  name:
+                    type: string
+                  namespace:
+                    type: string
+              resources:
+                description: >-
+                  List of resources managed by a ResourceHandle
+                type: array
+                items:
+                  type: object
+                  required:
+                  - provider
+                  - template
+                  properties:
+                    provider:
+                      description: >-
+                        Reference to ResourceProvider
+                      type: object
+                      required:
+                      - apiVersion
+                      - kind
+                      - name
+                      - namespace
+                      properties:
+                        apiVersion:
+                          type: string
+                        kind:
+                          type: string
+                        name:
+                          type: string
+                        namespace:
+                          type: string
+                    reference:
+                      description: >-
+                        Reference to managed resource
+                      type: object
+                      required:
+                      - apiVersion
+                      - kind
+                      - name
+                      properties:
+                        apiVersion:
+                          type: string
+                        kind:
+                          type: string
+                        name:
+                          type: string
+                        namespace:
+                          type: string
+                    template:
+                      description: >-
+                        Resource template. Once a ResourceClaim is matched to a handle the
+                        claim's template is used to manage the handle template.
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
 {{- end -}}

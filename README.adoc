@@ -58,6 +58,14 @@ Because the resource status is monitored and synced to the ResourceClaim status,
 
 Each AnarchySubject has a `spec.desiredState`. The ResourceProvider `spec.updateFilters` allow this field to be updated while the `spec.validation` OpenAPIv3 check enforces that it can only be set to explicitly permitted values.
 
+## Installation
+
+Install from helm template:
+
+----
+helm template poolboy helm/ | oc apply -f -
+----
+
 ## Build
 
 ### OpenShift Build
@@ -77,31 +85,11 @@ oc start-build poolboy -n poolboy --from-dir=. --follow
 . Deploy Poolboy from build image
 +
 ----
-oc process --local \
-  -f deploy-template.yaml \
-  -p NAMESPACE=poolboy \
-  -p IMAGE=$(oc get imagestream poolboy -n poolboy -o jsonpath='{.status.tags[?(@.tag=="latest")].items[0].dockerImageReference}') \
-| oc apply -n poolboy -f -
+helm template poolboy helm/ \
+--set=image.tagOverride=- \
+--set=image.repository=$(oc get imagestream poolboy -o jsonpath='{.status.tags[?(@.tag=="latest")].items[0].dockerImageReference}') \
+| oc apply -f -
 ----
-
-### Using Helm
-
-Helm v3 support only.
-
-. Clone this repo to your local workstation and change directory:
-+
-----
-git clone https://github.com/redhat-cop/poolboy.git
-cd poolboy
-----
-
-. Install with Helm
-+
-----
-helm template poolboy helm/ | oc apply -f -
-----
-
-CAUTION: The anarchy namespace must already exist as we will create objects in that namespace. The default is `anarchy-operator` but can be configured in `value.yaml` or with `--set anarchy.namespace=<anarchy namespace>` above.
 
 ## Credits
 

@@ -18,7 +18,7 @@ oc apply -f https://raw.githubusercontent.com/redhat-cop/containers-quickstarts/
 Create poolboy resources from the provided deploy template:
 
 --------------------------------------------------------------------------------
-oc process --local -f deploy-template.yaml -p NAMESPACE=poolboy | oc apply -f -
+helm template poolboy helm/ | oc apply -f -
 --------------------------------------------------------------------------------
 
 Scale down the poolboy deployment:
@@ -69,9 +69,8 @@ oc start-build poolboy -n poolboy --from-dir=. --follow
 . Deploy Poolboy from build image
 +
 ----
-oc process --local \
-  -f deploy-template.yaml \
-  -p NAMESPACE=poolboy \
-  -p IMAGE=$(oc get imagestream poolboy -n poolboy -o jsonpath='{.status.tags[?(@.tag=="latest")].items[0].dockerImageReference}') \
-| oc apply -n poolboy -f -
+helm template poolboy helm/ \
+--set=image.tagOverride=- \
+--set=image.repository=$(oc get imagestream poolboy -o jsonpath='{.status.tags[?(@.tag=="latest")].items[0].dockerImageReference}') \
+| oc apply -f -
 ----
