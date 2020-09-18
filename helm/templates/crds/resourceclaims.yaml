@@ -21,6 +21,9 @@ spec:
     - name: Handle
       type: string
       jsonPath: .status.resourceHandle.name
+    - name: Age
+      type: date
+      jsonPath: .metadata.creationTimestamp
     schema:
       openAPIV3Schema:
         description: >-

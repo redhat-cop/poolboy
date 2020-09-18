@@ -21,6 +21,9 @@ spec:
     - name: Min
       type: integer
       jsonPath: .spec.minAvailable
+    - name: Age
+      type: date
+      jsonPath: .metadata.creationTimestamp
     schema:
       openAPIV3Schema:
         description: >-

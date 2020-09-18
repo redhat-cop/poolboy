@@ -16,12 +16,18 @@ spec:
     served: true
     storage: true
     additionalPrinterColumns:
-    - name: Claim Name
+    - name: Pool
       type: string
-      jsonPath: .spec.resourceClaim.name
+      jsonPath: .spec.resourcePool.name
     - name: Claim Namespace
       type: string
       jsonPath: .spec.resourceClaim.namespace
+    - name: Claim Name
+      type: string
+      jsonPath: .spec.resourceClaim.name
+    - name: Age
+      type: date
+      jsonPath: .metadata.creationTimestamp
     schema:
       openAPIV3Schema:
         description: >-
@@ -52,6 +58,24 @@ spec:
                 description: >-
                   ResourceClaim reference for claim matched to this ResourceHandle
                   when the handle has been claimed.
+                type: object
+                required:
+                - apiVersion
+                - kind
+                - name
+                - namespace
+                properties:
+                  apiVersion:
+                    type: string
+                  kind:
+                    type: string
+                  name:
+                    type: string
+                  namespace:
+                    type: string
+              resourcePool:
+                description: >-
+                  ResourcePool reference for pool that created this handle.
                 type: object
                 required:
                 - apiVersion

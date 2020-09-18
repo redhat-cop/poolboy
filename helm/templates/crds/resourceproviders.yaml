@@ -24,6 +24,9 @@ spec:
     - name: Kind
       type: string
       jsonPath: .spec.match.kind
+    - name: Age
+      type: date
+      jsonPath: .metadata.creationTimestamp
     schema:
       openAPIV3Schema:
         description: >-
@@ -49,6 +52,12 @@ spec:
             required:
             - match
             properties:
+              default:
+                description:
+                  Template applied to resource claims immediately after matching to the provider
+                  to set default values into the claim when not present.
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
               match:
                 description: >-
                   Partial resource definition used to check if a resource in a handle or claim
@@ -65,18 +74,18 @@ spec:
                 type: array
                 items:
                   type: string
-              default:
-                description:
-                  Template applied to resource claims immediately after matching to the provider
-                  to set default values into the claim when not present.
-                type: object
-                x-kubernetes-preserve-unknown-fields: true
               override:
                 description: >-
                   Override template that is merged with the ResourceHandle resource template to
                   generate the final resource definition.
                 type: object
                 x-kubernetes-preserve-unknown-fields: true
+              resourceRequiresClaim:
+                description: >-
+                  Flag to indicate that creation of resource for handle should waint until a claim
+                  is bound.
+                type: boolean
+                default: false
               updateFilters:
                 description: >-
                   Restrictions to apply to changes which can propagate from the ResourceClaim
