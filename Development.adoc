@@ -85,12 +85,6 @@ helm template poolboy helm/ \
 
 ## Testing
 
-Deploy test prerequisites:
-
-----
-oc process -f test/test-setup-template.yaml | oc apply -f -
-----
-
 Run tests with Ansible:
 
 ----
