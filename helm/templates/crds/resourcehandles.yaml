@@ -48,6 +48,11 @@ spec:
             type: string
           metadata:
             type: object
+            properties:
+              name:
+                type: string
+                maxLength: 63
+                pattern: ^guid-[a-z0-9\-]*[a-z0-9]$
           spec:
             description: ResourceHandle specification
             type: object
