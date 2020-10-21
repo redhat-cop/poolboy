@@ -10,6 +10,7 @@ import openapi_schema_validator
 import os
 import prometheus_client
 import re
+import threading
 import time
 
 from gpte.util import dict_merge, recursive_process_template_strings
@@ -20,6 +21,8 @@ ko = gpte.kubeoperative.KubeOperative(
 providers = {}
 provider_init_delay = int(os.environ.get('PROVIDER_INIT_DELAY', 10))
 start_time = time.time()
+
+pool_management_lock = threading.Lock()
 
 def add_finalizer_to_handle(handle, logger):
     handle_meta = handle['metadata']
@@ -672,12 +675,14 @@ def manage_pool(pool, logger):
         add_finalizer_to_pool(pool, logger)
         return
 
-    unbound_handle_count = len(get_unbound_handles_for_pool(pool_name, logger))
-    handle_deficit = pool['spec'].get('minAvailable', 0) - unbound_handle_count
-    if handle_deficit <= 0:
-        return
-    for i in range(handle_deficit):
-         create_handle_for_pool(pool, logger)
+    with pool_management_lock:
+        unbound_handle_count = len(get_unbound_handles_for_pool(pool_name, logger))
+        handle_deficit = pool['spec'].get('minAvailable', 0) - unbound_handle_count
+        if handle_deficit <= 0:
+            return
+        for i in range(handle_deficit):
+            handle = create_handle_for_pool(pool, logger)
+            logger.info('Created ResourceHandle %s for ResourcePool %s', handle['metadata']['name'], pool_name)
 
 def manage_pool_by_ref(ref, logger):
     try:
