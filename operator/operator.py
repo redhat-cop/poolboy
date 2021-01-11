@@ -83,7 +83,7 @@ def bind_handle_to_claim(handle, claim, logger):
 def create_handle_for_claim(claim, logger):
     """
     Create resoruce handle for claim, called after claim is validated and failed
-    to match an available handel.
+    to match an available handle.
     """
     claim_name = claim['metadata']['name']
     claim_namespace = claim['metadata']['namespace']
@@ -729,6 +729,8 @@ def match_handle_to_claim(claim, logger):
     else:
         label_selector = '!{0}/resource-claim-name'.format(ko.operator_domain)
 
+    best_match = None
+    best_match_diff_count = None
     for handle in ko.custom_objects_api.list_namespaced_custom_object(
         ko.operator_domain, ko.version, ko.operator_namespace, 'resourcehandles',
         label_selector=label_selector
@@ -740,6 +742,7 @@ def match_handle_to_claim(claim, logger):
             # Claim cannot match handle if there is a different resource count
             continue
 
+        diff_count = 0
         is_match = True
         for i, claim_resource in enumerate(claim_resources):
             handle_resource = handle_resources[i]
@@ -748,11 +751,22 @@ def match_handle_to_claim(claim, logger):
                 is_match = False
                 break
             provider = ResourceProvider.find_provider_by_name(provider_name)
-            if not provider.check_template_match(handle_resource['template'], claim_resource['template'], logger):
+            diff_patch = provider.check_template_match(handle_resource['template'], claim_resource['template'], logger)
+            if diff_patch != None:
+                # Match with (possibly empty) difference list
+                diff_count += len(diff_patch)
+            else:
                 is_match = False
                 break
         if is_match:
-            return handle
+            if diff_count == 0:
+                # perfect match, search no further
+                return handle
+            elif not best_match or best_match_diff_count > diff_count:
+                best_match = handle
+                best_match_diff_count = diff_count
+
+    return best_match
 
 def pause_for_provider_init():
     if time.time() < start_time + provider_init_delay:
@@ -921,8 +935,8 @@ class ResourceProvider(object):
                 if ignore_re.match(item['path']):
                     ignored = True
             if not ignored:
-                return False
-        return True
+                return None
+        return patch
 
     def is_match_for_template(self, template):
         """
