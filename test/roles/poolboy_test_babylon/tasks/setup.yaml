@@ -90,7 +90,7 @@
   failed_when: >-
     r_get_anarchy_deployment.resources[0].status.availableReplicas | default(0) == 0
   until: r_get_anarchy_deployment is success
-  retries: 10
+  retries: 20
   delay: 5
 
 - name: Wait for Anarchy Runner Pods to become available

@@ -274,9 +274,49 @@
     state: present
     definition: "{{ lookup('template', 'resource-pool.yaml.j2') | from_yaml }}"
 
-- name: Pause for poool handle creation
-  pause:
-    seconds: 2
+- name: Get ResourceHandle for pool
+  k8s_info:
+    api_version: poolboy.gpte.redhat.com/v1
+    kind: ResourceHandle
+    namespace: "{{ poolboy_namespace }}"
+    label_selectors:
+    - poolboy.gpte.redhat.com/resource-pool-name=test
+    - poolboy.gpte.redhat.com/resource-pool-namespace={{ poolboy_namespace }}
+  register: r_get_pool_resource_handle
+  failed_when: >-
+    r_get_pool_resource_handle.resources | length != 1
+  until: r_get_pool_resource_handle is success
+  retries: 10
+  delay: 1
+
+- name: Set first_pool_resource_handle_name
+  set_fact:
+    first_pool_resource_handle_name: "{{ r_get_pool_resource_handle.resources[0].metadata.name }}"
+
+- name: Scale up resource pool
+  k8s:
+    api_version: poolboy.gpte.redhat.com/v1
+    kind: ResourcePool
+    namespace: "{{ poolboy_namespace }}"
+    name: test
+    definition:
+      spec:
+        minAvailable: 3
+
+- name: Verify pool scale-up
+  k8s_info:
+    api_version: poolboy.gpte.redhat.com/v1
+    kind: ResourceHandle
+    namespace: "{{ poolboy_namespace }}"
+    label_selectors:
+    - poolboy.gpte.redhat.com/resource-pool-name=test
+    - poolboy.gpte.redhat.com/resource-pool-namespace={{ poolboy_namespace }}
+  register: r_get_pool_resource_handle
+  failed_when: >-
+    r_get_pool_resource_handle.resources | length != 3
+  until: r_get_pool_resource_handle is success
+  retries: 10
+  delay: 1
 
 - name: Create ResourceClaim test-pool-match
   k8s:
@@ -320,6 +360,28 @@
                 desired_state: started
                 name: test-pool
                 number: 2323
+
+- debug: var=first_pool_resource_handle_name
+
+- name: Verify claim test-pool-match
+  k8s_facts:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-pool-match
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_test_pool_match_claim
+  vars:
+    claim: "{{ r_get_test_pool_match_claim.resources[0] }}"
+  failed_when: >-
+    claim.status.resources[0].state.kind != 'ResourceClaimTest' or
+    not claim.status.resources[0].state.metadata.name.startswith('test-pool-') or
+    claim.status.resources[0].state.metadata.namespace != poolboy_test_namespace or
+    claim.status.resources[0].state.spec.vars.name != 'test-pool' or
+    claim.status.resources[0].state.spec.vars.number != 23 or
+    claim.status.resourceHandle.name != first_pool_resource_handle_name
+  until: r_get_test_pool_match_claim is success
+  retries: 10
+  delay: 1
 
 - name: Create ResourceClaim test-pool-explicit
   k8s:
@@ -374,51 +436,24 @@
                 name: test-pool
                 number: 2323
 
-- name: Pause for claim binding
-  pause:
-    seconds: 2
-
-- name: Get resource claim test-pool-match
-  k8s_facts:
-    api_version: "{{ poolboy_domain }}/v1"
-    kind: ResourceClaim
-    name: test-pool-match
-    namespace: "{{ poolboy_test_namespace }}"
-  register: r_get_test_pool_match_claim
-
-- name: Get resource claim test-pool-explicit
+- name: Verify resource claim test-pool-explicit
   k8s_facts:
     api_version: "{{ poolboy_domain }}/v1"
     kind: ResourceClaim
     name: test-pool-explicit
     namespace: "{{ poolboy_test_namespace }}"
   register: r_get_test_pool_explicit_claim
-
-- name: Check claim test-pool-match
-  assert:
-    that:
-    - claim.status.resources[0].state.kind == 'ResourceClaimTest'
-    - claim.status.resources[0].state.metadata.name.startswith('test-pool-')
-    - claim.status.resources[0].state.metadata.namespace == poolboy_test_namespace
-    - claim.status.resources[0].state.spec.vars.name == 'test-pool'
-    - claim.status.resources[0].state.spec.vars.number == 23
-    fail_msg: test-pool-match resource not found as expected
-    success_msg: test-pool-match resource looks good
-  vars:
-    claim: "{{ r_get_test_pool_match_claim.resources[0] }}"
-
-- name: Check claim test-pool-explicit
-  assert:
-    that:
-    - claim.status.resources[0].state.kind == 'ResourceClaimTest'
-    - claim.status.resources[0].state.metadata.name.startswith('test-pool-')
-    - claim.status.resources[0].state.metadata.namespace == poolboy_test_namespace
-    - claim.status.resources[0].state.spec.vars.name == 'test-pool'
-    - claim.status.resources[0].state.spec.vars.number == 23
-    fail_msg: test-pool-explicit resource not found as expected
-    success_msg: test-pool-explicit resource looks good
   vars:
     claim: "{{ r_get_test_pool_explicit_claim.resources[0] }}"
+  failed_when: >-
+    claim.status.resources[0].state.kind != 'ResourceClaimTest' or
+    not claim.status.resources[0].state.metadata.name.startswith('test-pool-') or
+    claim.status.resources[0].state.metadata.namespace != poolboy_test_namespace or
+    claim.status.resources[0].state.spec.vars.name != 'test-pool' or
+    claim.status.resources[0].state.spec.vars.number != 23
+  until: r_get_test_pool_explicit_claim is success
+  retries: 10
+  delay: 1
 
 - name: Delete test resource pool
   k8s:
