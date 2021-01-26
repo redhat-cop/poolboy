@@ -731,6 +731,7 @@ def match_handle_to_claim(claim, logger):
 
     best_match = None
     best_match_diff_count = None
+    best_match_creation_timestamp = None
     for handle in ko.custom_objects_api.list_namespaced_custom_object(
         ko.operator_domain, ko.version, ko.operator_namespace, 'resourcehandles',
         label_selector=label_selector
@@ -758,12 +759,14 @@ def match_handle_to_claim(claim, logger):
             else:
                 is_match = False
                 break
+
         if is_match:
-            if diff_count == 0:
-                # perfect match, search no further
-                return handle
-            elif not best_match or best_match_diff_count > diff_count:
+            # Prefer match with the smallest diff_count and the earliest creation timestamp
+            if not best_match \
+            or best_match_diff_count > diff_count \
+            or (best_match_diff_count == diff_count and  best_match_creation_timestamp > handle['metadata']['creationTimestamp']):
                 best_match = handle
+                best_match_creation_timestamp = handle['metadata']['creationTimestamp']
                 best_match_diff_count = diff_count
 
     return best_match
