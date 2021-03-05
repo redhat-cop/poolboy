@@ -15,6 +15,11 @@ import time
 
 from gpte.util import dict_merge, recursive_process_template_strings
 
+@kopf.on.startup()
+def configure(settings: kopf.OperatorSettings, **_):
+    # Disable scanning for CustomResourceDefinitions
+    settings.scanning.disabled = True
+
 ko = gpte.kubeoperative.KubeOperative(
     operator_domain = os.environ.get('OPERATOR_DOMAIN', 'poolboy.gpte.redhat.com')
 )

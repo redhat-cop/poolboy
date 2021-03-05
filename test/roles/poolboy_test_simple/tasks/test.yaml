@@ -276,12 +276,12 @@
 
 - name: Get ResourceHandle for pool
   k8s_info:
-    api_version: poolboy.gpte.redhat.com/v1
+    api_version: "{{ poolboy_domain }}/v1"
     kind: ResourceHandle
     namespace: "{{ poolboy_namespace }}"
     label_selectors:
-    - poolboy.gpte.redhat.com/resource-pool-name=test
-    - poolboy.gpte.redhat.com/resource-pool-namespace={{ poolboy_namespace }}
+    - "{{ poolboy_domain }}/resource-pool-name=test"
+    - "{{ poolboy_domain }}/resource-pool-namespace={{ poolboy_namespace }}"
   register: r_get_pool_resource_handle
   failed_when: >-
     r_get_pool_resource_handle.resources | length != 1
@@ -295,7 +295,7 @@
 
 - name: Scale up resource pool
   k8s:
-    api_version: poolboy.gpte.redhat.com/v1
+    api_version: "{{ poolboy_domain }}/v1"
     kind: ResourcePool
     namespace: "{{ poolboy_namespace }}"
     name: test
@@ -305,12 +305,12 @@
 
 - name: Verify pool scale-up
   k8s_info:
-    api_version: poolboy.gpte.redhat.com/v1
+    api_version: "{{ poolboy_domain }}/v1"
     kind: ResourceHandle
     namespace: "{{ poolboy_namespace }}"
     label_selectors:
-    - poolboy.gpte.redhat.com/resource-pool-name=test
-    - poolboy.gpte.redhat.com/resource-pool-namespace={{ poolboy_namespace }}
+    - "{{ poolboy_domain }}/resource-pool-name=test"
+    - "{{ poolboy_domain }}/resource-pool-namespace={{ poolboy_namespace }}"
   register: r_get_pool_resource_handle
   failed_when: >-
     r_get_pool_resource_handle.resources | length != 3

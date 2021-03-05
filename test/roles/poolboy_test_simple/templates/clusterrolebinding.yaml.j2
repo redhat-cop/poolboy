@@ -9,5 +9,5 @@ roleRef:
   name: {{ (poolboy_namespace ~ '-test') | to_json }}
 subjects:
 - kind: ServiceAccount
-  name: poolboy
+  name: {{ poolboy_service_account }}
   namespace: {{ poolboy_namespace | to_json }}

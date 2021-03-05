@@ -1,0 +1,148 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: resourcehandles.poolboy.gpte.redhat.com
+spec:
+  group: poolboy.gpte.redhat.com
+  scope: Namespaced
+  names:
+    plural: resourcehandles
+    singular: resourcehandle
+    kind: ResourceHandle
+    shortNames: []
+  versions:
+  - name: v1
+    served: true
+    storage: true
+    additionalPrinterColumns:
+    - name: Pool
+      type: string
+      jsonPath: .spec.resourcePool.name
+    - name: Claim Namespace
+      type: string
+      jsonPath: .spec.resourceClaim.namespace
+    - name: Claim Name
+      type: string
+      jsonPath: .spec.resourceClaim.name
+    - name: Age
+      type: date
+      jsonPath: .metadata.creationTimestamp
+    schema:
+      openAPIV3Schema:
+        description: >-
+          ResourceHandles describe resources managed by Poolboy and ResourceProviders used
+          to manage those resources. All ResourceHandles should exist in the poolboy namespace
+          with names beginning with the string "guid-" to prevent naming conflicts in generated
+          resource names.
+        type: object
+        required:
+        - apiVersion
+        - kind
+        - metadata
+        - spec
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+            properties:
+              name:
+                type: string
+                maxLength: 63
+                pattern: ^guid-[a-z0-9\-]*[a-z0-9]$
+          spec:
+            description: ResourceHandle specification
+            type: object
+            required:
+            - resources
+            properties:
+              resourceClaim:
+                description: >-
+                  ResourceClaim reference for claim matched to this ResourceHandle
+                  when the handle has been claimed.
+                type: object
+                required:
+                - apiVersion
+                - kind
+                - name
+                - namespace
+                properties:
+                  apiVersion:
+                    type: string
+                  kind:
+                    type: string
+                  name:
+                    type: string
+                  namespace:
+                    type: string
+              resourcePool:
+                description: >-
+                  ResourcePool reference for pool that created this handle.
+                type: object
+                required:
+                - apiVersion
+                - kind
+                - name
+                - namespace
+                properties:
+                  apiVersion:
+                    type: string
+                  kind:
+                    type: string
+                  name:
+                    type: string
+                  namespace:
+                    type: string
+              resources:
+                description: >-
+                  List of resources managed by a ResourceHandle
+                type: array
+                items:
+                  type: object
+                  required:
+                  - provider
+                  - template
+                  properties:
+                    provider:
+                      description: >-
+                        Reference to ResourceProvider
+                      type: object
+                      required:
+                      - apiVersion
+                      - kind
+                      - name
+                      - namespace
+                      properties:
+                        apiVersion:
+                          type: string
+                        kind:
+                          type: string
+                        name:
+                          type: string
+                        namespace:
+                          type: string
+                    reference:
+                      description: >-
+                        Reference to managed resource
+                      type: object
+                      required:
+                      - apiVersion
+                      - kind
+                      - name
+                      properties:
+                        apiVersion:
+                          type: string
+                        kind:
+                          type: string
+                        name:
+                          type: string
+                        namespace:
+                          type: string
+                    template:
+                      description: >-
+                        Resource template. Once a ResourceClaim is matched to a handle the
+                        claim's template is used to manage the handle template.
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true

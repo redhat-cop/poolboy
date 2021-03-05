@@ -13,7 +13,7 @@ namespace:
 crds:
   create: true
 
-operator_domain:
+operatorDomain:
   # Specifies whether the operator domain should be generatedi (default: poolboy.gpte.redhat.com)
   generate: true
   # The name of the operator domain to use
@@ -27,6 +27,7 @@ anarchy:
   namespace: anarchy-operator
   service: anarchy-operator
 
+deploy: true
 replicaCount: 1
 
 image:

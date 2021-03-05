@@ -80,10 +80,10 @@ Create the name of the namespace to use
 Create the operator domain to use
 */}}
 {{- define "poolboy.operatorDomain" -}}
-{{- if .Values.operator_domain.generate -}}
-    {{ default (printf "%s.gpte.redhat.com" (include "poolboy.name" .)) .Values.operator_domain.name }}
+{{- if .Values.operatorDomain.generate -}}
+    {{ default (printf "%s.gpte.redhat.com" (include "poolboy.name" .)) .Values.operatorDomain.name }}
 {{- else -}}
-    {{ default "default" .Values.operator_domain.name }}
+    {{ default "default" .Values.operatorDomain.name }}
 {{- end -}}
 {{- end -}}
 
