@@ -60,14 +60,6 @@ Each AnarchySubject has a `spec.desiredState`. The ResourceProvider `spec.update
 
 ## Installation
 
-=== Prerequisite
-
-Poolboy uses [Kopf](https://github.com/zalando-incubator/kopf) and needs the kopf peering CRDs installed.
-
-----
-oc apply -f https://raw.githubusercontent.com/zalando-incubator/kopf/master/peering.yaml
-----
-
 === Poolboy Install
 
 Install from helm template:
