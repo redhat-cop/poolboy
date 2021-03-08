@@ -15,7 +15,7 @@ jobs:
     - name: Checkout source
       uses: actions/checkout@v2
 
-    - name: Get the version
+    - name: Get image tags
       id: image_tags
       run: |
         # Version is a semantic version tag or semantic version with release number

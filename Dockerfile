@@ -1,4 +1,4 @@
-FROM quay.io/redhat-cop/python-kopf-s2i:v0.28
+FROM quay.io/redhat-cop/python-kopf-s2i:v1.29
 
 USER root
 
