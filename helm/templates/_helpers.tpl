@@ -53,6 +53,27 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{-   end -}}
 {{- end -}}
 
+{{- define "poolboy.adminUiSelectorLabels" -}}
+app.kubernetes.io/name: {{ include "poolboy.name" . }}-admin-ui
+{{-   if (ne .Release.Name "RELEASE-NAME") }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{-   end -}}
+{{- end -}}
+
+{{- define "poolboy.adminApiSelectorLabels" -}}
+app.kubernetes.io/name: {{ include "poolboy.name" . }}-admin-api
+{{-   if (ne .Release.Name "RELEASE-NAME") }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{-   end -}}
+{{- end -}}
+
+{{- define "poolboy.redisSelectorLabels" -}}
+app.kubernetes.io/name: {{ include "poolboy.name" . }}-redis
+{{-   if (ne .Release.Name "RELEASE-NAME") }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{-   end -}}
+{{- end -}}
+
 {{/*
 Create the name of the service account to use
 */}}
@@ -97,5 +118,25 @@ Define the image to deploy
     {{- printf "%s:%s" .Values.image.repository .Values.image.tagOverride -}}
   {{- else -}}
     {{- printf "%s:v%s" .Values.image.repository .Chart.AppVersion -}}
+  {{- end -}}
+{{- end -}}
+
+{{- define "poolboy.adminUiImage" -}}
+  {{- if eq .Values.adminUi.image.tagOverride "-" -}}
+    {{- .Values.adminUi.image.repository -}}
+  {{- else if .Values.adminUi.image.tagOverride -}}
+    {{- printf "%s:%s" .Values.adminUi.image.repository .Values.adminUi.image.tagOverride -}}
+  {{- else -}}
+    {{- printf "%s:v%s" .Values.adminUi.image.repository .Chart.AppVersion -}}
+  {{- end -}}
+{{- end -}}
+
+{{- define "poolboy.adminApiImage" -}}
+  {{- if eq .Values.adminUi.apiImage.tagOverride "-" -}}
+    {{- .Values.adminUi.apiImage.repository -}}
+  {{- else if .Values.adminUi.apiImage.tagOverride -}}
+    {{- printf "%s:%s" .Values.adminUi.apiImage.repository .Values.adminUi.apiImage.tagOverride -}}
+  {{- else -}}
+    {{- printf "%s:v%s" .Values.adminUi.apiImage.repository .Chart.AppVersion -}}
   {{- end -}}
 {{- end -}}

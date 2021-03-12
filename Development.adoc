@@ -112,6 +112,8 @@ helm template helm \
 --set operatorDomain.name=poolboy.dev.local \
 --set=image.tagOverride=- \
 --set=image.repository=$(oc get imagestream poolboy -o jsonpath='{.status.tags[?(@.tag=="latest")].items[0].dockerImageReference}') \
+--set=image.apiImage.tagOverride=- \
+--set=adminUi.apiImage.repository=$(oc get imagestream poolboy-admin-api -o jsonpath='{.status.tags[?(@.tag=="latest")].items[0].dockerImageReference}') \
 | oc apply -f -
 --------------------------------------------------------------------------------
 
