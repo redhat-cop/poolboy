@@ -54,7 +54,7 @@ objects:
 - apiVersion: image.openshift.io/v1
   kind: ImageStream
   metadata:
-    name: ${NAME}-admin-api
+    name: ${NAME}-admin
   spec:
     lookupPolicy:
       local: false
@@ -62,50 +62,17 @@ objects:
 - apiVersion: v1
   kind: BuildConfig
   metadata:
-    name: ${NAME}-admin-api
+    name: ${NAME}-admin
   spec:
     output:
       to:
         kind: ImageStreamTag
-        name: ${NAME}-admin-api:latest
+        name: ${NAME}-admin:latest
     postCommit: {}
     resources: {}
     runPolicy: Serial
     source:
-      contextDir: admin-api
-      git:
-        uri: ${GIT_REPO}
-        ref: ${GIT_REF}
-    strategy:
-      type: Source
-      sourceStrategy:
-        from:
-          kind: DockerImage
-          name: ${PYTHON_S2I_IMAGE}
-    triggers: []
-
-- apiVersion: image.openshift.io/v1
-  kind: ImageStream
-  metadata:
-    name: ${NAME}-admin-ui
-  spec:
-    lookupPolicy:
-      local: false
-
-- apiVersion: v1
-  kind: BuildConfig
-  metadata:
-    name: ${NAME}-admin-ui
-  spec:
-    output:
-      to:
-        kind: ImageStreamTag
-        name: ${NAME}-admin-ui:latest
-    postCommit: {}
-    resources: {}
-    runPolicy: Serial
-    source:
-      contextDir: admin-ui
+      contextDir: admin
       git:
         uri: ${GIT_REPO}
         ref: ${GIT_REF}
@@ -114,3 +81,67 @@ objects:
       dockerStrategy:
         forcePull: true
     triggers: []
+
+#- apiVersion: image.openshift.io/v1
+#  kind: ImageStream
+#  metadata:
+#    name: ${NAME}-admin-api
+#  spec:
+#    lookupPolicy:
+#      local: false
+#
+#- apiVersion: v1
+#  kind: BuildConfig
+#  metadata:
+#    name: ${NAME}-admin-api
+#  spec:
+#    output:
+#      to:
+#        kind: ImageStreamTag
+#        name: ${NAME}-admin-api:latest
+#    postCommit: {}
+#    resources: {}
+#    runPolicy: Serial
+#    source:
+#      contextDir: admin-api
+#      git:
+#        uri: ${GIT_REPO}
+#        ref: ${GIT_REF}
+#    strategy:
+#      type: Source
+#      sourceStrategy:
+#        from:
+#          kind: DockerImage
+#          name: ${PYTHON_S2I_IMAGE}
+#    triggers: []
+#
+#- apiVersion: image.openshift.io/v1
+#  kind: ImageStream
+#  metadata:
+#    name: ${NAME}-admin-ui
+#  spec:
+#    lookupPolicy:
+#      local: false
+#
+#- apiVersion: v1
+#  kind: BuildConfig
+#  metadata:
+#    name: ${NAME}-admin-ui
+#  spec:
+#    output:
+#      to:
+#        kind: ImageStreamTag
+#        name: ${NAME}-admin-ui:latest
+#    postCommit: {}
+#    resources: {}
+#    runPolicy: Serial
+#    source:
+#      contextDir: admin-ui
+#      git:
+#        uri: ${GIT_REPO}
+#        ref: ${GIT_REF}
+#    strategy:
+#      type: Docker
+#      dockerStrategy:
+#        forcePull: true
+#    triggers: []

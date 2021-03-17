@@ -115,6 +115,7 @@ def send_static_file(path):
     except FileNotFoundError:
         flask.abort(404)
 
+# Paths handled by vue
 @application.route('/')
 @application.route('/about')
 @application.route('/resourceclaims')
@@ -128,21 +129,10 @@ def send_static_file(path):
 def vue_path():
     return send_static_file('index.html')
 
-@application.route('/favicon.ico')
-def favicon():
-    return send_static_file('favicon.ico')
-
-@application.route('/css/<path:path>')
-def static_css(path):
-    return send_static_file('css/' + path)
-
-@application.route('/img/<path:path>')
-def static_img(path):
-    return send_static_file('img/' + path)
-
-@application.route('/js/<path:path>')
-def static_js(path):
-    return send_static_file('js/' + path)
+# Anything else must be static
+@application.route('/<path:path>')
+def catch_all(path):
+    return send_static_file(path)
 
 if __name__ == "__main__":
     waitress.serve(

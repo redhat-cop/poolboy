@@ -1,4 +1,4 @@
-{{- if .Values.adminUi.deploy -}}
+{{- if .Values.admin.deploy -}}
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
@@ -63,9 +63,7 @@ spec:
         - --https-address=:8443
         - --provider=openshift
         - --openshift-service-account={{ include "poolboy.name" . }}-oauth-proxy
-        - --upstream=http://{{ include "poolboy.name" . }}-admin-api:8080/apis/
-        - --upstream=http://{{ include "poolboy.name" . }}-admin-api:8080/session
-        - --upstream=http://{{ include "poolboy.name" . }}-admin-ui:8080
+        - --upstream=http://{{ include "poolboy.name" . }}-admin:8080
         - --tls-cert=/etc/tls/private/tls.crt
         - --tls-key=/etc/tls/private/tls.key
         - --cookie-secret=SECRET
@@ -93,100 +91,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "poolboy.name" . }}-admin-ui
-  namespace: {{ include "poolboy.namespaceName" . }}
-  labels:
-    {{- include "poolboy.labels" . | nindent 4 }}
-spec:
-  type: ClusterIP
-  ports:
-  - name: web
-    port: 8080
-    protocol: TCP
-    targetPort: 8080
-  selector:
-    {{- include "poolboy.adminUiSelectorLabels" . | nindent 4 }}
-  sessionAffinity: None
-
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: {{ include "poolboy.serviceAccountName" . }}-admin-ui
-  namespace: {{ include "poolboy.namespaceName" . }}
-  labels:
-    {{- include "poolboy.labels" . | nindent 4 }}
-
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: {{ include "poolboy.name" . }}-admin-ui
-  namespace: {{ include "poolboy.namespaceName" . }}
-  labels:
-    {{- include "poolboy.labels" . | nindent 4 }}
-spec:
-  replicas: {{ .Values.adminUi.replicaCount }}
-  selector:
-    matchLabels:
-      {{- include "poolboy.adminUiSelectorLabels" . | nindent 6 }}
-  strategy:
-    type: RollingUpdate
-  template:
-    metadata:
-      labels:
-        {{- include "poolboy.adminUiSelectorLabels" . | nindent 8 }}
-    spec:
-      {{- with .Values.affinity }}
-      affinity:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      containers:
-      - name: manager
-        env:
-        - name: REDIS_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              key: database-password
-              name: {{ include "poolboy.name" . }}-redis
-        - name: REDIS_SERVER
-          value: {{ include "poolboy.name" . }}-redis
-        - name: REDIS_PORT
-          value: "6379"
-        image: "{{ include "poolboy.adminUiImage" . }}"
-        imagePullPolicy: {{ .Values.adminUi.image.pullPolicy }}
-        resources:
-          {{- toYaml .Values.resources | nindent 12 }}
-        livenessProbe:
-          initialDelaySeconds: 30
-          tcpSocket:
-            port: 8080
-          timeoutSeconds: 1
-        ports:
-        - containerPort: 8080
-          name: ui
-          protocol: TCP
-      {{- with .Values.imagePullSecrets }}
-      imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.nodeSelector }}
-      nodeSelector:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      restartPolicy: Always
-      serviceAccountName: {{ include "poolboy.serviceAccountName" . }}-admin-ui
-      terminationGracePeriodSeconds: 30
-      {{- with .Values.tolerations }}
-      tolerations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: {{ include "poolboy.name" . }}-admin-api
+  name: {{ include "poolboy.name" . }}-admin
   namespace: {{ include "poolboy.namespaceName" . }}
   labels:
     {{- include "poolboy.labels" . | nindent 4 }}
@@ -198,14 +103,14 @@ spec:
     protocol: TCP
     targetPort: 8080
   selector:
-    {{- include "poolboy.adminApiSelectorLabels" . | nindent 4 }}
+    {{- include "poolboy.adminSelectorLabels" . | nindent 4 }}
   sessionAffinity: None
 
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: {{ include "poolboy.serviceAccountName" . }}-admin-api
+  name: {{ include "poolboy.serviceAccountName" . }}-admin
   namespace: {{ include "poolboy.namespaceName" . }}
   labels:
     {{- include "poolboy.labels" . | nindent 4 }}
@@ -214,28 +119,28 @@ metadata:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "poolboy.name" . }}-admin-api
+  name: {{ include "poolboy.name" . }}-admin
   namespace: {{ include "poolboy.namespaceName" . }}
   labels:
     {{- include "poolboy.labels" . | nindent 4 }}
 spec:
-  replicas: {{ .Values.adminUi.replicaCount }}
+  replicas: {{ .Values.admin.replicaCount }}
   selector:
     matchLabels:
-      {{- include "poolboy.adminApiSelectorLabels" . | nindent 6 }}
+      {{- include "poolboy.adminSelectorLabels" . | nindent 6 }}
   strategy:
     type: RollingUpdate
   template:
     metadata:
       labels:
-        {{- include "poolboy.adminApiSelectorLabels" . | nindent 8 }}
+        {{- include "poolboy.adminSelectorLabels" . | nindent 8 }}
     spec:
       {{- with .Values.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       containers:
-      - name: manager
+      - name: redis
         env:
         - name: REDIS_PASSWORD
           valueFrom:
@@ -246,8 +151,8 @@ spec:
           value: {{ include "poolboy.name" . }}-redis
         - name: REDIS_PORT
           value: "6379"
-        image: "{{ include "poolboy.adminApiImage" . }}"
-        imagePullPolicy: {{ .Values.adminUi.apiImage.pullPolicy }}
+        image: "{{ include "poolboy.adminImage" . }}"
+        imagePullPolicy: {{ .Values.admin.image.pullPolicy }}
         resources:
           {{- toYaml .Values.resources | nindent 12 }}
         livenessProbe:
@@ -257,7 +162,7 @@ spec:
           timeoutSeconds: 1
         ports:
         - containerPort: 8080
-          name: ui
+          name: web
           protocol: TCP
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -268,7 +173,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       restartPolicy: Always
-      serviceAccountName: {{ include "poolboy.serviceAccountName" . }}-admin-api
+      serviceAccountName: {{ include "poolboy.serviceAccountName" . }}-admin
       terminationGracePeriodSeconds: 30
       {{- with .Values.tolerations }}
       tolerations:
@@ -279,7 +184,7 @@ spec:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: "{{ include "poolboy.name" . }}-admin-api"
+  name: "{{ include "poolboy.name" . }}-admin"
 rules:
 - apiGroups:
   - ""
@@ -293,17 +198,17 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: "{{ include "poolboy.name" . }}-admin-api"
+  name: "{{ include "poolboy.name" . }}-admin"
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: "{{ include "poolboy.name" . }}-admin-api"
+  name: "{{ include "poolboy.name" . }}-admin"
 subjects:
 - kind: ServiceAccount
-  name: "{{ include "poolboy.name" . }}-admin-api"
+  name: "{{ include "poolboy.name" . }}-admin"
   namespace: {{ include "poolboy.namespaceName" . }}
 
-{{- if .Values.adminUi.redisPassword }}
+{{- if .Values.admin.redisPassword }}
 ---
 apiVersion: v1
 kind: Secret
@@ -311,10 +216,10 @@ metadata:
   name: {{ include "poolboy.name" . }}-redis
   namespace: {{ include "poolboy.namespaceName" . }}
 data:
-  {{- if eq .Values.adminUi.redisPassword "generate" }}
+  {{- if eq .Values.admin.redisPassword "generate" }}
   database-password: {{ randAlphaNum 32 | b64enc }}
   {{- else }}
-  database-password: {{ .Values.adminUi.redisPassword | b64enc }}
+  database-password: {{ .Values.admin.redisPassword | b64enc }}
   {{- end }}
 {{- end }}
 
@@ -364,7 +269,7 @@ spec:
             secretKeyRef:
               key: database-password
               name: {{ include "poolboy.name" . }}-redis
-        image: {{ .Values.adminUi.redisImage | quote }}
+        image: {{ .Values.admin.redisImage | quote }}
         imagePullPolicy: Always
         livenessProbe:
           failureThreshold: 3

@@ -35,14 +35,10 @@ image:
   pullPolicy: Always
   tagOverride: ""
 
-adminUi:
+admin:
   deploy: true
-  apiImage:
-    repository: quay.io/redhat-cop/poolboy-admin-api
-    pullPolicy: Always
-    tagOverride: ""
   image:
-    repository: quay.io/redhat-cop/poolboy-admin-ui
+    repository: quay.io/redhat-cop/poolboy-admin
     pullPolicy: Always
     tagOverride: ""
   redisImage: image-registry.openshift-image-registry.svc:5000/openshift/redis:5-el8
