@@ -9,16 +9,18 @@ spec:
     termination: reencrypt
   to:
     kind: Service
-    name: {{ include "poolboy.name" . }}-oauth-proxy
+    name: {{ include "poolboy.name" . }}-admin
 
 ---
 apiVersion: v1
 kind: Service
 metadata:
   annotations:
-    service.alpha.openshift.io/serving-cert-secret-name: {{ include "poolboy.name" . }}-oauth-proxy
-  name: {{ include "poolboy.name" . }}-oauth-proxy
+    service.alpha.openshift.io/serving-cert-secret-name: {{ include "poolboy.name" . }}-admin-tls
+  name: {{ include "poolboy.name" . }}-admin
   namespace: {{ include "poolboy.namespaceName" . }}
+  labels:
+    {{- include "poolboy.labels" . | nindent 4 }}
 spec:
   ports:
   - name: proxy
@@ -26,7 +28,7 @@ spec:
     protocol: TCP
     targetPort: 8443
   selector:
-    app: {{ include "poolboy.name" . }}-oauth-proxy
+    {{- include "poolboy.adminSelectorLabels" . | nindent 4 }}
   type: ClusterIP
 
 ---
@@ -36,81 +38,7 @@ metadata:
   annotations:
     serviceaccounts.openshift.io/oauth-redirectreference.primary: >-
       {"kind":"OAuthRedirectReference","apiVersion":"v1","reference":{"kind":"Route","name":"{{ include "poolboy.name" . }}-admin"}}
-  name: {{ include "poolboy.name" . }}-oauth-proxy
-  namespace: {{ include "poolboy.namespaceName" . }}
-
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: {{ include "poolboy.name" . }}-oauth-proxy
-  namespace: {{ include "poolboy.namespaceName" . }}
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: {{ include "poolboy.name" . }}-oauth-proxy
-  strategy:
-    type: RollingUpdate
-  template:
-    metadata:
-      labels:
-        app: {{ include "poolboy.name" . }}-oauth-proxy
-    spec:
-      containers:
-      - name: oauth-proxy
-        args:
-        - --https-address=:8443
-        - --provider=openshift
-        - --openshift-service-account={{ include "poolboy.name" . }}-oauth-proxy
-        - --upstream=http://{{ include "poolboy.name" . }}-admin:8080
-        - --tls-cert=/etc/tls/private/tls.crt
-        - --tls-key=/etc/tls/private/tls.key
-        - --cookie-secret=SECRET
-        image: openshift/oauth-proxy:latest
-        imagePullPolicy: Always
-        ports:
-        - containerPort: 8443
-          name: public
-          protocol: TCP
-        resources: {}
-        volumeMounts:
-        - mountPath: /etc/tls/private
-          name: proxy-tls
-      restartPolicy: Always
-      schedulerName: default-scheduler
-      securityContext: {}
-      serviceAccountName: {{ include "poolboy.name" . }}-oauth-proxy
-      volumes:
-      - name: proxy-tls
-        secret:
-          defaultMode: 420
-          secretName: {{ include "poolboy.name" . }}-oauth-proxy
-
----
-apiVersion: v1
-kind: Service
-metadata:
   name: {{ include "poolboy.name" . }}-admin
-  namespace: {{ include "poolboy.namespaceName" . }}
-  labels:
-    {{- include "poolboy.labels" . | nindent 4 }}
-spec:
-  type: ClusterIP
-  ports:
-  - name: api
-    port: 8080
-    protocol: TCP
-    targetPort: 8080
-  selector:
-    {{- include "poolboy.adminSelectorLabels" . | nindent 4 }}
-  sessionAffinity: None
-
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: {{ include "poolboy.serviceAccountName" . }}-admin
   namespace: {{ include "poolboy.namespaceName" . }}
   labels:
     {{- include "poolboy.labels" . | nindent 4 }}
@@ -135,20 +63,16 @@ spec:
       labels:
         {{- include "poolboy.adminSelectorLabels" . | nindent 8 }}
     spec:
-      {{- with .Values.affinity }}
-      affinity:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
       containers:
-      - name: redis
+      - name: app
         env:
         - name: REDIS_PASSWORD
           valueFrom:
             secretKeyRef:
+              name: {{ include "poolboy.name" . }}-admin-redis
               key: database-password
-              name: {{ include "poolboy.name" . }}-redis
         - name: REDIS_SERVER
-          value: {{ include "poolboy.name" . }}-redis
+          value: {{ include "poolboy.name" . }}-admin-redis
         - name: REDIS_PORT
           value: "6379"
         image: "{{ include "poolboy.adminImage" . }}"
@@ -158,12 +82,27 @@ spec:
         livenessProbe:
           initialDelaySeconds: 30
           tcpSocket:
-            port: 8080
+            port: 5000
           timeoutSeconds: 1
+      - name: oauth-proxy
+        args:
+        - --https-address=:8443
+        - --provider=openshift
+        - --openshift-service-account={{ include "poolboy.name" . }}-admin
+        - --upstream=http://localhost:5000
+        - --tls-cert=/etc/tls/private/tls.crt
+        - --tls-key=/etc/tls/private/tls.key
+        - --cookie-secret=SECRET
+        image: openshift/oauth-proxy:latest
+        imagePullPolicy: Always
         ports:
-        - containerPort: 8080
-          name: web
+        - containerPort: 8443
+          name: public
           protocol: TCP
+        resources: {}
+        volumeMounts:
+        - mountPath: /etc/tls/private
+          name: proxy-tls
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -173,12 +112,16 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       restartPolicy: Always
-      serviceAccountName: {{ include "poolboy.serviceAccountName" . }}-admin
-      terminationGracePeriodSeconds: 30
+      serviceAccountName: {{ include "poolboy.name" . }}-admin
       {{- with .Values.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      volumes:
+      - name: proxy-tls
+        secret:
+          defaultMode: 0644
+          secretName: {{ include "poolboy.name" . }}-admin-tls
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -213,7 +156,7 @@ subjects:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: {{ include "poolboy.name" . }}-redis
+  name: {{ include "poolboy.name" . }}-admin-redis
   namespace: {{ include "poolboy.namespaceName" . }}
 data:
   {{- if eq .Values.admin.redisPassword "generate" }}
@@ -227,7 +170,7 @@ data:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "poolboy.name" . }}-redis
+  name: {{ include "poolboy.name" . }}-admin-redis
   namespace: {{ include "poolboy.namespaceName" . }}
   labels:
     {{- include "poolboy.labels" . | nindent 4 }}
@@ -245,7 +188,7 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "poolboy.name" . }}-redis
+  name: {{ include "poolboy.name" . }}-admin-redis
   namespace: {{ include "poolboy.namespaceName" . }}
   labels:
     {{- include "poolboy.labels" . | nindent 4 }}
@@ -268,7 +211,7 @@ spec:
           valueFrom:
             secretKeyRef:
               key: database-password
-              name: {{ include "poolboy.name" . }}-redis
+              name: {{ include "poolboy.name" . }}-admin-redis
         image: {{ .Values.admin.redisImage | quote }}
         imagePullPolicy: Always
         livenessProbe:
@@ -306,4 +249,4 @@ spec:
       volumes:
       - emptyDir: {}
         name: redis-data
-{{- end -}}
+{{- end }}

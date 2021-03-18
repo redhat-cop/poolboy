@@ -1,6 +1,8 @@
 <template>
   <h1>ResourceHandle {{$route.params.name}}</h1>
   <p>{{ error }}</p>
+  <p v-if="resourcePoolRef"><router-link :to="'/resourcepool/' + resourcePoolRef.namespace + '/' + resourcePoolRef.name">ResourcePool {{resourcePoolRef.name}}</router-link></p>
+  <p v-if="resourceClaimRef"><router-link :to="'/resourceclaim/' + resourceClaimRef.namespace + '/' + resourceClaimRef.name">ResourceClaim {{resourcePoolRef.namespace}}/{{resourcePoolRef.name}}</router-link></p>
   <p><router-link :to="'/resourcepool/createfrom/handle/' + $route.params.namespace + '/' + $route.params.name">Create Pool from Handle</router-link></p>
   <YamlBlob :obj='resourcehandle'/>
 </template>
@@ -13,6 +15,22 @@ export default {
   components: {
     YamlBlob
   },
+  computed: {
+    resourceClaimRef () {
+      if (this.resourcehandle && this.resourcehandle.spec.resourceClaim) {
+        return this.resourcehandle.spec.resourceClaim
+      } else {
+        return null
+      }
+    },
+    resourcePoolRef () {
+      if (this.resourcehandle && this.resourcehandle.spec.resourcePool) {
+        return this.resourcehandle.spec.resourcePool
+      } else {
+        return null
+      }
+    }
+  },
   data () {
     return {
       error: '',
@@ -20,8 +38,7 @@ export default {
     }
   },
   created () {
-    fetch('/session')
-    .then(response => response.json())
+    window.apiSession
     .then(session => {
       return fetch('/apis/poolboy.gpte.redhat.com/v1/namespaces/' + this.$route.params.namespace + '/resourcehandles/' + this.$route.params.name, {
         headers: {

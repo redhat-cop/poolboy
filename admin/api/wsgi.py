@@ -4,20 +4,14 @@ import flask
 import json
 import kubernetes
 import os
-import paste.translogger
 import pathlib
 import random
 import re
 import redis
 import string
-import waitress
 
 def random_string(length):
     return ''.join([random.choice(string.ascii_letters + string.digits) for n in range(length)])
-
-import logging
-logger = logging.getLogger('waitress')
-logger.setLevel(logging.INFO)
 
 application = flask.Flask(__name__)
 redis_connection = None
@@ -75,8 +69,12 @@ def verify_api_token(user):
         if redis_connection.get(token) != user:
             raise Exception(redis_connection.get(token) + ' != ' + user)
             flask.abort(401, description='Invalid bearer token')
-    elif user != session_token_cache.get(token):
-        flask.abort(401, description='Invalid bearer token')
+    else:
+        session_user = flask.g.session_cache.get(token) if 'session_cache' in flask.g else None
+        if not session_user:
+            flask.abort(401, description='Invalid bearer token, no user for token')
+        elif user != session_user:
+            flask.abort(401, description='Invalid bearer token, user mismatch for session token')
 
 @application.route("/session")
 def session_token():
@@ -86,24 +84,33 @@ def session_token():
         "lifetime": session_token_lifetime,
     })
 
-@application.route("/apis/<path:path>")
+@application.route("/apis/<path:path>", methods=['GET', 'PUT', 'POST', 'PATCH', 'DELETE'])
 def apis_proxy(path):
     user = proxy_user()
     verify_api_token(user)
     api_client = proxy_user_api_client(user)
+    header_params = {}
+    if flask.request.content_type:
+        header_params['Content-Type'] = flask.request.content_type
     try:
         (data) = api_client.call_api(
             flask.request.path,
             flask.request.method,
             auth_settings = ['BearerToken'],
+            body = flask.request.json,
+            header_params = header_params,
             query_params = [ (k, v) for k, v in flask.request.args.items() ],
             response_type = 'object',
             _return_http_data_only = True
         )
         return flask.jsonify(data)
     except kubernetes.client.rest.ApiException as e:
-        if e.status == 403:
-            flask.abort(e.status, description=e.reason)
+        if e.body:
+            resp = flask.make_response(e.body, e.status)
+            resp.headers['Content-Type'] = 'application/json'
+            flask.abort(resp)
+        else:
+            flask.abort(flask.make_response(flask.jsonify({"reason": e.reason}), e.status))
 
 def send_static_file(path):
     static_path = pathlib.Path(application.static_folder).resolve()
@@ -135,7 +142,4 @@ def catch_all(path):
     return send_static_file(path)
 
 if __name__ == "__main__":
-    waitress.serve(
-        paste.translogger.TransLogger(application, setup_console_handler=False),
-        listen='0.0.0.0:5000'
-    )
+    application.run()

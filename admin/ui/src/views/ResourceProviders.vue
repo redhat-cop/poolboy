@@ -27,8 +27,7 @@ export default {
     }
   },
   created () {
-    fetch('/session')
-    .then(response => response.json())
+    window.apiSession
     .then(session => {
       return fetch('/apis/poolboy.gpte.redhat.com/v1/resourceproviders', {
         headers: {
