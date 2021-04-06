@@ -85,7 +85,7 @@ Create the name of the namespace to use
 {{- if .Values.namespace.create -}}
     {{ default (include "poolboy.name" .) .Values.namespace.name }}
 {{- else -}}
-    {{ default "default" .Values.namespace.name }}
+    {{ default (include "poolboy.name" .) .Values.namespace.name }}
 {{- end -}}
 {{- end -}}
 
