@@ -1,0 +1,49 @@
+---
+apiVersion: {{ poolboy_domain }}/v1
+kind: ResourceProvider
+metadata:
+  name: test-explicit
+  namespace: {{ poolboy_namespace }}
+spec:
+  override:
+    apiVersion: {{ poolboy_domain }}/v1
+    kind: ResourceClaimTest
+    metadata:
+      generateName: test-explicit-
+      namespace: {{ poolboy_test_namespace }}
+    spec:
+      vars:
+{% raw %}
+        guid: >-
+          {{: resource_handle.metadata.name[5:]
+           if resource_handle.metadata.name.startswith('guid-')
+           else resource_handle.metadata.name :}}
+{% endraw %}
+  updateFilters:
+  - pathMatch: /spec/vars/desired_state
+    allowedOps: ['add', 'replace']
+  validation:
+    openAPIV3Schema:
+      type: object
+      required:
+      - spec
+      additionalProperties: false
+      properties:
+        spec:
+          type: object
+          required:
+          - governor
+          additionalProperties: false
+          properties:
+            governor:
+              type: string
+              default: test
+            vars:
+              type: object
+              properties:
+                desired_state:
+                  default: started
+                  type: string
+                  enum:
+                  - started
+                  - stopped

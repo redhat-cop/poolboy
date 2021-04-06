@@ -18,6 +18,7 @@ https://docs.openshift.com/container-platform/latest/cli_reference/developer_cli
 ---------------------------------------------
 helm template helm \
 --set deploy=false \
+--set admin.deploy=false \
 --set nameOverride=poolboy-dev \
 --set operatorDomain.name=poolboy.dev.local \
 | oc apply -f -
@@ -112,6 +113,8 @@ helm template helm \
 --set operatorDomain.name=poolboy.dev.local \
 --set=image.tagOverride=- \
 --set=image.repository=$(oc get imagestream poolboy -o jsonpath='{.status.tags[?(@.tag=="latest")].items[0].dockerImageReference}') \
+--set=admin.image.tagOverride=- \
+--set=admin.image.repository=$(oc get imagestream poolboy-admin -o jsonpath='{.status.tags[?(@.tag=="latest")].items[0].dockerImageReference}') \
 | oc apply -f -
 --------------------------------------------------------------------------------
 

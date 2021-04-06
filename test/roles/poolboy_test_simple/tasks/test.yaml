@@ -269,6 +269,81 @@
   register: resource_for_test_1
   failed_when: resource_for_test_1.resources
 
+- name: Create test-explicit ResourceProvider
+  k8s:
+    state: present
+    definition: "{{ lookup('template', 'test-explicit-resource-provider.yaml.j2') | from_yaml }}"
+
+- name: Create ResourceClaim test-explicit-1
+  k8s:
+    state: present
+    definition: "{{ _resource_definition | from_yaml }}"
+  vars:
+    _resource_definition: |
+      apiVersion: {{ poolboy_domain }}/v1
+      kind: ResourceClaim
+      metadata:
+        name: test-explicit-1
+        namespace: {{ poolboy_test_namespace }}
+        labels:
+          {{ poolboy_domain }}/test: simple
+      spec:
+        resources:
+        - provider:
+            apiVersion: {{ poolboy_domain }}/v1
+            kind: ResourceProvider
+            name: test-explicit
+            namespace: {{ poolboy_namespace }}
+
+- name: Wait for resource handle for claim test-explicit-1
+  k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceHandle
+    namespace: "{{ poolboy_namespace }}"
+    label_selectors:
+    - "{{ poolboy_domain }}/resource-claim-name=test-explicit-1"
+    - "{{ poolboy_domain }}/resource-claim-namespace={{ poolboy_test_namespace }}"
+  register: r_resource_handle_for_test_explicit_1
+  vars:
+    _handle: "{{ r_resource_handle_for_test_explicit_1.resources[0] }}"
+  until:
+  - r_resource_handle_for_test_explicit_1.resources | length > 0
+  - _handle.spec.resources[0].provider.name == 'test-explicit'
+  - _handle.spec.resources[0].template.spec.governor == 'test'
+  - _handle.spec.resources[0].template.spec.vars.desired_state == 'started'
+  retries: 5
+  delay: 2
+
+- name: Delete ResourceClaim test-explicit-1
+  k8s:
+    state: absent
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-explicit-1
+    namespace: "{{ poolboy_test_namespace }}"
+
+- name: Wait for resource handle delete of test-explicit-1
+  k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceHandle
+    namespace: "{{ poolboy_namespace }}"
+    label_selectors:
+    - "{{ poolboy_domain }}/resource-claim-name=test-explicit-1"
+    - "{{ poolboy_domain }}/resource-claim-namespace={{ poolboy_test_namespace }}"
+  register: r_resource_handle_for_test_explicit_1
+  until:
+  - r_resource_handle_for_test_explicit_1.resources | length == 0
+  retries: 5
+  delay: 2
+
+- name: Delete ResourceClaim test-explicit-1
+  k8s:
+    state: absent
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceProvider
+    name: test-explicit
+    namespace: "{{ poolboy_namespace }}"
+
 - name: Create test resource pool
   k8s:
     state: present
