@@ -20,10 +20,10 @@ spec:
     additionalPrinterColumns:
     - name: Api Version
       type: string
-      jsonPath: .spec.match.apiVersion
+      jsonPath: .spec.override.apiVersion
     - name: Kind
       type: string
-      jsonPath: .spec.match.kind
+      jsonPath: .spec.override.kind
     - name: Age
       type: date
       jsonPath: .metadata.creationTimestamp
@@ -54,8 +54,6 @@ spec:
             description: >-
               Specification of how the ResourceProvider should manage resources.
             type: object
-            required:
-            - match
             properties:
               default:
                 description:

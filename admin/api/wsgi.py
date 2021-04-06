@@ -70,7 +70,7 @@ def verify_api_token(user):
             raise Exception(redis_connection.get(token) + ' != ' + user)
             flask.abort(401, description='Invalid bearer token')
     else:
-        session_user = flask.g.session_cache.get(token) if 'session_cache' in flask.g else None
+        session_user = session_token_cache.get(token)
         if not session_user:
             flask.abort(401, description='Invalid bearer token, no user for token')
         elif user != session_user:

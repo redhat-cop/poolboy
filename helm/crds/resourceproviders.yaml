@@ -53,8 +53,6 @@ spec:
             description: >-
               Specification of how the ResourceProvider should manage resources.
             type: object
-            required:
-            - match
             properties:
               default:
                 description:

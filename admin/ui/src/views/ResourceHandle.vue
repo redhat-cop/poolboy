@@ -2,7 +2,7 @@
   <h1>ResourceHandle {{$route.params.name}}</h1>
   <p>{{ error }}</p>
   <p v-if="resourcePoolRef"><router-link :to="'/resourcepool/' + resourcePoolRef.namespace + '/' + resourcePoolRef.name">ResourcePool {{resourcePoolRef.name}}</router-link></p>
-  <p v-if="resourceClaimRef"><router-link :to="'/resourceclaim/' + resourceClaimRef.namespace + '/' + resourceClaimRef.name">ResourceClaim {{resourcePoolRef.namespace}}/{{resourcePoolRef.name}}</router-link></p>
+  <p v-if="resourceClaimRef"><router-link :to="'/resourceclaim/' + resourceClaimRef.namespace + '/' + resourceClaimRef.name">ResourceClaim {{resourceClaimRef.namespace}}/{{resourceClaimRef.name}}</router-link></p>
   <p><router-link :to="'/resourcepool/createfrom/handle/' + $route.params.namespace + '/' + $route.params.name">Create Pool from Handle</router-link></p>
   <YamlBlob :obj='resourcehandle'/>
 </template>

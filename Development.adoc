@@ -18,6 +18,7 @@ https://docs.openshift.com/container-platform/latest/cli_reference/developer_cli
 ---------------------------------------------
 helm template helm \
 --set deploy=false \
+--set admin.deploy=false \
 --set nameOverride=poolboy-dev \
 --set operatorDomain.name=poolboy.dev.local \
 | oc apply -f -

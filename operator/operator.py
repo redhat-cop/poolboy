@@ -13,7 +13,7 @@ import re
 import threading
 import time
 
-from gpte.util import dict_merge, recursive_process_template_strings
+from gpte.util import defaults_from_schema, dict_merge, recursive_process_template_strings
 
 @kopf.on.startup()
 def configure(settings: kopf.OperatorSettings, **_):
@@ -331,7 +331,7 @@ def manage_claim_create(claim, logger):
                 )
                 return
             resource_providers.append(provider)
-        else:
+        elif 'template' in resource:
             provider = ResourceProvider.find_provider_by_template_match(resource['template'])
             if not provider:
                 log_claim_event(
@@ -417,7 +417,7 @@ def manage_claim_init(claim, logger):
             # Update anything in resources[].provider
             { 'pathMatch': '/spec/resources/[0-9]+/provider(/.*)?', 'allowedOps': ['add', 'replace'] },
             # Only process default overrides in template
-            { 'pathMatch': '/spec/resources/[0-9]+/template/.*', 'allowedOps': ['add'] }
+            { 'pathMatch': '/spec/resources/[0-9]+/template(/.*)?', 'allowedOps': ['add'] },
         ]
     )
 
@@ -915,6 +915,10 @@ class ResourceProvider(object):
         return self.metadata['namespace']
 
     @property
+    def match(self):
+        return self.spec.get('match', None)
+
+    @property
     def match_ignore(self):
         return self.spec.get('matchIgnore', [])
 
@@ -951,13 +955,23 @@ class ResourceProvider(object):
         Check if this provider is a match for the resource template by checking
         that all fields in the match definition match the template.
         """
+        if not self.match:
+            return False
         cmp_template = copy.deepcopy(template)
-        dict_merge(cmp_template, self.spec['match'])
+        dict_merge(cmp_template, self.match)
         return template == cmp_template
 
     def resource_claim_template_defaults(self, resource_claim, resource_index):
+        defaults = self.spec.get('default', {})
+        open_api_v3_schema = self.spec.get('validation', {}).get('openAPIV3Schema', None)
+
+        if open_api_v3_schema:
+            schema_defaults = defaults_from_schema(open_api_v3_schema)
+            if schema_defaults:
+                dict_merge(defaults, schema_defaults)
+
         return recursive_process_template_strings(
-            self.spec['default'],
+            defaults,
             {
                 'resource_claim': resource_claim,
                 'resource_index': resource_index,
