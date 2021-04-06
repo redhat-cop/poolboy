@@ -1,5 +1,5 @@
 inflection==0.4.0
-Jinja2==2.11.2
+Jinja2==2.11.3
 jmespath==0.9.5
 jsonschema==3.2.0
 openapi-schema-validator==0.1.1
