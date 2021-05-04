@@ -6,6 +6,7 @@ import gpte.kubeoperative
 import json
 import kopf
 import kubernetes
+import logging
 import openapi_schema_validator
 import os
 import prometheus_client
@@ -14,6 +15,9 @@ import threading
 import time
 
 from gpte.util import defaults_from_schema, dict_merge, recursive_process_template_strings
+
+logging_level = os.environ.get('LOGGING_LEVEL', 'INFO')
+manage_handles_interval = int(os.environ.get('MANAGE_HANDLES_INTERVAL', 10))
 
 @kopf.on.startup()
 def configure(settings: kopf.OperatorSettings, **_):
@@ -28,6 +32,8 @@ provider_init_delay = int(os.environ.get('PROVIDER_INIT_DELAY', 10))
 start_time = time.time()
 
 pool_management_lock = threading.Lock()
+manage_handle_lock = threading.Lock()
+manage_handle_locks = {}
 
 def add_finalizer_to_handle(handle, logger):
     handle_meta = handle['metadata']
@@ -55,9 +61,14 @@ def bind_handle_to_claim(handle, claim, logger):
     handle_name = handle_meta['name']
     pool_ref = handle['spec'].get('resourcePool')
 
-    logger.info(
-        'binding ResourceHandle %s to RsourceClaim %s in %s',
-        handle_name, claim_name, claim_namespace
+    log_claim_event(
+        claim, logger,
+        'Binding ResourceHandle to ResourceClaim',
+        {
+            'ResourceHandle': {
+               'name': handle_name,
+            },
+        },
     )
 
     handle = ko.custom_objects_api.patch_namespaced_custom_object(
@@ -87,7 +98,7 @@ def bind_handle_to_claim(handle, claim, logger):
 
 def create_handle_for_claim(claim, logger):
     """
-    Create resoruce handle for claim, called after claim is validated and failed
+    Create resource handle for claim, called after claim is validated and failed
     to match an available handle.
     """
     claim_name = claim['metadata']['name']
@@ -100,6 +111,8 @@ def create_handle_for_claim(claim, logger):
             'provider': claim_resource_statuses[i]['provider'],
             'template': claim_resource['template']
         })
+
+    log_claim_event(claim, logger, 'Creating ResourceHandle for ResourceClaim')
 
     return ko.custom_objects_api.create_namespaced_custom_object(
         ko.operator_domain, ko.version, ko.operator_namespace, 'resourcehandles',
@@ -238,22 +251,66 @@ def get_unbound_handles_for_pool(pool_name, logger):
         )
     ).get('items', [])
 
-def log_claim_event(claim, logger, msg):
-    logger.info(
-        "ResourceClaim %s in %s: %s",
-        claim['metadata']['name'],
-        claim['metadata']['namespace'],
-        msg
-    )
+def log_claim_extra(claim, extra={}):
+    ret = copy.deepcopy(extra)
+    ret['ResourceClaim'] = {
+        'name': claim['metadata']['name'],
+        'namespace': claim['metadata']['namespace'],
+        'uid': claim['metadata']['uid'],
+    }
+    return ret
+
+def log_claim_event(claim, logger, msg, extra={}):
+    logger.info(msg, extra=log_claim_extra(claim, extra))
     # FIXME - Create event for claim
 
-def log_handle_event(handle, logger, msg):
-    logger.info(
-        "ResourceHandle %s: %s",
-        handle['metadata']['name'],
-        msg
-    )
+def log_claim_warning(claim, logger, msg, extra={}):
+    logger.warning(msg, extra=log_claim_extra(claim, extra))
+    # FIXME - Create event for claim
+
+def log_claim_error(claim, logger, msg, extra={}):
+    logger.error(msg, extra=log_claim_extra(claim, extra))
+    # FIXME - Create event for claim
+
+def log_handle_extra(handle, extra={}):
+    ret = copy.deepcopy(extra)
+    ret['ResourceHandle'] = {
+        'name': handle['metadata']['name'],
+        'uid': handle['metadata']['uid'],
+    }
+    return ret
+
+def log_handle_event(handle, logger, msg, extra={}):
+    logger.info(msg, extra=log_handle_extra(handle, extra))
     # FIXME - Create event for handle
+
+def log_handle_warning(handle, logger, msg, extra={}):
+    logger.warning(msg, extra=log_handle_extra(handle, extra))
+    # FIXME - Create event for handle
+
+def log_handle_error(handle, logger, msg, extra={}):
+    logger.error(msg, extra=log_handle_extra(handle, extra))
+    # FIXME - Create event for handle
+
+def log_pool_extra(pool, extra={}):
+    ret = copy.deepcopy(extra)
+    ret['ResourceHandle'] = {
+        'name': pool['metadata']['name'],
+        'uid': pool['metadata']['uid'],
+    }
+    return ret
+
+def log_pool_event(pool, logger, msg, extra={}):
+    logger.info(msg, extra=log_pool_extra(pool, extra))
+    # FIXME - Create event for pool
+
+def log_pool_warning(pool, logger, msg, extra={}):
+    logger.warning(msg, extra=log_pool_extra(pool, extra))
+    # FIXME - Create event for pool
+
+def log_pool_error(pool, logger, msg, extra={}):
+    logger.error(msg, extra=log_pool_extra(pool, extra))
+    # FIXME - Create event for pool
 
 def manage_claim(claim, logger):
     """
@@ -284,10 +341,12 @@ def manage_claim_bind(claim, logger):
         handle = create_handle_for_claim(claim, logger)
 
     claim_meta = claim['metadata']
+    claim_name = claim_meta['name']
+    claim_namespace = claim_meta['namespace']
     handle_meta = handle['metadata']
     handle_name = handle_meta['name']
     ko.custom_objects_api.patch_namespaced_custom_object_status(
-        ko.operator_domain, ko.version, claim_meta['namespace'], 'resourceclaims', claim_meta['name'],
+        ko.operator_domain, ko.version, claim_namespace, 'resourceclaims', claim_name,
         {
             'status': {
                 'resourceHandle': {
@@ -301,7 +360,14 @@ def manage_claim_bind(claim, logger):
     )
 
     log_claim_event(
-        claim, logger, 'Bound ResourceHandle ' + handle_name
+        claim, logger,
+        'Bound ResourceHandle to ResourceClaim',
+        {
+            'ResourceHandle': {
+                'name': handle_name,
+                'uid': handle_meta['uid']
+            },
+        }
     )
 
 def manage_claim_create(claim, logger):
@@ -366,7 +432,15 @@ def manage_claim_deleted(claim, logger):
 
     if handle_ref:
         handle_name = handle_ref['name']
-        logger.info('Propagating delete to ResourceHandle %s', handle_name)
+        log_claim_event(
+            claim, logger,
+            'Propagating delete to ResourceHandle',
+            {
+                'ResourceHandle': {
+                    'name': handle_name
+                }
+            }
+        )
         delete_resource_handle(handle_name, logger)
 
 def manage_claim_init(claim, logger):
@@ -397,14 +471,14 @@ def manage_claim_init(claim, logger):
                     "Unable to find ResourceProvider " + provider_name
                 )
                 return
-            else:
-                claim_resources_update.append({
-                    'provider': provider_ref,
-                    'template': provider.resource_claim_template_defaults(
-                        resource_claim = claim,
-                        resource_index = i
-                    )
-                })
+
+            claim_resources_update.append({
+                'provider': provider_ref,
+                'template': provider.resource_claim_template_defaults(
+                    resource_claim = claim,
+                    resource_index = i
+                )
+            })
 
         except IndexError:
             logger.warning('ResourceClaim has more resources in spec than resourceProviders in status!')
@@ -421,17 +495,17 @@ def manage_claim_init(claim, logger):
         ]
     )
 
-def manage_claim_resource_delete(claim_namespace, claim_name, resource, resource_index):
+def manage_claim_resource_delete(claim_namespace, claim_name, resource, resource_index, logger):
     resource_kind = resource['kind']
     resource_meta = resource['metadata']
     resource_name = resource_meta['name']
     resource_namespace = resource_meta.get('namespace', None)
     if resource_namespace:
-        ko.logger.info('ResourceClaim {} in {} lost resource {} {} in {}'.format(
+        logger.info('ResourceClaim {} in {} lost resource {} {} in {}'.format(
             claim_name, claim_namespace, resource_kind, resource_name, resource_namespace
         ))
     else:
-        ko.logger.info('ResourceClaim {} in {} lost resource {} {}'.format(
+        logger.info('ResourceClaim {} in {} lost resource {} {}'.format(
             claim_name, claim_namespace, resource_kind, resource_name
         ))
     try:
@@ -455,19 +529,29 @@ def manage_claim_resource_delete(claim_namespace, claim_name, resource, resource
         if e.status != 404:
             raise
 
-def manage_claim_resource_update(claim_namespace, claim_name, resource, resource_index):
+def manage_claim_resource_update(claim_namespace, claim_name, resource, resource_index, logger):
     resource_kind = resource['kind']
     resource_meta = resource['metadata']
     resource_name = resource_meta['name']
     resource_namespace = resource_meta.get('namespace', None)
+    resource_ref = {
+        'apiVersion': resource['apiVersion'],
+        'kind': resource_kind,
+        'name': resource_name,
+    }
     if resource_namespace:
-        ko.logger.info('ResourceClaim {} in {} resource status change for {} {} in {}'.format(
-            claim_name, claim_namespace, resource_kind, resource_name, resource_namespace
-        ))
-    else:
-        ko.logger.info('ResourceClaim {} in {} resource status change for {} {}'.format(
-            claim_name, claim_namespace, resource_kind, resource_name
-        ))
+        resource_ref['namespace'] = resource_namespace
+
+    logger.info(
+        'ResourceClaim resource status update',
+        extra = {
+            'Resource': resource_ref,
+            'ResourceClaim': {
+                'name': claim_name,
+                'namespace': claim_namespace,
+            },
+        },
+    )
 
     try:
         claim = ko.custom_objects_api.get_namespaced_custom_object(
@@ -490,7 +574,7 @@ def manage_claim_resource_update(claim_namespace, claim_name, resource, resource
         pass
     except kubernetes.client.rest.ApiException as e:
         if e.status == 404:
-            ko.logger.info('ResourceClaim %s in %s not found', claim_name, claim_namespace)
+            logger.info('ResourceClaim %s in %s not found', claim_name, claim_namespace)
         else:
             raise
 
@@ -503,10 +587,16 @@ def manage_claim_update(claim, logger):
     handle_name = claim['status']['resourceHandle']['name']
     resource_handle = get_resource_handle(handle_name, logger)
     if not resource_handle:
-         log_claim_event(
-             claim, logger, 'ResourceHandle {} has been lost'.format(handle_name)
-         )
-         return
+        log_claim_event(
+            claim, logger,
+            'ResourceHandle has been lost',
+            {
+                'ResourceHandle': {
+                    'name': handle_name,
+                },
+            }
+        )
+        return
 
     have_update = False
     handle_resources = resource_handle['spec']['resources']
@@ -528,94 +618,111 @@ def manage_handle(handle, logger):
     """
     handle_meta = handle['metadata']
     handle_name = handle_meta['name']
-    if 'deletionTimestamp' in handle['metadata']:
-        manage_handle_pending_delete(handle, logger)
-        return
-    elif 'finalizers' not in handle_meta:
-        add_finalizer_to_handle(handle, logger)
-        return
-    elif 'resourceClaim' in handle['spec']:
-        claim = get_claim_for_handle(handle, logger)
-        if not claim:
-            delete_resource_handle(handle_name, logger)
+    handle_lock = None
+
+    with manage_handle_lock:
+        handle_lock = manage_handle_locks.get(handle_name)
+        if not handle_lock:
+            handle_lock = threading.Lock()
+            manage_handle_locks[handle_name] = handle_lock
+
+    with handle_lock:
+        if 'deletionTimestamp' in handle['metadata']:
+            manage_handle_pending_delete(handle, logger)
             return
-    else:
-        claim = None
-
-    providers = []
-    handle_resources = handle['spec']['resources']
-    for handle_resource in handle_resources:
-        provider_name = handle_resource['provider']['name']
-        provider = ResourceProvider.find_provider_by_name(provider_name)
-        if provider:
-            providers.append(provider)
-        else:
-            log_handle_event(handle, logger, 'Unable to find ResourceProvider ' + provider_name)
+        elif 'finalizers' not in handle_meta:
+            add_finalizer_to_handle(handle, logger)
             return
-
-    have_handle_update = False
-    resources_to_create = []
-    for i, handle_resource in enumerate(handle_resources):
-        provider = providers[i]
-
-        if provider.resource_requires_claim and not claim:
-            continue
-
-        resource_definition = provider.resource_definition_from_template(
-            handle, claim, i, logger
-        )
-        start_resource_watch(resource_definition)
-
-        resource_api_version = resource_definition['apiVersion']
-        resource_kind = resource_definition['kind']
-        resource_name = resource_definition['metadata']['name']
-        resource_namespace = resource_definition['metadata'].get('namespace', None)
-
-        reference = {
-            'apiVersion': resource_definition['apiVersion'],
-            'kind': resource_definition['kind'],
-            'name': resource_definition['metadata']['name']
-        }
-        if 'namespace' in resource_definition['metadata']:
-            reference['namespace'] = resource_definition['metadata']['namespace']
-
-        if reference != handle_resource.get('reference', None):
-            have_handle_update = True
-            handle_resource['reference'] = reference
-
-        resource = ko.get_resource(
-            api_version = resource_api_version,
-            kind = resource_kind,
-            name = resource_name,
-            namespace = resource_namespace
-        )
-        if hasattr(resource, 'to_dict'):
-            resource = resource.to_dict()
-
-        if resource:
-            provider.update_resource(handle, resource, resource_definition, logger)
+        elif 'resourceClaim' in handle['spec']:
+            claim = get_claim_for_handle(handle, logger)
+            if not claim:
+                delete_resource_handle(handle_name, logger)
+                return
         else:
-            resources_to_create.append(resource_definition)
+            claim = None
 
-    if have_handle_update:
-        try:
-            handle = ko.custom_objects_api.patch_namespaced_custom_object(
-                ko.operator_domain, ko.version, ko.operator_namespace, 'resourcehandles', handle_name,
-                { 'spec': { 'resources': handle_resources } }
+        providers = []
+        handle_resources = handle['spec']['resources']
+        for handle_resource in handle_resources:
+            provider_name = handle_resource['provider']['name']
+            provider = ResourceProvider.find_provider_by_name(provider_name)
+            if provider:
+                providers.append(provider)
+            else:
+                log_handle_error(
+                    handle, logger,
+                    'Unable to find ResourceProvider',
+                    {
+                        'ResourceProvider': {
+                            'name': provider_name,
+                        },
+                    },
+                )
+                return
+
+        have_handle_update = False
+        resources_to_create = []
+        for i, handle_resource in enumerate(handle_resources):
+            provider = providers[i]
+
+            if provider.resource_requires_claim and not claim:
+                continue
+
+            resource_definition = provider.resource_definition_from_template(
+                handle, claim, i, logger
             )
-        except kubernetes.client.rest.ApiException as e:
-            if e.status != 404:
-                raise
+            start_resource_watch(resource_definition)
 
-    for resource_definition in resources_to_create:
-        resource_definition['metadata']['annotations'][ko.operator_domain + '/resource-handle-version'] = \
-            handle['metadata']['resourceVersion']
-        ko.create_resource(resource_definition)
+            resource_api_version = resource_definition['apiVersion']
+            resource_kind = resource_definition['kind']
+            resource_name = resource_definition['metadata']['name']
+            resource_namespace = resource_definition['metadata'].get('namespace', None)
+
+            reference = {
+                'apiVersion': resource_definition['apiVersion'],
+                'kind': resource_definition['kind'],
+                'name': resource_definition['metadata']['name']
+            }
+            if 'namespace' in resource_definition['metadata']:
+                reference['namespace'] = resource_definition['metadata']['namespace']
+
+            if reference != handle_resource.get('reference', None):
+                have_handle_update = True
+                handle_resource['reference'] = reference
+
+            resource = ko.get_resource(
+                api_version = resource_api_version,
+                kind = resource_kind,
+                name = resource_name,
+                namespace = resource_namespace
+            )
+            if hasattr(resource, 'to_dict'):
+                resource = resource.to_dict()
+
+            if resource:
+                provider.update_resource(handle, resource, resource_definition, logger)
+            else:
+                resources_to_create.append(resource_definition)
+
+        if have_handle_update:
+            try:
+                handle = ko.custom_objects_api.patch_namespaced_custom_object(
+                    ko.operator_domain, ko.version, ko.operator_namespace, 'resourcehandles', handle_name,
+                    { 'spec': { 'resources': handle_resources } }
+                )
+            except kubernetes.client.rest.ApiException as e:
+                if e.status != 404:
+                    raise
+
+        for resource_definition in resources_to_create:
+            resource_definition['metadata']['annotations'][ko.operator_domain + '/resource-handle-version'] = \
+                handle['metadata']['resourceVersion']
+            ko.create_resource(resource_definition)
 
 def manage_handle_deleted(handle, logger):
     handle_meta = handle['metadata']
     handle_name = handle_meta['name']
-    logger.info('ResourceHandle %s deleted', handle_name)
+    logger.info('ResourceHandle deleted')
 
     claim_ref = handle['spec'].get('resourceClaim')
     pool_ref = handle['spec'].get('resourcePool')
@@ -673,7 +780,12 @@ def manage_pool(pool, logger):
     pool_name = pool_meta['name']
 
     if pool_namespace != ko.operator_namespace:
-        logger.info('Ignoring ResourcePool %s in namespace %s', pool_name, pool_namespace)
+        logger.debug(
+            'Ignoring ResourcePool {} defined in namespace {}'.format(
+                pool_name,
+                pool_namespace,
+            ),
+        )
         return
 
     if not pool['metadata'].get('finalizers', None):
@@ -687,7 +799,15 @@ def manage_pool(pool, logger):
             return
         for i in range(handle_deficit):
             handle = create_handle_for_pool(pool, logger)
-            logger.info('Created ResourceHandle %s for ResourcePool %s', handle['metadata']['name'], pool_name)
+            log_pool_event(
+                pool, logger, 'Created ResourceHandle for ResourcePool',
+                {
+                    'ResourceHandle': {
+                        'name': handle['metadata']['name'],
+                        'uid': handle['metadata']['uid'],
+                    }
+                },
+            )
 
 def manage_pool_by_ref(ref, logger):
     try:
@@ -697,7 +817,7 @@ def manage_pool_by_ref(ref, logger):
         )
     except kubernetes.client.rest.ApiException as e:
         if e.status == 404:
-            logger.warning('Unable to find ResourcePool %s/%s', ref['namespace'], ref['name'])
+            logger.warning('Unable to find ResourcePool %s in %s', ref['name'], ref['namespace'])
             return
         else:
             raise
@@ -706,7 +826,7 @@ def manage_pool_by_ref(ref, logger):
 def manage_pool_deleted(pool, logger):
     pool_meta = pool['metadata']
     pool_name = pool_meta['name']
-    logger.info('ResourcePool %s deleted', pool_name)
+    log_pool_event(pool, logger, 'ResourcePool deleted')
 
 def manage_pool_pending_delete(pool, logger):
     pool_meta = pool['metadata']
@@ -817,7 +937,7 @@ def validate_claim(claim, logger):
     status_resources = claim['status'].get('resources', [])
 
     if len(status_resources) != len(resources):
-        logger.warning('Number of resources in status does not match resources in spec')
+        log_pool_error(claim, logger, 'Number of resources in status does not match resources in spec')
         return False
 
     for i, resource in enumerate(resources):
@@ -826,18 +946,31 @@ def validate_claim(claim, logger):
             provider_name = status_resource['provider']['name']
             provider = ResourceProvider.find_provider_by_name(provider_name)
             if not provider:
-                logger.warning('Unable to find ResourceProvider %s', provider_name)
+                log_claim_error(
+                    claim, logger, 'Unable to find ResourceProvider',
+                    {
+                        'ResourceProvider': {
+                            'name': provider_name,
+                        }
+                    }
+                )
                 return False
             validation_error = provider.validate_resource_template(resource['template'], logger)
             if validation_error:
-                logger.warning('Validation failure for spec.resources[%s].template: %s', i, validation_error)
+                log_claim_error(
+                    claim, logger,
+                    'Validation failure for spec.resources[{}].template: {}'.format(i, validation_error)
+                )
                 return False
+
         except IndexError:
-            logger.warning('ResourceClaim has more resources than resourceProviders!')
+            log_claim_error(
+                claim, logger, 'ResourceClaim has more resources than resourceProviders!'
+            )
             return False
     return True
 
-def watch_resource_event(event):
+def watch_resource_event(event, logger):
     event_type = event['type']
     if event_type in ['ADDED', 'DELETED', 'MODIFIED']:
         resource = event['object']
@@ -863,11 +996,11 @@ def watch_resource_event(event):
 
         if claim_name and claim_namespace:
             if event_type == 'DELETED':
-                manage_claim_resource_delete(claim_namespace, claim_name, resource, resource_index)
+                manage_claim_resource_delete(claim_namespace, claim_name, resource, resource_index, logger)
             else:
-                manage_claim_resource_update(claim_namespace, claim_name, resource, resource_index)
+                manage_claim_resource_update(claim_namespace, claim_name, resource, resource_index, logger)
     else:
-        ko.logger.warning(event)
+        logger.warning(event)
 
 class ResourceProvider(object):
 
@@ -930,6 +1063,18 @@ class ResourceProvider(object):
     def resource_requires_claim(self):
         return self.spec.get('resourceRequiresClaim', False)
 
+    @property
+    def template_enable(self):
+        if 'template' not in self.spec:
+            return True
+        return self.spec['template'].get('enable')
+
+    @property
+    def template_style(self):
+        if 'template' not in self.spec:
+            return 'legacy'
+        return self.spec['template'].get('style', 'jinja2')
+
     def check_template_match(self, handle_resource, claim_resource, logger):
         """
         Check if a resource in a handle matches a resource in a claim
@@ -970,14 +1115,17 @@ class ResourceProvider(object):
             if schema_defaults:
                 dict_merge(defaults, schema_defaults)
 
-        return recursive_process_template_strings(
-            defaults,
-            {
-                'resource_claim': resource_claim,
-                'resource_index': resource_index,
-                'resource_provider': self
-            }
-        )
+        if self.template_enable:
+            return recursive_process_template_strings(
+                defaults, self.template_style,
+                {
+                    'resource_claim': resource_claim,
+                    'resource_index': resource_index,
+                    'resource_provider': self
+                }
+            )
+        else:
+            return defaults
 
     def resource_definition_from_template(self, handle, claim, resource_index, logger):
         if claim:
@@ -998,7 +1146,24 @@ class ResourceProvider(object):
 
         resource = copy.deepcopy(handle['spec']['resources'][resource_index]['template'])
         if 'override' in self.spec:
-            dict_merge(resource, self.override)
+            if self.template_enable:
+                dict_merge(
+                    resource,
+                    recursive_process_template_strings(
+                        self.override, self.template_style,
+                        {
+                            "requester_identity": requester_identity,
+                            "requester_user": requester_user,
+                            "resource_provider": self,
+                            "resource_handle": handle,
+                            "resource_claim": claim,
+                            "resource_template": resource,
+                        },
+                    ),
+                )
+            else:
+                dict_merge(resource, self.override)
+
         if 'metadata' not in resource:
             resource['metadata'] = {}
         if 'name' not in resource['metadata']:
@@ -1039,29 +1204,34 @@ class ResourceProvider(object):
                 ko.operator_domain + '/resource-requester-user':
                     requester_user['metadata']['name']
             })
-
-        return recursive_process_template_strings(resource, {
-            "requester_identity": requester_identity,
-            "requester_user": requester_user,
-            "resource_provider": self,
-            "resource_handle": handle,
-            "resource_claim": claim
-        })
+        return resource
 
     def update_resource(self, handle, resource, resource_definition, logger):
         handle_uid = handle['metadata']['uid']
         handle_version = handle['metadata']['resourceVersion']
 
-        annotations = resource['metadata'].get('annotations', {})
-        if handle_uid != annotations.get(ko.operator_domain + '/resource-handle-uid') \
-        or handle_version != annotations.get(ko.operator_domain + '/resource-handle-version'):
-            update_filters = self.spec.get('updateFilters', []) + [{
-                'pathMatch': '/metadata/annotations/' + re.escape(ko.operator_domain) + '~1resource-.*'
-            }]
-            ko.patch_resource(
-                resource=resource,
-                patch=resource_definition,
-                update_filters=update_filters
+        resource_ref = {
+            'apiVersion': resource['apiVersion'],
+            'kind': resource['kind'],
+            'name': resource['metadata']['name'],
+        }
+        if 'namespace' in resource['metadata']:
+            resource_ref['namespace'] = resource['metadata']['namespace']
+
+        update_filters = self.spec.get('updateFilters', []) + [{
+            'pathMatch': '/metadata/annotations/' + re.escape(ko.operator_domain) + '~1resource-.*'
+        }]
+        patched_resource, changed = ko.patch_resource(
+            resource=resource,
+            patch=resource_definition,
+            update_filters=update_filters
+        )
+        if changed:
+            log_handle_event(handle, logger, 'Updated resource', {'Resource': resource_ref})
+        else:
+            logger.debug(
+                'Resource unchanged',
+                extra=log_handle_extra(handle, {'resource': resource_ref})
             )
 
     def validate_resource_template(self, template, logger):
@@ -1131,3 +1301,40 @@ def watch_resource_pools(event, logger, **_):
             manage_pool(pool, logger)
     else:
         logger.warning('Unhandled ResourcePool event %s', event)
+
+def manage_handles(logger):
+    _continue = None
+
+    while True:
+        kwargs = { "limit": 20 }
+        if _continue:
+            kwargs['_continue'] = _continue
+
+        resp = ko.custom_objects_api.list_namespaced_custom_object(
+            ko.operator_domain, ko.version, ko.operator_namespace, 'resourcehandles',
+            **kwargs
+        )
+        for handle in resp.get('items', []):
+            manage_handle(handle, logger)
+
+        _continue = resp['metadata'].get('continue')
+        if not _continue:
+            break
+
+def manage_handles_loop():
+    logger = logging.getLogger('resourcehandles')
+    while True:
+        time.sleep(manage_handles_interval)
+        try:
+            manage_handles(logger)
+        except Exception as e:
+            logger.exception("Error in resourcehandles")
+
+@kopf.on.startup()
+def on_startup(logger, **kwargs):
+    """Main function."""
+    threading.Thread(
+        name = 'manage_handles',
+        daemon = True,
+        target = manage_handles_loop,
+    ).start()

@@ -593,3 +593,31 @@
     - r_get_test_pool_handles.resources | length == 0
     fail_msg: found remaining test pool handles
     success_msg: all test pool handles have been cleaned up
+
+- name: Create test-templated ResourceProvider
+  k8s:
+    state: present
+    definition: "{{ lookup('template', 'test-templated-resource-provider.yaml.j2') | from_yaml }}"
+
+- name: Create ResourceClaim for test-templated-1
+  k8s:
+    state: present
+    definition: "{{ resource_definition | from_yaml }}"
+  vars:
+    resource_definition: |
+      apiVersion: {{ poolboy_domain }}/v1
+      kind: ResourceClaim
+      metadata:
+        name: test-templated-1
+        namespace: {{ poolboy_test_namespace }}
+        labels:
+          {{ poolboy_domain }}/test: simple
+      spec:
+        resources:
+        - provider:
+            apiVersion: {{ poolboy_domain }}/v1
+            kind: ResourceProvider
+            name: test-templated
+            namespace: {{ poolboy_namespace }}
+
+- fail:
