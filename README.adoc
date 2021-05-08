@@ -36,6 +36,39 @@ image::docs/diagram.png[Poolboy Diagram,500,400]
 .. If the resource exists then it is updated.
 .. The state of the resource is copied into the ResourceClaim status if a ResourceClaim is bound to the ResourceHandle.
 
+=== Templating
+
+Templates are supported for ResourceProviders to supply defaults for ResourceClaims and for overrides for resources.
+Templates are enable for a ResourceProvider by specifying `spec.template.enable` on the ResourceProvider.
+Templates use https://jinja.palletsprojects.com/en/2.11.x/[Jinja2].
+
+For ResourceClaim defaults templates may reference:
+
+* `resource_claim` - ResourceClaim object
+* `resource_index` - Resource index in the ResourceClaim `spec.resources`
+* `resource_provider` - ResourceProvider object
+
+For resource overrides templates may reference:
+
+* `resource_claim` - ResourceClaim object if a ResourceClaim is bound
+* `resource_handle` - ResourceHandle object
+* `resource_index` - Resource index in the ResourceHandle `spec.resources`
+* `resource_provider` - ResourceProvider object
+* `resource_template` - Resource template from ResourceHandle
+* `requester_identity` - OpenShift identity of requester determined from ResourceClaim namespace's `openshift.io/requester` annotation
+* `requester_user` - OpenShift user of requester determined from ResourceClaim namespace's `openshift.io/requester`  annotation
+
+Additionally templates may make use of variables `timestamp` and `timedelta` for date and time calculations.
+Examples:
+
+* `timestamp("2021-05-01T12:30:00Z")` - Parsed timestamp
+* `timestamp("2021-05-01T12:30:00Z").add("3h")` - Interval from parsed timestamp
+* `timestamp.utcnow` - Current UTC timestamp in `%Y-%m-%dT%H:%M:%SZ` format
+* `timestamp.utcnow.add("1d")` - UTC timestamp for this time tomorrow
+* `timestamp.utcnow.datetime` - Python datetime object for UTC now
+* `timedelta("10m")` - Representation of time delta for ten minutes.
+* `timedelta("10m").timedelta` - Python datetime timedelta
+
 === Lifespan
 
 By default no lifespan policy is applied to Poolboy resources.
