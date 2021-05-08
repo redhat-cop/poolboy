@@ -1,0 +1,22 @@
+---
+apiVersion: {{ poolboy_domain }}/v1
+kind: ResourcePool
+metadata:
+  name: test-lifespan
+  namespace: {{ poolboy_namespace }}
+spec:
+  minAvailable: 1
+  lifespan:
+    default: 23s
+    maximum: 2h
+    relativeMaximum: 1h
+    unclaimed: 1h
+  resources:
+  - provider:
+      apiVersion: {{ poolboy_domain }}/v1
+      kind: ResourceProvider
+      name: test-lifespan
+      namespace: {{ poolboy_namespace }}
+    template:
+      spec:
+        vars: {}

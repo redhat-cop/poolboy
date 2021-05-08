@@ -14,7 +14,7 @@ import re
 import threading
 import time
 
-from gpte.util import defaults_from_schema, dict_merge, recursive_process_template_strings
+from gpte.util import TimeDelta, TimeStamp, defaults_from_schema, dict_merge, recursive_process_template_strings
 
 logging_level = os.environ.get('LOGGING_LEVEL', 'INFO')
 manage_handles_interval = int(os.environ.get('MANAGE_HANDLES_INTERVAL', 60))
@@ -61,6 +61,32 @@ def bind_handle_to_claim(handle, claim, logger):
     handle_name = handle_meta['name']
     pool_ref = handle['spec'].get('resourcePool')
 
+    # Check if ResourceClaim includes requested lifespan end
+    lifespan_end = claim['spec'].get('lifespan', {}).get('end')
+
+    if lifespan_end:
+        # If ResourceClaim defined lifespan end, then translate to TimeStamp
+        lifespan_end = TimeStamp(lifespan_end)
+    else:
+        # Default lifespan end to ResourceHandle default lifespan if defined
+        handle_lifespan = handle['spec'].get('lifespan')
+        if handle_lifespan:
+            handle_lifespan_default = handle_lifespan.get('default')
+            if handle_lifespan_default:
+                lifespan_end = TimeStamp(claim_meta['creationTimestamp']) + TimeDelta(handle_lifespan_default)
+
+    if lifespan_end:
+        maximum_lifespan_end, maximum_type = maximum_lifespan_end_for_handle(handle, claim)
+        if lifespan_end > maximum_lifespan_end:
+            lifespan_end = maximum_lifespan_end
+            log_claim_warning(
+                claim, logger,
+                'requested lifespan end {} exceeds {} for ResourceHandle {}'.format(
+                    lifespan_end, maximum_type, maximum_lifespan_end
+                )
+            )
+        lifespan_end = str(lifespan_end)
+
     log_claim_event(
         claim, logger,
         'Binding ResourceHandle to ResourceClaim',
@@ -81,6 +107,9 @@ def bind_handle_to_claim(handle, claim, logger):
                 }
             },
             'spec': {
+                'lifespan': {
+                    'end': lifespan_end,
+                },
                 'resourceClaim': {
                     'apiVersion': ko.api_version,
                     'kind': 'ResourceClaim',
@@ -101,42 +130,97 @@ def create_handle_for_claim(claim, logger):
     Create resource handle for claim, called after claim is validated and failed
     to match an available handle.
     """
-    claim_name = claim['metadata']['name']
-    claim_namespace = claim['metadata']['namespace']
+    claim_meta = claim['metadata']
+    claim_spec = claim['spec']
+    claim_name = claim_meta['name']
+    claim_namespace = claim_meta['namespace']
     claim_resource_statuses = claim['status']['resources']
 
     resources = []
+    default_lifespan = None
+    maximum_lifespan = None
+    relative_maximum_lifespan = None
     for i, claim_resource in enumerate(claim['spec']['resources']):
-        resources.append({
-            'provider': claim_resource_statuses[i]['provider'],
-            'template': claim_resource['template']
-        })
+        provider_ref = claim_resource_statuses[i]['provider']
+        provider = ResourceProvider.find_provider_by_name(provider_ref['name'])
+        if provider.default_lifespan \
+        and (not default_lifespan or provider.default_lifespan < default_lifespan):
+            default_lifespan = provider.default_lifespan
+        if provider.maximum_lifespan \
+        and (not maximum_lifespan or provider.maximum_lifespan < maximum_lifespan):
+            maximum_lifespan = provider.maximum_lifespan
+        if provider.relative_maximum_lifespan \
+        and (not relative_maximum_lifespan or provider.relative_maximum_lifespan < relative_maximum_lifespan):
+            relative_maximum_lifespan = provider.relative_maximum_lifespan
+        resources_item = {'provider': provider_ref}
+        if 'template' in claim_resource:
+            resources_item['template'] = claim_resource['template']
+        resources.append(resources_item)
 
     log_claim_event(claim, logger, 'Creating ResourceHandle for ResourceClaim')
 
-    return ko.custom_objects_api.create_namespaced_custom_object(
-        ko.operator_domain, ko.version, ko.operator_namespace, 'resourcehandles',
-        {
-            'apiVersion': ko.api_version,
-            'kind': 'ResourceHandle',
-            'metadata': {
-                'finalizers': [ ko.operator_domain ],
-                'generateName': 'guid-',
-                'labels': {
-                    ko.operator_domain + '/resource-claim-name': claim_name,
-                    ko.operator_domain + '/resource-claim-namespace': claim_namespace
-                }
-            },
-            'spec': {
-                'resourceClaim': {
-                    'apiVersion': ko.api_version,
-                    'kind': 'ResourceClaim',
-                    'name': claim_name,
-                    'namespace': claim_namespace
-                },
-                'resources': resources
+    handle = {
+        'apiVersion': ko.api_version,
+        'kind': 'ResourceHandle',
+        'metadata': {
+            'finalizers': [ ko.operator_domain ],
+            'generateName': 'guid-',
+            'labels': {
+                ko.operator_domain + '/resource-claim-name': claim_name,
+                ko.operator_domain + '/resource-claim-namespace': claim_namespace
             }
+        },
+        'spec': {
+            'resourceClaim': {
+                'apiVersion': ko.api_version,
+                'kind': 'ResourceClaim',
+                'name': claim_name,
+                'namespace': claim_namespace
+            },
+            'resources': resources
         }
+    }
+
+    lifespan_end = claim_spec.get('lifespan', {}).get('end')
+    creation_timestamp = TimeStamp(claim_meta['creationTimestamp'])
+    if lifespan_end:
+        lifespan_end = TimeStamp(requested_end)
+    elif default_lifespan:
+        lifespan_end = creation_timestamp + default_lifespan
+    elif relative_maximum_lifespan:
+        lifespan_end = creation_timestamp + relative_maximum_lifespan
+    elif maximum_lifespan:
+        lifespan_end = creation_timestamp + maximum_lifespan
+
+    if lifespan_end:
+        if relative_maximum_lifespan and lifespan_end > creation_timestamp + relative_maximum_lifespan:
+            log_claim_warning(
+                claim, logger,
+                'requested lifespan end {} exceeds relativeMaximum for ResourceProvider {}'.format(
+                    lifespan_end, relative_maximum_lifespan
+                )
+            )
+            lifespan_end = creation_timestamp + relative_maximum_lifespan
+        if maximum_lifespan and lifespan_end > creation_timestamp + maximum_lifespan:
+            log_claim_warning(
+                claim, logger,
+                'requested lifespan end {} exceeds maximum for ResourceProvider {}'.format(
+                    lifespan_end, maximum_lifespan
+                )
+            )
+            lifespan_end = creation_timestamp + maximum_lifespan
+
+    if lifespan_end or maximum_lifespan or relative_maximum_lifespan:
+        handle['spec']['lifespan'] = {}
+        if lifespan_end:
+            handle['spec']['lifespan']['end'] = str(lifespan_end)
+        if maximum_lifespan:
+            handle['spec']['lifespan']['maximum'] = str(maximum_lifespan)
+        if relative_maximum_lifespan:
+            handle['spec']['lifespan']['relativeMaximum'] = str(relative_maximum_lifespan)
+
+    return ko.custom_objects_api.create_namespaced_custom_object(
+        ko.operator_domain, ko.version, ko.operator_namespace, 'resourcehandles', handle
     )
 
 def create_handle_for_pool(pool, logger):
@@ -144,6 +228,23 @@ def create_handle_for_pool(pool, logger):
     pool_spec = pool['spec']
     pool_namespace = pool_meta['namespace']
     pool_name = pool_meta['name']
+
+    handle_spec = {
+        'resourcePool': {
+            'apiVersion': ko.api_version,
+            'kind': 'ResourcePool',
+            'name': pool_name,
+            'namespace': pool_namespace
+        },
+        'resources': pool_spec['resources']
+    }
+
+    if 'lifespan' in pool_spec:
+        handle_spec['lifespan'] = {
+            k: v for k, v in pool_spec['lifespan'].items() if k != 'unclaimed'
+        }
+        if 'unclaimed' in pool_spec['lifespan']:
+            handle_spec['lifespan']['end'] = str(TimeStamp().add(pool_spec['lifespan']['unclaimed']))
 
     return ko.custom_objects_api.create_namespaced_custom_object(
         ko.operator_domain, ko.version, ko.operator_namespace, 'resourcehandles',
@@ -157,20 +258,21 @@ def create_handle_for_pool(pool, logger):
                 'generateName': 'guid-',
                 'labels': {
                     ko.operator_domain + '/resource-pool-name': pool_name,
-                    ko.operator_domain + '/resource-pool-namespace': pool_namespace
-                }
-            },
-            'spec': {
-                'resourcePool': {
-                    'apiVersion': ko.api_version,
-                    'kind': 'ResourcePool',
-                    'name': pool_name,
-                    'namespace': pool_namespace
+                    ko.operator_domain + '/resource-pool-namespace': pool_namespace,
                 },
-                'resources': pool_spec['resources']
-            }
+            },
+            'spec': handle_spec,
         }
     )
+
+def delete_resource_claim(namespace, name, logger):
+    try:
+        ko.custom_objects_api.delete_namespaced_custom_object(
+            ko.operator_domain, ko.version, namespace, 'resourceclaims', name
+        )
+    except kubernetes.client.rest.ApiException as e:
+        if e.status != 404:
+            raise
 
 def delete_resource_handle(name, logger):
     try:
@@ -336,7 +438,7 @@ def manage_claim_bind(claim, logger):
     """
     handle = match_handle_to_claim(claim, logger)
     if handle:
-        bind_handle_to_claim(handle, claim, logger)
+        handle = bind_handle_to_claim(handle, claim, logger)
     else:
         handle = create_handle_for_claim(claim, logger)
 
@@ -344,18 +446,29 @@ def manage_claim_bind(claim, logger):
     claim_name = claim_meta['name']
     claim_namespace = claim_meta['namespace']
     handle_meta = handle['metadata']
+    handle_spec = handle['spec']
     handle_name = handle_meta['name']
+    status = {
+        'resourceHandle': {
+            'apiVersion': ko.api_version,
+            'kind': 'ResourceHandle',
+            'name': handle_name,
+            'namespace': handle_meta['namespace']
+        }
+    }
+
+    handle_lifespan = handle_spec.get('lifespan')
+    if handle_lifespan:
+        status['lifespan'] = {
+            'end': handle_lifespan.get('end'),
+            'maximum': handle_lifespan.get('maximum'),
+            'relativeMaximum': handle_lifespan.get('relativeMaximum'),
+        }
+
     ko.custom_objects_api.patch_namespaced_custom_object_status(
         ko.operator_domain, ko.version, claim_namespace, 'resourceclaims', claim_name,
         {
-            'status': {
-                'resourceHandle': {
-                    'apiVersion': ko.api_version,
-                    'kind': 'ResourceHandle',
-                    'name': handle_name,
-                    'namespace': handle_meta['namespace']
-                }
-            }
+            'status': status
         }
     )
 
@@ -472,13 +585,14 @@ def manage_claim_init(claim, logger):
                 )
                 return
 
-            claim_resources_update.append({
-                'provider': provider_ref,
-                'template': provider.resource_claim_template_defaults(
-                    resource_claim = claim,
-                    resource_index = i
-                )
-            })
+            claim_resources_item = { 'provider': provider_ref }
+            template_defaults = provider.resource_claim_template_defaults(
+                resource_claim = claim,
+                resource_index = i
+            )
+            if template_defaults:
+                claim_resources_item['template'] = template_defaults
+            claim_resources_update.append(claim_resources_item)
 
         except IndexError:
             logger.warning('ResourceClaim has more resources in spec than resourceProviders in status!')
@@ -500,18 +614,18 @@ def manage_claim_resource_delete(claim_namespace, claim_name, resource, resource
     resource_meta = resource['metadata']
     resource_name = resource_meta['name']
     resource_namespace = resource_meta.get('namespace', None)
-    if resource_namespace:
-        logger.info('ResourceClaim {} in {} lost resource {} {} in {}'.format(
-            claim_name, claim_namespace, resource_kind, resource_name, resource_namespace
-        ))
-    else:
-        logger.info('ResourceClaim {} in {} lost resource {} {}'.format(
-            claim_name, claim_namespace, resource_kind, resource_name
-        ))
     try:
         claim = ko.custom_objects_api.get_namespaced_custom_object(
             ko.operator_domain, ko.version, claim_namespace, 'resourceclaims', claim_name
         )
+        if resource_namespace:
+            logger.info('ResourceClaim {} in {} lost resource {} {} in {}'.format(
+                claim_name, claim_namespace, resource_kind, resource_name, resource_namespace
+            ))
+        else:
+            logger.info('ResourceClaim {} in {} lost resource {} {}'.format(
+                claim_name, claim_namespace, resource_kind, resource_name
+            ))
         status_resources = claim['status']['resources']
         status_resource = status_resources[resource_index].get('state', None)
 
@@ -602,14 +716,37 @@ def manage_claim_update(claim, logger):
     handle_resources = resource_handle['spec']['resources']
     for i, claim_resource in enumerate(claim['spec']['resources']):
         handle_resource = handle_resources[i]
-        if handle_resource['template'] != claim_resource['template']:
+        if 'template' in claim_resource \
+        and handle_resource.get('template') != claim_resource['template']:
             handle_resource['template'] = claim_resource['template']
             have_update = True
 
+    lifespan_end = claim['spec'].get('lifespan', {}).get('end')
+    handle_lifespan_end = resource_handle['spec'].get('lifespan', {}).get('end')
+    if lifespan_end and lifespan_end != handle_lifespan_end:
+        lifespan_end = TimeStamp(lifespan_end)
+        maximum_lifespan_end, maximum_type = maximum_lifespan_end_for_handle(resource_handle, claim)
+        if maximum_lifespan_end:
+            if lifespan_end > maximum_lifespan_end:
+                lifespan_end = maximum_lifespan_end
+                log_claim_warning(
+                    claim, logger,
+                    'requested change to lifespan end {} exceeds {} for ResourceHandle {}'.format(
+                        lifespan_end, maximum_type, maximum_lifespan_end
+                    )
+                )
+            if not handle_lifespan_end or lifespan_end != TimeStamp(handle_lifespan_end):
+                # Recheck for update after possible adjustment for maximum
+                have_update = True
+        else:
+            have_update = True
+
     if have_update:
+        patch = { 'spec': { 'resources': handle_resources } }
+        if lifespan_end:
+            patch['spec']['lifespan'] = { 'end': str(lifespan_end) }
         ko.custom_objects_api.patch_namespaced_custom_object(
-            ko.operator_domain, ko.version, ko.operator_namespace, 'resourcehandles', handle_name,
-            { 'spec': { 'resources': handle_resources } }
+            ko.operator_domain, ko.version, ko.operator_namespace, 'resourcehandles', handle_name, patch
         )
 
 def manage_handle(handle, logger):
@@ -617,6 +754,7 @@ def manage_handle(handle, logger):
     Called on all ResourceHandle events except delete
     """
     handle_meta = handle['metadata']
+    handle_spec = handle['spec']
     handle_name = handle_meta['name']
     handle_lock = None
 
@@ -633,16 +771,71 @@ def manage_handle(handle, logger):
         elif 'finalizers' not in handle_meta:
             add_finalizer_to_handle(handle, logger)
             return
-        elif 'resourceClaim' in handle['spec']:
+        elif 'resourceClaim' in handle_spec:
             claim = get_claim_for_handle(handle, logger)
-            if not claim:
+            if claim:
+                handle_lifespan = handle_spec.get('lifespan')
+                if handle_lifespan:
+                    set_claim_status_lifespan = { k: v for k, v in handle_lifespan.items() if k != 'default' }
+                    claim_status_lifespan = claim.get('status', {}).get('lifespan')
+                    if claim_status_lifespan != set_claim_status_lifespan:
+                        ko.custom_objects_api.patch_namespaced_custom_object_status(
+                            ko.operator_domain, ko.version, claim['metadata']['namespace'],
+                            'resourceclaims', claim['metadata']['name'],
+                            {
+                                'status': {
+                                    'lifespan': set_claim_status_lifespan
+                                }
+                            }
+                        )
+            else:
+                logger.info(
+                    'Propagating delete to ResourceHandle after discovering ResourceClaim deleted',
+                    extra={
+                        'ResourceClaim': {
+                            'namespace': handle_spec['claim']['namespace'],
+                            'name': handle_spec['claim']['name'],
+                        },
+                        'ResourceHandle': {
+                            'name': handle_name
+                        }
+                    }
+                )
                 delete_resource_handle(handle_name, logger)
                 return
         else:
             claim = None
 
+        lifespan_end = handle_spec.get('lifespan', {}).get('end')
+        if lifespan_end:
+            if datetime.datetime.utcnow() > datetime.datetime.strptime(lifespan_end, "%Y-%m-%dT%H:%M:%SZ"):
+                if claim:
+                    claim_namespace = claim['metadata']['namespace']
+                    claim_name = claim['metadata']['name']
+                    logger.info(
+                        'Delete ResourceClaim at end of lifespan',
+                        extra={
+                            'ResourceClaim': {
+                                'namespace': claim_namespace,
+                                'name': claim_name,
+                            }
+                        }
+                    )
+                    delete_resource_claim(claim_namespace, claim_name, logger)
+                else:
+                    logger.info(
+                        'Delete ResourceHandle at end of lifespan',
+                        extra={
+                            'ResourceHandle': {
+                                'name': handle_name
+                            }
+                        }
+                    )
+                    delete_resource_handle(handle_name, logger)
+                return
+
         providers = []
-        handle_resources = handle['spec']['resources']
+        handle_resources = handle_spec['resources']
         for handle_resource in handle_resources:
             provider_name = handle_resource['provider']['name']
             provider = ResourceProvider.find_provider_by_name(provider_name)
@@ -768,6 +961,11 @@ def manage_handle_pending_delete(handle, logger):
                 reference['apiVersion'], reference['kind'],
                 reference['name'], reference.get('namespace', None)
             )
+
+    resource_claim = handle['spec'].get('resourceClaim')
+    if resource_claim:
+        delete_resource_claim(resource_claim['namespace'], resource_claim['name'], logger)
+
     ko.custom_objects_api.patch_namespaced_custom_object(
         ko.operator_domain, ko.version, ko.operator_namespace,
         'resourcehandles', handle['metadata']['name'],
@@ -877,7 +1075,11 @@ def match_handle_to_claim(claim, logger):
                 is_match = False
                 break
             provider = ResourceProvider.find_provider_by_name(provider_name)
-            diff_patch = provider.check_template_match(handle_resource['template'], claim_resource['template'], logger)
+            diff_patch = provider.check_template_match(
+                handle_resource.get('template', {}),
+                claim_resource.get('template', {}),
+                logger
+            )
             if diff_patch != None:
                 # Match with (possibly empty) difference list
                 diff_count += len(diff_patch)
@@ -895,6 +1097,27 @@ def match_handle_to_claim(claim, logger):
                 best_match_diff_count = diff_count
 
     return best_match
+
+def maximum_lifespan_end_for_handle(handle, claim):
+    """
+    Return TimeStamp and type name for maximum lifespan end of ResourceHandle with bound ResourceClaim
+    """
+    end = None
+    maximum_type = None
+
+    maximum_lifespan = handle['spec'].get('lifespan', {}).get('maximum')
+    if maximum_lifespan:
+        end = TimeStamp(claim['metadata']['creationTimestamp']) + TimeDelta(maximum_lifespan)
+        maximum_type = 'maximum'
+
+    relative_maximum_lifespan = handle['spec'].get('lifespan', {}).get('relativeMaximum')
+    if relative_maximum_lifespan:
+        relative_end = TimeStamp() + TimeDelta(relative_maximum_lifespan)
+        if relative_end > end:
+            end = relative_end
+            maximum_type = 'relativeMaximum'
+
+    return end, maximum_type
 
 def pause_for_provider_init():
     if time.time() < start_time + provider_init_delay:
@@ -955,7 +1178,7 @@ def validate_claim(claim, logger):
                     }
                 )
                 return False
-            validation_error = provider.validate_resource_template(resource['template'], logger)
+            validation_error = provider.validate_resource_template(resource.get('template', {}), logger)
             if validation_error:
                 log_claim_error(
                     claim, logger,
@@ -1048,6 +1271,12 @@ class ResourceProvider(object):
         return self.metadata['namespace']
 
     @property
+    def default_lifespan(self):
+        if 'lifespan' in self.spec \
+        and 'default' in self.spec['lifespan']:
+            return TimeDelta(self.spec['lifespan']['default'])
+
+    @property
     def match(self):
         return self.spec.get('match', None)
 
@@ -1058,6 +1287,18 @@ class ResourceProvider(object):
     @property
     def override(self):
         return self.spec.get('override', {})
+
+    @property
+    def maximum_lifespan(self):
+        if 'lifespan' in self.spec \
+        and 'maximum' in self.spec['lifespan']:
+            return TimeDelta(self.spec['lifespan']['maximum'])
+
+    @property
+    def relative_maximum_lifespan(self):
+        if 'lifespan' in self.spec \
+        and 'relativeMaximum' in self.spec['lifespan']:
+            return TimeDelta(self.spec['lifespan']['relativeMaximum'])
 
     @property
     def resource_requires_claim(self):
@@ -1115,7 +1356,9 @@ class ResourceProvider(object):
             if schema_defaults:
                 dict_merge(defaults, schema_defaults)
 
-        if self.template_enable:
+        if not defaults:
+            return
+        elif self.template_enable:
             return recursive_process_template_strings(
                 defaults, self.template_style,
                 {
@@ -1144,7 +1387,7 @@ class ResourceProvider(object):
         else:
             guid = handle_name[-5:]
 
-        resource = copy.deepcopy(handle['spec']['resources'][resource_index]['template'])
+        resource = copy.deepcopy(handle['spec']['resources'][resource_index].get('template', {}))
         if 'override' in self.spec:
             if self.template_enable:
                 dict_merge(
@@ -1242,7 +1485,7 @@ class ResourceProvider(object):
             return str(e)
 
 @kopf.on.event(ko.operator_domain, ko.version, 'resourceproviders')
-def watch_providers(event, logger, **_):
+def resource_provider_event(event, logger, **_):
     if event['type'] == 'DELETED':
         provider = event['object']
         provider_name = provider['metadata']['name']
@@ -1266,7 +1509,7 @@ def watch_providers(event, logger, **_):
         logger.warning('Unhandled ResourceProvider event %s', event)
 
 @kopf.on.event(ko.operator_domain, ko.version, 'resourceclaims')
-def watch_resource_claims(event, logger, **_):
+def resource_claim_event(event, logger, **_):
     pause_for_provider_init()
     claim = event['object']
     if event['type'] == 'DELETED':
@@ -1277,7 +1520,7 @@ def watch_resource_claims(event, logger, **_):
         logger.warning('Unhandled ResourceClaim event %s', event)
 
 @kopf.on.event(ko.operator_domain, ko.version, 'resourcehandles')
-def watch_resource_handles(event, logger, **_):
+def resource_handle_event(event, logger, **_):
     pause_for_provider_init()
     handle = event['object']
     if event['type'] == 'DELETED':
@@ -1288,7 +1531,7 @@ def watch_resource_handles(event, logger, **_):
         logger.warning('Unhandled ResourceHandle event %s', event)
 
 @kopf.on.event(ko.operator_domain, ko.version, 'resourcepools')
-def watch_resource_pools(event, logger, **_):
+def resource_pool_event(event, logger, **_):
     pause_for_provider_init()
     if event['type'] == 'DELETED':
         pool = event['object']

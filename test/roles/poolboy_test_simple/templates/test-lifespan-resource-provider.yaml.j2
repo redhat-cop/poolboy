@@ -2,7 +2,7 @@
 apiVersion: {{ poolboy_domain }}/v1
 kind: ResourceProvider
 metadata:
-  name: test-templated
+  name: test-lifespan
   namespace: {{ poolboy_namespace }}
 {% raw %}
 spec:
@@ -20,27 +20,19 @@ spec:
 {% raw %}
     kind: ResourceClaimTest
     metadata:
-      generateName: test-templated-
+      generateName: test-lifespan-
 {% endraw %}
       namespace: {{ poolboy_test_namespace }}
 {% raw %}
     spec:
       vars:
-        desired_state: >-
-          {%- if resource_template.spec.vars.action_schedule.start | default('') == ''
-            or resource_template.spec.vars.action_schedule.stop | default('') == '' -%}
-          {{ resource_template.spec.vars.default_desired_state | default('stopped') }}
-          {%- elif timestamp(resource_template.spec.vars.action_schedule.start) > timestamp.utcnow
-            or timestamp(resource_template.spec.vars.action_schedule.stop) < timestamp.utcnow -%}
-          stopped
-          {%- else -%}
-          started
-          {%- endif -%}
         guid: >-
           {{ resource_handle.metadata.name[5:]
            if resource_handle.metadata.name.startswith('guid-')
            else resource_handle.metadata.name }}
-  resourceRequiresClaim: false
+  lifespan:
+    default: 40s
+    maximum: 30m
   template:
     enable: true
   updateFilters:
@@ -53,10 +45,10 @@ spec:
   validation:
     # FIXME - Implement these...
     customValidation:
-    - name: spec.vars.action_schedule - start must be before stop
+    - name: spec.vars.action_schedule.start must be less than spec.vars.action_schedule.stop
       check: >-
         timestamp(spec.vars.action_schedule.start) < timestamp(spec.vars.action_schedule.stop)
-    - name: spec.vars.action_schedule - start must be 8 hours after start or less than 4 hours from now
+    - name: spec.vars.action_schedule.stop must be less than 8 hours after spec.vars.action_schedule.start
       check: >-
         timestamp(spec.vars.action_schedule.stop) < timestamp(spec.vars.action_schedule.start).add('8h') or
         timestamp(spec.vars.action_schedule.stop) < timestamp.utcnow.add('4h')
