@@ -20,6 +20,8 @@ operatorDomain:
   # If not set and create is true, a name is generated using the operatorDomain template
   name:
 
+manageHandlesInterval: 60
+
 anarchy:
   # Control whether anarchy integration should be created
   create: false

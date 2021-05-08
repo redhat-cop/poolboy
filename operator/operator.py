@@ -17,7 +17,7 @@ import time
 from gpte.util import defaults_from_schema, dict_merge, recursive_process_template_strings
 
 logging_level = os.environ.get('LOGGING_LEVEL', 'INFO')
-manage_handles_interval = int(os.environ.get('MANAGE_HANDLES_INTERVAL', 10))
+manage_handles_interval = int(os.environ.get('MANAGE_HANDLES_INTERVAL', 60))
 
 @kopf.on.startup()
 def configure(settings: kopf.OperatorSettings, **_):
