@@ -58,6 +58,9 @@ For resource overrides templates may reference:
 * `requester_identity` - OpenShift identity of requester determined from ResourceClaim namespace's `openshift.io/requester` annotation
 * `requester_user` - OpenShift user of requester determined from ResourceClaim namespace's `openshift.io/requester`  annotation
 
+Normally Poolboy creates resources from ResourcePools as soon as the ResourceHandle is created.
+If the resource needs to reference `resource_claim` then the ResourceProvider may specify `spec.resourceRequiresClaim` to delay resource creation until the ResourceHandle is bound by a ResourceClaim.
+
 Additionally templates may make use of variables `timestamp` and `timedelta` for date and time calculations.
 Examples:
 
