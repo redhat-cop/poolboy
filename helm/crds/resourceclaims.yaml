@@ -51,6 +51,16 @@ spec:
             description: ResourceClaim specification
             type: object
             properties:
+              lifespan:
+                description: >-
+                  Lifespan configuration for the ResourceClaim.
+                type: object
+                properties:
+                  end:
+                    description: >-
+                      Requested end of lifespan for ResourceHandle and resources it manages.
+                    type: string
+                    format: date-time
               resources:
                 type: array
                 items:
@@ -82,6 +92,29 @@ spec:
             description: ResourceClaim status
             type: object
             properties:
+              lifespan:
+                description: Lifespan configuration from ResourceHandle
+                type: object
+                properties:
+                  end:
+                    description: >-
+                      Configured end of lifespan for ResourceHandle and resources it manages.
+                    type: string
+                    format: date-time
+                  maximum:
+                    description: >-
+                      Maximum lifespan which may be requested in the ResourceClaim relative to the creation timestamp.
+                      Configured as a whole number followed by units "s", "m", "h", or "d" for seconds, minutes, hours, or days.
+                      Ex: "3d" for 3 days.
+                    type: string
+                    pattern: ^[0-9]+[smhd]$
+                  relativeMaximum:
+                    description: >-
+                      Maximum lifespan which may be requested in the ResourceClaim relative to the present datetime.
+                      Configured as a whole number followed by units "s", "m", "h", or "d" for seconds, minutes, hours, or days.
+                      Ex: "3d" for 3 days.
+                    type: string
+                    pattern: ^[0-9]+[smhd]$
               resourceHandle:
                 description: ResourceHandle reference for handle matched to this claim
                 type: object
