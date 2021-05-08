@@ -1,15 +1,15 @@
-# Poolboy
+= Poolboy
 
 image::docs/poolboy.png[Poolboy Icon,200,200]
 
 Poolboy provides a structure to manage OpenShift resources by allowing users to request resources which are then satisfied by resource providers and from pre-provisioned resource pools.
 This allows for users to manage resources in a cluster for which they do not have direct access through Kubernetes role-based access controls.
 
-## Poolboy Operation
+== Poolboy Operation
 
 image::docs/diagram.png[Poolboy Diagram,500,400]
 
-### ResourceClaim Creation
+=== ResourceClaim Creation
 
 . User creates a ResourceClaim which contain a list of resource templates to defines desired resources.
 . The ResourceClaim is matched to a ResourceProvider.
@@ -19,14 +19,14 @@ image::docs/diagram.png[Poolboy Diagram,500,400]
 .. To match an existing ResourceHandle each resource template in the ResourceClaim must match the ResourceHandle, excepting any fields specified in the ResourceProvider's `spec.matchIgnore`.
 .. If created automatically, the ResourceHandle resource templates will be copied from the ResourceClaim.
 
-### ResourceClaim Update
+=== ResourceClaim Update
 
 . User updates an existing ResourceClaim
 . Each resource template in the ResourceClaim is checked for validity against the OpenAPIv3 schema in the ResourceProvider.
 . A JSON Patch for each resource template in the ResourceHandle is generated and then the JSON Patch is filtered according to each ResourceProvider's `spec.updateFilters`. 
 . Updates are applied to the ResourceHandle.
 
-### ResourceHandle Creation or Update
+=== ResourceHandle Creation or Update
 
 . For each resource template in the ResourceHandle a resource definition is generated.
 .. ResourceProvider `spec.override` is applied to each resource template.
@@ -36,7 +36,30 @@ image::docs/diagram.png[Poolboy Diagram,500,400]
 .. If the resource exists then it is updated.
 .. The state of the resource is copied into the ResourceClaim status if a ResourceClaim is bound to the ResourceHandle.
 
-## Use Case - Project Babylon Anarchy Operator
+=== Lifespan
+
+By default no lifespan policy is applied to Poolboy resources.
+
+Lifespan is configured in ResourceHandles by specifying:
+
+* `default` - Default lifespan to apply to ResourceHandle when it is claimed.
+
+* `maximum` - Maximum lifespan which may be requested in the ResourceClaim calculated from the ResourceClaim the creation timestamp.
+
+* `relativeMaximum` - Maximum lifespan which can be requested in the ResourceClaim relative to the present datetime.
+
+If both `maximum` and `relativeMaximum` are specified then the effective maximum is whichever is later.
+The calculated lifespan end set in the ResourceHandle lifespan.
+
+The ResourceClaim can specify a lifespan end which will propagate to the ResourceHandle so long as it is within the maximum limits.
+
+ResourcePools can specify lifespan configuration for resource handles they create.
+In addition to `default`, `maximum`, and `relativeMaximum` the ResourcePool can specify `unclaimed` to specify the lifespan of unclaimed ResourceHandles in the pool.
+
+ResourceHandles created dynamically for ResourceClaims get their lifespan configuration from the ResourceProviders.
+If multiple ResourceProviders are used for a ResourceClaim then the minimum of each of the lifespan configuration options is applied to the ResourceHandle.
+
+== Use Case - Project Babylon Anarchy Operator
 
 Poolboy was designed to manage custom resource types for the
 https://github.com/redhat-cop/anarchy[Anarchy operator framework].
@@ -46,19 +69,19 @@ Poolboy allows for these cloud environments to be pre-provisioned and then claim
 
 In Anarchy a cloud environment is represented by the AnarchySubject custom resource kind.
 
-### Pre-Provisioned Environments
+=== Pre-Provisioned Environments
 
 ResourcePools allow AnarychSubjects to be pre-created.
 The scale of a ResourcePool can be adjusted to add or reduce capacity based on expected demand.
 ResourceProvider validation and overrides allow for environments to be created on demand while retaining control on what environments can be requested.
 
-### User Management of Environments
+=== User Management of Environments
 
 Because the resource status is monitored and synced to the ResourceClaim status, users are able to track the state of their provisioned environments.
 
 Each AnarchySubject has a `spec.desiredState`. The ResourceProvider `spec.updateFilters` allow this field to be updated while the `spec.validation` OpenAPIv3 check enforces that it can only be set to explicitly permitted values.
 
-## Installation
+== Installation
 
 === Poolboy Install
 
@@ -68,9 +91,9 @@ Install from helm template:
 helm template poolboy helm/ | oc apply -f -
 ----
 
-## Build
+== Build
 
-### OpenShift Build
+=== OpenShift Build
 
 . Process OpenShift build template to create BuildConfig and ImageStream
 +
@@ -93,6 +116,6 @@ helm template poolboy helm/ \
 | oc apply -f -
 ----
 
-## Credits
+== Credits
 
 Poolboy logo is original art by Lara Ditkoff

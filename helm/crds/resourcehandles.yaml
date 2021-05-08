@@ -77,7 +77,7 @@ spec:
                     format: date-time
                   maximum:
                     description: >-
-                      Maximum lifespan which may be requested in the ResourceClaim relative to the creation timestamp.
+                      Maximum lifespan which may be requested in the ResourceClaim calculated from the ResourceClaim creation timestamp.
                       Configured as a whole number followed by units "s", "m", "h", or "d" for seconds, minutes, hours, or days.
                       Ex: "3d" for 3 days.
                     type: string
