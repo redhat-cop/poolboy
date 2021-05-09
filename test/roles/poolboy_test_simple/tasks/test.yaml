@@ -859,5 +859,3 @@
   until: r_get_test_lifespan_3 is success
   delay: 5
   retries: 10
-
-- fail:
