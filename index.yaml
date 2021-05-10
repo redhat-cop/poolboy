@@ -1,0 +1,14 @@
+apiVersion: v1
+entries:
+  poolboy:
+  - apiVersion: v2
+    appVersion: 0.8.0
+    created: "2021-05-10T20:17:56.659767586Z"
+    description: A Helm chart for poolboy
+    digest: 45ce02411ce46f151284033746a3a9754fa66d25c1389294b82529ffd9501f1b
+    name: poolboy
+    type: application
+    urls:
+    - https://redhat-cop.github.io/poolboy/poolboy-0.8.0.tgz
+    version: 0.8.0
+generated: "2021-05-10T20:17:56.658689689Z"
