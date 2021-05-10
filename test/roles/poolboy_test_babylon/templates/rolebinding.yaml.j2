@@ -13,5 +13,5 @@ roleRef:
   name: {{ poolboy_namespace }}:poolboy:anarchy
 subjects:
 - kind: ServiceAccount
-  name: poolboy
+  name: {{ poolboy_service_account }}
   namespace: {{ poolboy_namespace }}
