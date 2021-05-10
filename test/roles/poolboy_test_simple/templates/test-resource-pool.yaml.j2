@@ -4,6 +4,8 @@ kind: ResourcePool
 metadata:
   name: test
   namespace: {{ poolboy_namespace }}
+  labels:
+    {{ poolboy_domain }}/test: simple
 spec:
   minAvailable: 1
   resources:

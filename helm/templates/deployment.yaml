@@ -21,6 +21,8 @@ spec:
       containers:
         - name: manager
           env:
+          - name: MANAGE_HANDLES_INTERVAL
+            value: "{{ .Values.manageHandlesInterval }}"
           - name: OPERATOR_DOMAIN
             value: {{ include "poolboy.operatorDomain" . }}
           image: "{{ include "poolboy.image" . }}"

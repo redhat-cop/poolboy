@@ -75,6 +75,7 @@ class Watcher(object):
         preload=False,
         version='v1'
     ):
+        self.logger = logging.getLogger('watch.{}/{}'.format(namespace, name) if namespace else 'watch.{}'.format(name))
         self.name = name
         self.operative = operative
         self._preload = preload
@@ -138,11 +139,11 @@ class Watcher(object):
             except Exception as e:
                 if isinstance(e, kubernetes.client.rest.ApiException) \
                 and e.status == 403:
-                    self.operative.logger.exception("Forbidden response on watch: %s", e)
+                    self.logger.exception("Forbidden response on watch: %s", e)
                     del self.operative.watchers[self.name]
                     return
                 else:
-                    self.operative.logger.exception("Error in watch loop: %s", e)
+                    self.logger.exception("Error in watch loop: %s", e)
                     time.sleep(30)
 
     def watch(self):
@@ -156,22 +157,22 @@ class Watcher(object):
             event_obj = event['object']
             if event['type'] == 'ERROR' \
             and event_obj['kind'] == 'Status':
-                self.operative.logger.debug('Watch %s - reason %s, %s',
+                self.logger.debug('Watch %s - reason %s, %s',
                     event_obj['status'],
                     event_obj['reason'],
                     event_obj['message']
                 )
                 if event_obj['status'] == 'Failure':
                     if event_obj['reason'] in ('Expired', 'Gone'):
-                        self.operative.logger.info('Restarting watch %s, reason %s', self.method_args, event_obj['reason'])
+                        self.logger.info('Restarting watch %s, reason %s', self.method_args, event_obj['reason'])
                         return
                     else:
                         raise Exception("Watch failure: reason {}, message {}".format(event_obj['reason'], event_obj['message']))
             else:
                 try:
-                    self.handler(event)
+                    self.handler(event, self.logger)
                 except Exception as e:
-                    self.operative.logger.exception("Error handling event %s", event)
+                    self.logger.exception("Error handling event %s", event)
 
     def start(self):
         if not self.thread.is_alive():
@@ -181,14 +182,12 @@ class KubeOperative(object):
 
     def __init__(
         self,
-        logging_format='[%(asctime)s] %(threadName)s [%(levelname)-8s] - %(message)s',
-        logging_level=logging.INFO,
         operator_domain=None,
         operator_namespace=None
     ):
         self.api_groups = {}
         self.watchers = {}
-        self.__init_logger(logging_format, logging_level)
+        self.__init_logger()
         self.__init_domain(operator_domain)
         self.__init_namespace(operator_namespace)
         self.__init_kube_apis()
@@ -201,14 +200,8 @@ class KubeOperative(object):
         self.version = 'v1'
         self.api_version = self.operator_domain + '/' + self.version
 
-    def __init_logger(self, logging_format, logging_level):
-        handler = logging.StreamHandler()
-        handler.setLevel(logging_level)
-        handler.setFormatter(
-            logging.Formatter(logging_format)
-        )
+    def __init_logger(self):
         self.logger = logging.getLogger('operator')
-        self.logger.addHandler(handler)
 
     def __init_namespace(self, operator_namespace):
         if operator_namespace:
@@ -503,7 +496,7 @@ class KubeOperative(object):
         if not isinstance(patch, list):
             patch = create_patch(resource, patch, update_filters)
         if not patch:
-            return resource
+            return resource, False
 
         if '/' in resource['apiVersion']:
             group, version = resource['apiVersion'].split('/')
@@ -514,20 +507,20 @@ class KubeOperative(object):
                 resource['metadata'].get('namespace', None),
                 resource['metadata']['name'],
                 patch
-            )
+            ), True
         else:
             return self.patch_core_resource(
                 resource['kind'],
                 resource['metadata'].get('namespace', None),
                 resource['metadata']['name'],
                 patch
-            )
+            ), True
 
     def patch_resource_status(self, resource, patch, update_filters=None):
         if not isinstance(patch, list):
             patch = create_patch(resource, {"status": patch}, update_filters)
         if not patch:
-            return resource
+            return resource, False
 
         if '/' in resource['apiVersion']:
             group, version = resource['apiVersion'].split('/')
@@ -538,14 +531,14 @@ class KubeOperative(object):
                 namespace=resource['metadata'].get('namespace', None),
                 patch=patch,
                 version=version
-            )
+            ), True
         else:
             return self.patch_core_resource_status(
                 kind=resource['kind'],
                 name=resource['metadata']['name'],
                 namespace=resource['metadata'].get('namespace', None),
                 patch=patch
-            )
+            ), True
 
     def create_watcher(self, kind, name=None, namespace=None, group=None, preload=False, version='v1'):
         if not name:

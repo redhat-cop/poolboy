@@ -90,7 +90,7 @@
     _handle: "{{ r_resource_handle_for_test_1.resources[0] }}"
 
 - name: Get resource from handle for test-1
-  k8s_facts:
+  k8s_info:
     api_version: "{{ resource_ref.apiVersion }}"
     kind: "{{ resource_ref.kind }}"
     name: "{{ resource_ref.name }}"
@@ -120,7 +120,7 @@
     resource_annotations: "{{ resource_for_test_1.resources[0].metadata.annotations }}"
 
 - name: Check for ResourceClaim test-1 resource in status
-  k8s_facts:
+  k8s_info:
     api_version: "{{ poolboy_domain }}/v1"
     kind: ResourceClaim
     name: test-1
@@ -196,7 +196,7 @@
     seconds: 5
 
 - name: Get resource handle for claim test-1
-  k8s_facts:
+  k8s_info:
     api_version: "{{ poolboy_domain }}/v1"
     kind: ResourceHandle
     namespace: "{{ poolboy_namespace }}"
@@ -223,7 +223,7 @@
     handle: "{{ r_resource_handle_for_test_1.resources[0] }}"
 
 - name: Get resource claim test-1
-  k8s_facts:
+  k8s_info:
     api_version: "{{ poolboy_domain }}/v1"
     kind: ResourceClaim
     name: test-1
@@ -259,7 +259,7 @@
     seconds: 2
 
 - name: Confirm resource deletion for test-1
-  k8s_facts:
+  k8s_info:
     api_version: "{{ resource_ref.apiVersion }}"
     kind: "{{ resource_ref.kind }}"
     name: "{{ resource_ref.name }}"
@@ -347,7 +347,7 @@
 - name: Create test resource pool
   k8s:
     state: present
-    definition: "{{ lookup('template', 'resource-pool.yaml.j2') | from_yaml }}"
+    definition: "{{ lookup('template', 'test-resource-pool.yaml.j2') | from_yaml }}"
 
 - name: Get ResourceHandle for pool
   k8s_info:
@@ -439,7 +439,7 @@
 - debug: var=first_pool_resource_handle_name
 
 - name: Verify claim test-pool-match
-  k8s_facts:
+  k8s_info:
     api_version: "{{ poolboy_domain }}/v1"
     kind: ResourceClaim
     name: test-pool-match
@@ -512,7 +512,7 @@
                 number: 2323
 
 - name: Verify resource claim test-pool-explicit
-  k8s_facts:
+  k8s_info:
     api_version: "{{ poolboy_domain }}/v1"
     kind: ResourceClaim
     name: test-pool-explicit
@@ -543,7 +543,7 @@
     seconds: 2
 
 - name: Get resource handles from test pool
-  k8s_facts:
+  k8s_info:
     api_version: "{{ poolboy_domain }}/v1"
     kind: ResourceHandle
     namespace: "{{ poolboy_namespace }}"
@@ -579,7 +579,7 @@
     seconds: 2
 
 - name: Get resource handles from test pool
-  k8s_facts:
+  k8s_info:
     api_version: "{{ poolboy_domain }}/v1"
     kind: ResourceHandle
     namespace: "{{ poolboy_namespace }}"
@@ -593,3 +593,269 @@
     - r_get_test_pool_handles.resources | length == 0
     fail_msg: found remaining test pool handles
     success_msg: all test pool handles have been cleaned up
+
+- name: Create test-templated ResourceProvider
+  k8s:
+    state: present
+    definition: "{{ lookup('template', 'test-templated-resource-provider.yaml.j2') | from_yaml }}"
+
+- name: Create ResourceClaim for test-templated-1
+  k8s:
+    state: present
+    definition: "{{ resource_definition | from_yaml }}"
+  vars:
+    resource_definition: |
+      apiVersion: {{ poolboy_domain }}/v1
+      kind: ResourceClaim
+      metadata:
+        name: test-templated-1
+        namespace: {{ poolboy_test_namespace }}
+        labels:
+          {{ poolboy_domain }}/test: simple
+      spec:
+        resources:
+        - provider:
+            apiVersion: {{ poolboy_domain }}/v1
+            kind: ResourceProvider
+            name: test-templated
+            namespace: {{ poolboy_namespace }}
+
+- name: Verify ResourceClaim test-templated-1 started
+  k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-templated-1
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_test_templated_1
+  vars:
+    __test_templated_1: "{{ r_get_test_templated_1.resources[0] | default({}) }}"
+    __test_resource: "{{ __test_templated_1.status.resources[0].state | default({}) }}"
+  failed_when: >-
+    __test_resource.spec.vars.desired_state | default('') != 'started'
+  until: r_get_test_templated_1 is success
+  delay: 5
+  retries: 3
+
+- name: Verify ResourceClaim test-templated-1 transition to stopped
+  k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-templated-1
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_test_templated_1
+  vars:
+    __test_templated_1: "{{ r_get_test_templated_1.resources[0] | default({}) }}"
+    __test_resource: "{{ __test_templated_1.status.resources[0].state | default({}) }}"
+  failed_when: >-
+    __test_resource.spec.vars.desired_state | default('') != 'stopped'
+  until: r_get_test_templated_1 is success
+  delay: 5
+  retries: 10
+
+- name: Delete resource claim test-templated-1
+  k8s:
+    state: absent
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-templated-1
+    namespace: "{{ poolboy_test_namespace }}"
+
+- name: Create test-lifespan ResourceProvider
+  k8s:
+    state: present
+    definition: "{{ lookup('template', 'test-lifespan-resource-provider.yaml.j2') | from_yaml }}"
+
+- name: Create ResourceClaim for test-lifespan-1
+  k8s:
+    state: present
+    definition: "{{ resource_definition | from_yaml }}"
+  vars:
+    resource_definition: |
+      apiVersion: {{ poolboy_domain }}/v1
+      kind: ResourceClaim
+      metadata:
+        name: test-lifespan-1
+        namespace: {{ poolboy_test_namespace }}
+        labels:
+          {{ poolboy_domain }}/test: simple
+      spec:
+        resources:
+        - provider:
+            apiVersion: {{ poolboy_domain }}/v1
+            kind: ResourceProvider
+            name: test-lifespan
+            namespace: {{ poolboy_namespace }}
+
+- name: Verify ResourceClaim test-lifespan-1 created
+  k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-lifespan-1
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_test_lifespan_1
+  vars:
+    __test_lifespan_1: "{{ r_get_test_lifespan_1.resources[0] | default({}) }}"
+  failed_when: >-
+    __test_lifespan_1.status.lifespan.end is undefined or
+    40 != (__test_lifespan_1.status.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%SZ') - __test_lifespan_1.metadata.creationTimestamp | to_datetime('%Y-%m-%dT%H:%M:%SZ')).total_seconds()
+  until: r_get_test_lifespan_1 is success
+  delay: 5
+  retries: 10
+
+- name: Verify ResourceClaim test-lifespan-1 deleted
+  k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-lifespan-1
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_test_lifespan_1
+  failed_when: >-
+    r_get_test_lifespan_1.resources | length > 0
+  until: r_get_test_lifespan_1 is success
+  delay: 5
+  retries: 10
+
+- name: Create ResourceClaim for test-lifespan-2
+  k8s:
+    state: present
+    definition: "{{ resource_definition | from_yaml }}"
+  vars:
+    resource_definition: |
+      apiVersion: {{ poolboy_domain }}/v1
+      kind: ResourceClaim
+      metadata:
+        name: test-lifespan-2
+        namespace: {{ poolboy_test_namespace }}
+        labels:
+          {{ poolboy_domain }}/test: simple
+      spec:
+        resources:
+        - provider:
+            apiVersion: {{ poolboy_domain }}/v1
+            kind: ResourceProvider
+            name: test-lifespan
+            namespace: {{ poolboy_namespace }}
+
+- name: Verify ResourceClaim test-lifespan-2 created
+  k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-lifespan-2
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_test_lifespan_2
+  vars:
+    __test_lifespan_2: "{{ r_get_test_lifespan_2.resources[0] | default({}) }}"
+  failed_when: >-
+    __test_lifespan_2.status.lifespan.end is undefined or
+    40 != (__test_lifespan_2.status.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%SZ') - __test_lifespan_2.metadata.creationTimestamp | to_datetime('%Y-%m-%dT%H:%M:%SZ')).total_seconds()
+  until: r_get_test_lifespan_2 is success
+  delay: 5
+  retries: 10
+
+- name: Update ResourceClaim test-lifespan-2 to extend lifespan
+  vars:
+    __test_lifespan_2: "{{ r_get_test_lifespan_2.resources[0] | default({}) }}"
+  k8s:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-lifespan-2
+    namespace: "{{ poolboy_test_namespace }}"
+    definition:
+      spec:
+        lifespan:
+          end: >-
+            {{ "%Y-%m-%dT%H:%M:%SZ" | strftime(
+              50 + (__test_lifespan_2.metadata.creationTimestamp | to_datetime('%Y-%m-%dT%H:%M:%SZ')).timestamp()
+            ) }}
+
+- name: Verify ResourceClaim test-lifespan-2 lifespan extended
+  k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-lifespan-2
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_test_lifespan_2
+  vars:
+    __test_lifespan_2: "{{ r_get_test_lifespan_2.resources[0] | default({}) }}"
+  failed_when: >-
+    __test_lifespan_2.status.lifespan.end is undefined or
+    50 != (__test_lifespan_2.status.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%SZ') - __test_lifespan_2.metadata.creationTimestamp | to_datetime('%Y-%m-%dT%H:%M:%SZ')).total_seconds()
+  until: r_get_test_lifespan_2 is success
+  delay: 5
+  retries: 10
+
+- name: Verify ResourceClaim test-lifespan-2 deleted
+  k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-lifespan-2
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_test_lifespan_2
+  failed_when: >-
+    r_get_test_lifespan_2.resources | length > 0
+  until: r_get_test_lifespan_2 is success
+  delay: 5
+  retries: 10
+
+- name: Create test-lifespan resource pool
+  k8s:
+    state: present
+    definition: "{{ lookup('template', 'test-lifespan-resource-pool.yaml.j2') | from_yaml }}"
+
+- name: Verify ResourceHandle for test-lifespan ResourcePool
+  k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceHandle
+    namespace: "{{ poolboy_namespace }}"
+    label_selectors:
+    - "{{ poolboy_domain }}/resource-pool-name=test-lifespan"
+    - "{{ poolboy_domain }}/resource-pool-namespace={{ poolboy_namespace }}"
+  register: r_get_pool_resource_handle
+  vars:
+    __handle: "{{ r_get_pool_resource_handle.resources[0] | default({}) }}"
+  failed_when: >-
+    r_get_pool_resource_handle.resources | length != 1 or
+    __handle.spec.lifespan.default != '23s' or
+    __handle.spec.lifespan.maximum != '2h' or
+    __handle.spec.lifespan.relativeMaximum != '1h' or
+    ((__handle.spec.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%SZ') - __handle.metadata.creationTimestamp | to_datetime('%Y-%m-%dT%H:%M:%SZ')).total_seconds() - 3600) | abs > 2
+  until: r_get_pool_resource_handle is success
+  retries: 10
+  delay: 1
+
+- name: Create ResourceClaim for test-lifespan-3
+  k8s:
+    state: present
+    definition: "{{ resource_definition | from_yaml }}"
+  vars:
+    resource_definition: |
+      apiVersion: {{ poolboy_domain }}/v1
+      kind: ResourceClaim
+      metadata:
+        name: test-lifespan-3
+        namespace: {{ poolboy_test_namespace }}
+        labels:
+          {{ poolboy_domain }}/test: simple
+      spec:
+        resources:
+        - provider:
+            apiVersion: {{ poolboy_domain }}/v1
+            kind: ResourceProvider
+            name: test-lifespan
+            namespace: {{ poolboy_namespace }}
+
+- name: Verify ResourceClaim test-lifespan-3 bound to pool
+  k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-lifespan-3
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_test_lifespan_3
+  vars:
+    __test_lifespan_3: "{{ r_get_test_lifespan_3.resources[0] | default({}) }}"
+  failed_when: >-
+    __test_lifespan_3.status.lifespan.end is undefined or
+    23 != (__test_lifespan_3.status.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%SZ') - __test_lifespan_3.metadata.creationTimestamp | to_datetime('%Y-%m-%dT%H:%M:%SZ')).total_seconds()
+  until: r_get_test_lifespan_3 is success
+  delay: 5
+  retries: 10

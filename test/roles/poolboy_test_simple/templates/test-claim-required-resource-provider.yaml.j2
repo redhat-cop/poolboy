@@ -36,9 +36,9 @@ spec:
            else resource_handle.metadata.name :}}
   resourceRequiresClaim: true
   updateFilters:
-  - pathMatch: /spec/var/action_schedule/destroy
+  - pathMatch: /spec/vars/action_schedule/destroy
     allowedOps: ['add', 'replace']
-  - pathMatch: /spec/var/action_schedule/stop
+  - pathMatch: /spec/vars/action_schedule/stop
     allowedOps: ['add', 'replace']
   - pathMatch: /spec/vars/desired_state
     allowedOps: ['add', 'replace']
