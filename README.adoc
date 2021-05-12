@@ -84,7 +84,7 @@ Lifespan is configured in ResourceHandles by specifying:
 
 * `relativeMaximum` - Maximum lifespan which can be requested in the ResourceClaim relative to the present datetime.
 
-If both `maximum` and `relativeMaximum` are specified then the effective maximum is whichever is later.
+If both `maximum` and `relativeMaximum` are specified then the effective maximum is whichever is earlier.
 The calculated lifespan end set in the ResourceHandle lifespan.
 
 The ResourceClaim can specify a lifespan end which will propagate to the ResourceHandle so long as it is within the maximum limits.

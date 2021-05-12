@@ -1113,7 +1113,7 @@ def maximum_lifespan_end_for_handle(handle, claim):
     relative_maximum_lifespan = handle['spec'].get('lifespan', {}).get('relativeMaximum')
     if relative_maximum_lifespan:
         relative_end = TimeStamp() + TimeDelta(relative_maximum_lifespan)
-        if relative_end > end:
+        if relative_end < end:
             end = relative_end
             maximum_type = 'relativeMaximum'
 
