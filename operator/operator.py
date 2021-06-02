@@ -793,8 +793,8 @@ def manage_handle(handle, logger):
                     'Propagating delete to ResourceHandle after discovering ResourceClaim deleted',
                     extra={
                         'ResourceClaim': {
-                            'namespace': handle_spec['claim']['namespace'],
-                            'name': handle_spec['claim']['name'],
+                            'namespace': handle_spec['resourceClaim']['namespace'],
+                            'name': handle_spec['resourceClaim']['name'],
                         },
                         'ResourceHandle': {
                             'name': handle_name
