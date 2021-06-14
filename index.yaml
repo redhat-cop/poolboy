@@ -2,8 +2,18 @@ apiVersion: v1
 entries:
   poolboy:
   - apiVersion: v2
+    appVersion: 0.8.2
+    created: "2021-06-14T22:37:57.757260272Z"
+    description: A Helm chart for poolboy
+    digest: b14cab74c1ebc470736591c41161705977224f954ca26663d7ee6c8d8f5372e8
+    name: poolboy
+    type: application
+    urls:
+    - https://redhat-cop.github.io/poolboy/poolboy-0.8.2.tgz
+    version: 0.8.2
+  - apiVersion: v2
     appVersion: 0.8.1
-    created: "2021-06-02T21:03:23.094137616Z"
+    created: "2021-06-14T22:37:57.756436456Z"
     description: A Helm chart for poolboy
     digest: 650d9637fefe718d7abf666fe0b4f0cd9f3bcd54466de4d05b3ba21892825b38
     name: poolboy
@@ -13,7 +23,7 @@ entries:
     version: 0.8.1
   - apiVersion: v2
     appVersion: 0.8.0
-    created: "2021-06-02T21:03:23.093108002Z"
+    created: "2021-06-14T22:37:57.755626141Z"
     description: A Helm chart for poolboy
     digest: 45ce02411ce46f151284033746a3a9754fa66d25c1389294b82529ffd9501f1b
     name: poolboy
@@ -21,4 +31,4 @@ entries:
     urls:
     - https://redhat-cop.github.io/poolboy/poolboy-0.8.0.tgz
     version: 0.8.0
-generated: "2021-06-02T21:03:23.091820684Z"
+generated: "2021-06-14T22:37:57.754599421Z"
