@@ -504,20 +504,9 @@ def manage_claim_create(claim, logger):
         provider_name = resource.get('provider', {}).get('name')
         if provider_name:
             provider = ResourceProvider.find_provider_by_name(provider_name)
-            if not provider:
-                log_claim_event(
-                    claim, logger, 'ResourceProvider {} not found'.format(provider_name)
-                )
-                return
             resource_providers.append(provider)
         elif 'template' in resource:
             provider = ResourceProvider.find_provider_by_template_match(resource['template'])
-            if not provider:
-                log_claim_event(
-                    claim, logger,
-                    'Unable to match spec.resources[{}].template to ResourceProvider'.format(i)
-                )
-                return
             resource_providers.append(provider)
 
     ko.custom_objects_api.patch_namespaced_custom_object_status(
@@ -578,13 +567,6 @@ def manage_claim_init(claim, logger):
             claim_status_resource = claim_status_resources[i]
             provider_ref = claim_status_resource['provider']
             provider = ResourceProvider.find_provider_by_name(provider_ref['name'])
-            if not provider:
-                log_claim_event(
-                    claim, logger,
-                    "Unable to find ResourceProvider " + provider_name
-                )
-                return
-
             claim_resources_item = { 'provider': provider_ref }
             template_defaults = provider.resource_claim_template_defaults(
                 resource_claim = claim,
@@ -838,20 +820,9 @@ def manage_handle(handle, logger):
         handle_resources = handle_spec['resources']
         for handle_resource in handle_resources:
             provider_name = handle_resource['provider']['name']
-            provider = ResourceProvider.find_provider_by_name(provider_name)
-            if provider:
-                providers.append(provider)
-            else:
-                log_handle_error(
-                    handle, logger,
-                    'Unable to find ResourceProvider',
-                    {
-                        'ResourceProvider': {
-                            'name': provider_name,
-                        },
-                    },
-                )
-                return
+            providers.append(
+                ResourceProvider.find_provider_by_name(provider_name)
+            )
 
         have_handle_update = False
         resources_to_create = []
@@ -1168,16 +1139,6 @@ def validate_claim(claim, logger):
             status_resource = status_resources[i]
             provider_name = status_resource['provider']['name']
             provider = ResourceProvider.find_provider_by_name(provider_name)
-            if not provider:
-                log_claim_error(
-                    claim, logger, 'Unable to find ResourceProvider',
-                    {
-                        'ResourceProvider': {
-                            'name': provider_name,
-                        }
-                    }
-                )
-                return False
             validation_error = provider.validate_resource_template(resource.get('template', {}), logger)
             if validation_error:
                 log_claim_error(
@@ -1232,13 +1193,23 @@ class ResourceProvider(object):
 
     @staticmethod
     def find_provider_by_name(name):
-        return ResourceProvider.providers.get(name, None)
+        provider = ResourceProvider.providers.get(name)
+        if not provider:
+            raise kopf.TemporaryError(f"ResourceProvider {provider_name} not found")
+        return provider
 
     @staticmethod
     def find_provider_by_template_match(template):
+        provider_matches = []
         for provider in ResourceProvider.providers.values():
             if provider.is_match_for_template(template):
-                return provider
+                provider_matches.append(provider)
+        if len(provider_matches) == 0:
+            raise kopf.TemporaryError(f"Unable to match template to ResourceProvider")
+        elif len(provider_matches) == 1:
+            return provider_matches[0]
+        else:
+            raise kopf.PermanentError(f"Resource template matches multiple ResourceProviders")
 
     @staticmethod
     def manage_provider(provider):
