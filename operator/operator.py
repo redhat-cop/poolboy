@@ -1195,7 +1195,7 @@ class ResourceProvider(object):
     def find_provider_by_name(name):
         provider = ResourceProvider.providers.get(name)
         if not provider:
-            raise kopf.TemporaryError(f"ResourceProvider {provider_name} not found")
+            raise kopf.TemporaryError(f"ResourceProvider {name} not found")
         return provider
 
     @staticmethod
