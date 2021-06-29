@@ -1358,7 +1358,9 @@ class ResourceProvider(object):
         else:
             guid = handle_name[-5:]
 
-        resource = copy.deepcopy(handle['spec']['resources'][resource_index].get('template', {}))
+        resource_reference = handle['spec']['resources'][resource_index].get('reference', {})
+        resource_template = handle['spec']['resources'][resource_index].get('template', {})
+        resource = copy.deepcopy(resource_template)
         if 'override' in self.spec:
             if self.template_enable:
                 dict_merge(
@@ -1371,7 +1373,8 @@ class ResourceProvider(object):
                             "resource_provider": self,
                             "resource_handle": handle,
                             "resource_claim": claim,
-                            "resource_template": resource,
+                            "resource_reference": resource_reference,
+                            "resource_template": resource_template,
                         },
                     ),
                 )
