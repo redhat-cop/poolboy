@@ -147,7 +147,7 @@ def defaults_from_schema(schema):
     for prop, property_schema in schema.get('properties', {}).items():
         if 'default' in property_schema and prop not in obj:
             obj[prop] = property_schema['default']
-        if property_schema['type'] == 'object':
+        if property_schema.get('type') == 'object':
             defaults = defaults_from_schema(property_schema)
             if defaults:
                 if not prop in obj:
