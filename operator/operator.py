@@ -1358,7 +1358,9 @@ class ResourceProvider(object):
         else:
             guid = handle_name[-5:]
 
-        resource = copy.deepcopy(handle['spec']['resources'][resource_index].get('template', {}))
+        resource_reference = handle['spec']['resources'][resource_index].get('reference', {})
+        resource_template = handle['spec']['resources'][resource_index].get('template', {})
+        resource = copy.deepcopy(resource_template)
         if 'override' in self.spec:
             if self.template_enable:
                 dict_merge(
@@ -1371,7 +1373,8 @@ class ResourceProvider(object):
                             "resource_provider": self,
                             "resource_handle": handle,
                             "resource_claim": claim,
-                            "resource_template": resource,
+                            "resource_reference": resource_reference,
+                            "resource_template": resource_template,
                         },
                     ),
                 )
@@ -1390,6 +1393,21 @@ class ResourceProvider(object):
                 resource['metadata']['generateName'] + guid
         if 'annotations' not in resource['metadata']:
             resource['metadata']['annotations'] = {}
+        if 'apiVersion' not in resource:
+            kopf.TemporaryError(f"Template processing for ResourceProvider {self.name} produced definition without an apiVersion!")
+        if 'kind' not in resource:
+            kopf.TemporaryError(f"Template processing for ResourceProvider {self.name} produced definition without a kind!")
+        if resource_reference:
+            # If there is an existing resoruce reference, then don't allow changes
+            # to properties in the reference.
+            resource['metadata']['name'] = resource_reference['name']
+            if 'namespace' in resource_reference:
+                resource['metadata']['namespace'] = resource_reference['namespace']
+            if resource['apiVersion'] != resource_reference['apiVersion']:
+                kopf.TemporaryError(f"Unable to change apiVersion for resource!")
+            if resource['kind'] != resource_reference['kind']:
+                kopf.TemporaryError(f"Unable to change kind for resource!")
+
         resource['metadata']['annotations'].update({
             ko.operator_domain + '/resource-provider-name': self.name,
             ko.operator_domain + '/resource-provider-namespace': self.namespace,
