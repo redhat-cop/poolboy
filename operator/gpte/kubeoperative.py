@@ -338,11 +338,17 @@ class KubeOperative(object):
                 namespace=namespace
             )
         else:
-            return self.get_core_resource(
+            resource = self.get_core_resource(
                 kind=kind,
                 name=name,
                 namespace=namespace
             )
+            if resource:
+                return {
+                    resource.attribute_map.get(k, k): v for k, v in resource.to_dict().items()
+                }
+            else:
+                return None
 
     def get_core_resource(self, kind, namespace, name):
         try:

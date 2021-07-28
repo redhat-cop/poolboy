@@ -860,8 +860,6 @@ def manage_handle(handle, logger):
                 name = resource_name,
                 namespace = resource_namespace
             )
-            if hasattr(resource, 'to_dict'):
-                resource = resource.to_dict()
 
             if resource:
                 provider.update_resource(handle, resource, resource_definition, logger)
