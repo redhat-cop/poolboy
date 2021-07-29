@@ -344,9 +344,7 @@ class KubeOperative(object):
                 namespace=namespace
             )
             if resource:
-                return {
-                    resource.attribute_map.get(k, k): v for k, v in resource.to_dict().items()
-                }
+                return self.core_v1_api.api_client.sanitize_for_serialization(resource)
             else:
                 return None
 

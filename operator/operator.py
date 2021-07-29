@@ -1157,9 +1157,7 @@ def watch_resource_event(event, logger):
     if event_type in ['ADDED', 'DELETED', 'MODIFIED']:
         resource = event['object']
         if hasattr(resource, 'to_dict'):
-            resources = {
-                resource.attribute_map.get(k, k): v for k, v in resource.to_dict().items()
-            }
+            resource = ko.core_v1_api.api_client.sanitize_for_serialization(resource)
         metadata = resource['metadata']
         annotations = metadata.get('annotations', None)
         if not annotations:
