@@ -129,6 +129,7 @@ def check_create_disabled(claim, logger):
     """
     Check if create is disabled for any provider for claim.
     """
+    claim_resource_statuses = claim['status']['resources']
     for i, claim_resource in enumerate(claim['spec']['resources']):
         provider_ref = claim_resource_statuses[i]['provider']
         provider = ResourceProvider.find_provider_by_name(provider_ref['name'])
