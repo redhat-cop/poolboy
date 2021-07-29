@@ -125,6 +125,17 @@ def bind_handle_to_claim(handle, claim, logger):
 
     return handle
 
+def check_create_disabled(claim, logger):
+    """
+    Check if create is disabled for any provider for claim.
+    """
+    for i, claim_resource in enumerate(claim['spec']['resources']):
+        provider_ref = claim_resource_statuses[i]['provider']
+        provider = ResourceProvider.find_provider_by_name(provider_ref['name'])
+        if provider.create_disabled:
+            return True
+    return False
+
 def create_handle_for_claim(claim, logger):
     """
     Create resource handle for claim, called after claim is validated and failed
@@ -436,15 +447,19 @@ def manage_claim_bind(claim, logger):
     """
     Called on claim event if ResourceClaim is not bound to a ResourceHandle
     """
-    handle = match_handle_to_claim(claim, logger)
-    if handle:
-        handle = bind_handle_to_claim(handle, claim, logger)
-    else:
-        handle = create_handle_for_claim(claim, logger)
-
     claim_meta = claim['metadata']
     claim_name = claim_meta['name']
     claim_namespace = claim_meta['namespace']
+
+    handle = match_handle_to_claim(claim, logger)
+    if handle:
+        handle = bind_handle_to_claim(handle, claim, logger)
+    elif check_create_disabled(claim, logger):
+        logger.info(f'ResourceClaim {claim_name} in {claim_namespace} cannot bind ResourceHandle and create is disabled for ResourceProvider')
+        return
+    else:
+        handle = create_handle_for_claim(claim, logger)
+
     handle_meta = handle['metadata']
     handle_spec = handle['spec']
     handle_name = handle_meta['name']
@@ -1238,6 +1253,10 @@ class ResourceProvider(object):
     @property
     def namespace(self):
         return self.metadata['namespace']
+
+    @property
+    def create_disabled(self):
+        return self.spec.get('disableCreation', False)
 
     @property
     def default_lifespan(self):

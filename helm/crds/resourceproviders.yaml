@@ -55,11 +55,16 @@ spec:
             type: object
             properties:
               default:
-                description:
+                description: >-
                   Template applied to resource claims immediately after matching to the provider
                   to set default values into the claim when not present.
                 type: object
                 x-kubernetes-preserve-unknown-fields: true
+              disableCreation:
+                description: >-
+                  If set to true, then ResourceHandle creation is disabled for any ResourceClaim using
+                  this ResourceProvider.
+                type: boolean
               lifespan:
                 description: >-
                   Used to generate lifespan configuration for ResourceHandles using the ResourceProvider.
