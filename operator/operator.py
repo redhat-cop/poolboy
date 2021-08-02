@@ -1386,11 +1386,13 @@ class ResourceProvider(object):
                     recursive_process_template_strings(
                         self.override, self.template_style,
                         {
+                            "guid": guid,
                             "requester_identity": requester_identity,
                             "requester_user": requester_user,
                             "resource_provider": self,
                             "resource_handle": handle,
                             "resource_claim": claim,
+                            "resource_index": resource_index,
                             "resource_reference": resource_reference,
                             "resource_template": resource_template,
                         },
