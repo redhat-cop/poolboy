@@ -38,7 +38,7 @@ image:
   tagOverride: ""
 
 admin:
-  deploy: true
+  deploy: false
   image:
     repository: quay.io/redhat-cop/poolboy-admin
     pullPolicy: Always
