@@ -99,6 +99,10 @@ spec:
                   required:
                   - provider
                   properties:
+                    name:
+                      description: >-
+                        A name used to identify the resource.
+                      type: string
                     provider:
                       description: Reference to ResourceProvider
                       type: object

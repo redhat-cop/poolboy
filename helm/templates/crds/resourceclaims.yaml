@@ -67,6 +67,10 @@ spec:
                 items:
                   type: object
                   properties:
+                    name:
+                      description: >-
+                        A name used to identify the resource.
+                      type: string
                     provider:
                       description: >-
                         ResourceProvider specification that is used to manage the resource template.
@@ -134,6 +138,10 @@ spec:
                 items:
                   type: object
                   properties:
+                    name:
+                      description: >-
+                        A name used to identify the resource.
+                      type: string
                     provider:
                       description: ResourceProvider reference for provider managing this resource
                       type: object

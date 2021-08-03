@@ -57,19 +57,21 @@ def bind_handle_to_claim(handle, claim, logger):
     claim_meta = claim['metadata']
     claim_namespace = claim_meta['namespace']
     claim_name = claim_meta['name']
+    claim_spec = claim['spec']
     handle_meta = handle['metadata']
     handle_name = handle_meta['name']
-    pool_ref = handle['spec'].get('resourcePool')
+    handle_spec = handle['spec']
+    pool_ref = handle_spec.get('resourcePool')
 
     # Check if ResourceClaim includes requested lifespan end
-    lifespan_end = claim['spec'].get('lifespan', {}).get('end')
+    lifespan_end = claim_spec.get('lifespan', {}).get('end')
 
     if lifespan_end:
         # If ResourceClaim defined lifespan end, then translate to TimeStamp
         lifespan_end = TimeStamp(lifespan_end)
     else:
         # Default lifespan end to ResourceHandle default lifespan if defined
-        handle_lifespan = handle['spec'].get('lifespan')
+        handle_lifespan = handle_spec.get('lifespan')
         if handle_lifespan:
             handle_lifespan_default = handle_lifespan.get('default')
             if handle_lifespan_default:
@@ -97,27 +99,34 @@ def bind_handle_to_claim(handle, claim, logger):
         },
     )
 
-    handle = ko.custom_objects_api.patch_namespaced_custom_object(
-        ko.operator_domain, ko.version, ko.operator_namespace, 'resourcehandles', handle_name,
-        {
-            'metadata': {
-                'labels': {
-                    ko.operator_domain + '/resource-claim-name': claim_name,
-                    ko.operator_domain + '/resource-claim-namespace': claim_namespace
-                }
-            },
-            'spec': {
-                'lifespan': {
-                    'end': lifespan_end,
-                },
-                'resourceClaim': {
-                    'apiVersion': ko.api_version,
-                    'kind': 'ResourceClaim',
-                    'name': claim_name,
-                    'namespace': claim_namespace
-                }
+    patch = {
+        'metadata': {
+            'labels': {
+                ko.operator_domain + '/resource-claim-name': claim_name,
+                ko.operator_domain + '/resource-claim-namespace': claim_namespace
             }
+        },
+        'spec': {
+            'lifespan': {
+                'end': lifespan_end,
+            },
+            'resourceClaim': {
+                'apiVersion': ko.api_version,
+                'kind': 'ResourceClaim',
+                'name': claim_name,
+                'namespace': claim_namespace
+            },
+            'resources': handle_spec['resources']
         }
+    }
+
+    for i, handle_resource in enumerate(handle_spec['resources']):
+        resource_name = claim_spec['resources'][i].get('name')
+        if resource_name:
+            handle_resource['name'] = resource_name
+
+    handle = ko.custom_objects_api.patch_namespaced_custom_object(
+        ko.operator_domain, ko.version, ko.operator_namespace, 'resourcehandles', handle_name, patch
     )
 
     if pool_ref:
@@ -165,6 +174,9 @@ def create_handle_for_claim(claim, logger):
         and (not relative_maximum_lifespan or provider.relative_maximum_lifespan < relative_maximum_lifespan):
             relative_maximum_lifespan = provider.relative_maximum_lifespan
         resources_item = {'provider': provider_ref}
+        resource_name = claim_resource.get('name')
+        if resource_name:
+            resources_item['name'] = resource_name
         if 'template' in claim_resource:
             resources_item['template'] = claim_resource['template']
         resources.append(resources_item)
@@ -530,6 +542,7 @@ def manage_claim_create(claim, logger):
         {
             'status': {
                 'resources': [{
+                    'name': resources[i].get('name'),
                     'provider': {
                         'apiVersion': ko.api_version,
                         'kind': 'ResourceProvider',
@@ -537,7 +550,7 @@ def manage_claim_create(claim, logger):
                         'namespace': provider.namespace
                     },
                     'resource': None
-                } for provider in resource_providers]
+                } for i, provider in enumerate(resource_providers)]
             }
         }
     )
@@ -1071,6 +1084,14 @@ def match_handle_to_claim(claim, logger):
             else:
                 is_match = False
                 break
+            claim_resource_name = claim_resource.get('name')
+            handle_resource_name = handle_resource.get('name')
+            if handle_resource_name:
+                if claim_resource_name != handle_resource_name:
+                    is_match = False
+                    break
+            elif claim_resource_name:
+                diff_count += 1
 
         if is_match:
             # Prefer match with the smallest diff_count and the earliest creation timestamp
@@ -1353,7 +1374,8 @@ class ResourceProvider(object):
                 {
                     'resource_claim': resource_claim,
                     'resource_index': resource_index,
-                    'resource_provider': self
+                    'resource_name': resource_claim['spec']['resources'][resource_index].get('name'),
+                    'resource_provider': self,
                 }
             )
         else:
@@ -1376,8 +1398,9 @@ class ResourceProvider(object):
         else:
             guid = handle_name[-5:]
 
-        resource_reference = handle['spec']['resources'][resource_index].get('reference', {})
-        resource_template = handle['spec']['resources'][resource_index].get('template', {})
+        handle_resource = handle['spec']['resources'][resource_index]
+        resource_reference = handle_resource.get('reference', {})
+        resource_template = handle_resource.get('template', {})
         resource = copy.deepcopy(resource_template)
         if 'override' in self.spec:
             if self.template_enable:
@@ -1393,6 +1416,7 @@ class ResourceProvider(object):
                             "resource_handle": handle,
                             "resource_claim": claim,
                             "resource_index": resource_index,
+                            "resource_name": handle_resource.get('name'),
                             "resource_reference": resource_reference,
                             "resource_template": resource_template,
                         },
