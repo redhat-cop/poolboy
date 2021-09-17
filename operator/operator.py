@@ -468,8 +468,7 @@ def manage_claim_bind(claim, logger):
     if handle:
         handle = bind_handle_to_claim(handle, claim, logger)
     elif check_create_disabled(claim, logger):
-        logger.info(f'ResourceClaim {claim_name} in {claim_namespace} cannot bind ResourceHandle and create is disabled for ResourceProvider')
-        return
+        raise kopf.TemporaryError(f"ResourceClaim {claim_name} in {claim_namespace} cannot bind ResourceHandle and create is disabled for ResourceProvider", delay=30)
     else:
         handle = create_handle_for_claim(claim, logger)
 
@@ -537,7 +536,7 @@ def manage_claim_create(claim, logger):
             provider = ResourceProvider.find_provider_by_template_match(resource['template'])
             resource_providers.append(provider)
 
-    ko.custom_objects_api.patch_namespaced_custom_object_status(
+    claim = ko.custom_objects_api.patch_namespaced_custom_object_status(
         ko.operator_domain, ko.version, claim_meta['namespace'], 'resourceclaims', claim_meta['name'],
         {
             'status': {
@@ -554,6 +553,7 @@ def manage_claim_create(claim, logger):
             }
         }
     )
+    manage_claim_init(claim, logger)
 
 def manage_claim_deleted(claim, logger):
     claim_meta = claim['metadata']
@@ -964,11 +964,15 @@ def manage_handle_pending_delete(handle, logger):
     if resource_claim:
         delete_resource_claim(resource_claim['namespace'], resource_claim['name'], logger)
 
-    ko.custom_objects_api.patch_namespaced_custom_object(
-        ko.operator_domain, ko.version, ko.operator_namespace,
-        'resourcehandles', handle['metadata']['name'],
-        { 'metadata': { 'finalizers': None } }
-    )
+    try:
+        ko.custom_objects_api.patch_namespaced_custom_object(
+            ko.operator_domain, ko.version, ko.operator_namespace,
+            'resourcehandles', handle['metadata']['name'],
+            { 'metadata': { 'finalizers': None } }
+        )
+    except kubernetes.client.rest.ApiException as e:
+        if e.status != 404:
+            raise
 
 def manage_pool(pool, logger):
     pool_meta = pool['metadata']
@@ -1230,7 +1234,7 @@ class ResourceProvider(object):
     def find_provider_by_name(name):
         provider = ResourceProvider.providers.get(name)
         if not provider:
-            raise kopf.TemporaryError(f"ResourceProvider {name} not found")
+            raise kopf.TemporaryError(f"ResourceProvider {name} not found", delay=5)
         return provider
 
     @staticmethod
@@ -1240,11 +1244,11 @@ class ResourceProvider(object):
             if provider.is_match_for_template(template):
                 provider_matches.append(provider)
         if len(provider_matches) == 0:
-            raise kopf.TemporaryError(f"Unable to match template to ResourceProvider")
+            raise kopf.TemporaryError(f"Unable to match template to ResourceProvider", delay=30)
         elif len(provider_matches) == 1:
             return provider_matches[0]
         else:
-            raise kopf.PermanentError(f"Resource template matches multiple ResourceProviders")
+            raise kopf.PermanentError(f"Resource template matches multiple ResourceProviders", delay=300)
 
     @staticmethod
     def manage_provider(provider):
@@ -1438,9 +1442,9 @@ class ResourceProvider(object):
         if 'annotations' not in resource['metadata']:
             resource['metadata']['annotations'] = {}
         if 'apiVersion' not in resource:
-            kopf.TemporaryError(f"Template processing for ResourceProvider {self.name} produced definition without an apiVersion!")
+            kopf.PermanentError(f"Template processing for ResourceProvider {self.name} produced definition without an apiVersion!")
         if 'kind' not in resource:
-            kopf.TemporaryError(f"Template processing for ResourceProvider {self.name} produced definition without a kind!")
+            kopf.PermanentError(f"Template processing for ResourceProvider {self.name} produced definition without a kind!")
         if resource_reference:
             # If there is an existing resoruce reference, then don't allow changes
             # to properties in the reference.
@@ -1448,9 +1452,9 @@ class ResourceProvider(object):
             if 'namespace' in resource_reference:
                 resource['metadata']['namespace'] = resource_reference['namespace']
             if resource['apiVersion'] != resource_reference['apiVersion']:
-                kopf.TemporaryError(f"Unable to change apiVersion for resource!")
+                kopf.PermanentError(f"Unable to change apiVersion for resource!")
             if resource['kind'] != resource_reference['kind']:
-                kopf.TemporaryError(f"Unable to change kind for resource!")
+                kopf.PermanentError(f"Unable to change kind for resource!")
 
         resource['metadata']['annotations'].update({
             ko.operator_domain + '/resource-provider-name': self.name,
@@ -1541,16 +1545,56 @@ def resource_provider_event(event, logger, **_):
     else:
         logger.warning('Unhandled ResourceProvider event %s', event)
 
-@kopf.on.event(ko.operator_domain, ko.version, 'resourceclaims')
-def resource_claim_event(event, logger, **_):
+def resource_claim_event(annotations, labels, meta, name, namespace, spec, status, uid, logger, **_):
+    manage_claim({
+        "apiVersion": f"{ko.operator_domain}/{ko.version}",
+        "kind": "ResourceClaim",
+        "metadata": {
+            "annotations": annotations,
+            "creationTimestamp": meta["creationTimestamp"],
+            "deletionTimestamp": meta.get("deletionTimestamp"),
+            "labels": labels,
+            "name": name,
+            "namespace": namespace,
+            "uid": uid,
+        },
+        "spec": spec,
+        "status": status,
+    }, logger)
+
+@kopf.on.create(ko.operator_domain, ko.version, 'resourceclaims')
+def resource_claim_create(**kwargs):
     pause_for_provider_init()
-    claim = event['object']
-    if event['type'] == 'DELETED':
-        manage_claim_deleted(claim, logger)
-    elif event['type'] in ['ADDED', 'MODIFIED', None]:
-        manage_claim(claim, logger)
-    else:
-        logger.warning('Unhandled ResourceClaim event %s', event)
+    resource_claim_event(**kwargs)
+
+@kopf.on.resume(ko.operator_domain, ko.version, 'resourceclaims')
+def resource_claim_resume(**kwargs):
+    pause_for_provider_init()
+    resource_claim_event(**kwargs)
+
+@kopf.on.update(ko.operator_domain, ko.version, 'resourceclaims')
+def resource_claim_update(**kwargs):
+    pause_for_provider_init()
+    resource_claim_event(**kwargs)
+
+@kopf.on.delete(ko.operator_domain, ko.version, 'resourceclaims', optional=True)
+def resource_claim_delete(annotations, labels, meta, name, namespace, spec, status, uid, logger, **_):
+    pause_for_provider_init()
+    manage_claim_deleted({
+        "apiVersion": f"{ko.operator_domain}/{ko.version}",
+        "kind": "ResourceClaim",
+        "metadata": {
+            "annotations": annotations,
+            "creationTimestamp": meta["creationTimestamp"],
+            "deletionTimestamp": meta.get("deletionTimestamp"),
+            "labels": labels,
+            "name": name,
+            "namespace": namespace,
+            "uid": uid,
+        },
+        "spec": spec,
+        "status": status,
+    }, logger)
 
 @kopf.on.event(ko.operator_domain, ko.version, 'resourcehandles')
 def resource_handle_event(event, logger, **_):
