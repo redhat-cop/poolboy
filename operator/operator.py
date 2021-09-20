@@ -1545,7 +1545,7 @@ def resource_provider_event(event, logger, **_):
     else:
         logger.warning('Unhandled ResourceProvider event %s', event)
 
-def resource_claim_event(annotations, labels, meta, name, namespace, spec, status, uid, logger, **_):
+def handle_resource_claim_event(annotations, labels, meta, name, namespace, spec, status, uid, logger, **_):
     manage_claim({
         "apiVersion": f"{ko.operator_domain}/{ko.version}",
         "kind": "ResourceClaim",
@@ -1565,36 +1565,24 @@ def resource_claim_event(annotations, labels, meta, name, namespace, spec, statu
 @kopf.on.create(ko.operator_domain, ko.version, 'resourceclaims')
 def resource_claim_create(**kwargs):
     pause_for_provider_init()
-    resource_claim_event(**kwargs)
+    handle_resource_claim_event(**kwargs)
 
 @kopf.on.resume(ko.operator_domain, ko.version, 'resourceclaims')
 def resource_claim_resume(**kwargs):
     pause_for_provider_init()
-    resource_claim_event(**kwargs)
+    handle_resource_claim_event(**kwargs)
 
 @kopf.on.update(ko.operator_domain, ko.version, 'resourceclaims')
 def resource_claim_update(**kwargs):
     pause_for_provider_init()
-    resource_claim_event(**kwargs)
+    handle_resource_claim_event(**kwargs)
 
-@kopf.on.delete(ko.operator_domain, ko.version, 'resourceclaims', optional=True)
-def resource_claim_delete(annotations, labels, meta, name, namespace, spec, status, uid, logger, **_):
+@kopf.on.event(ko.operator_domain, ko.version, 'resourceclaims')
+def resource_claim_event(event, logger, **_):
     pause_for_provider_init()
-    manage_claim_deleted({
-        "apiVersion": f"{ko.operator_domain}/{ko.version}",
-        "kind": "ResourceClaim",
-        "metadata": {
-            "annotations": annotations,
-            "creationTimestamp": meta["creationTimestamp"],
-            "deletionTimestamp": meta.get("deletionTimestamp"),
-            "labels": labels,
-            "name": name,
-            "namespace": namespace,
-            "uid": uid,
-        },
-        "spec": spec,
-        "status": status,
-    }, logger)
+    claim = event.get('object')
+    if event['type'] == 'DELETED':
+        manage_claim_deleted(claim, logger)
 
 @kopf.on.event(ko.operator_domain, ko.version, 'resourcehandles')
 def resource_handle_event(event, logger, **_):
