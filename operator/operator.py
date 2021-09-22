@@ -1442,9 +1442,9 @@ class ResourceProvider(object):
         if 'annotations' not in resource['metadata']:
             resource['metadata']['annotations'] = {}
         if 'apiVersion' not in resource:
-            kopf.PermanentError(f"Template processing for ResourceProvider {self.name} produced definition without an apiVersion!")
+            raise kopf.PermanentError(f"Template processing for ResourceProvider {self.name} produced definition without an apiVersion!")
         if 'kind' not in resource:
-            kopf.PermanentError(f"Template processing for ResourceProvider {self.name} produced definition without a kind!")
+            raise kopf.PermanentError(f"Template processing for ResourceProvider {self.name} produced definition without a kind!")
         if resource_reference:
             # If there is an existing resoruce reference, then don't allow changes
             # to properties in the reference.
@@ -1452,9 +1452,9 @@ class ResourceProvider(object):
             if 'namespace' in resource_reference:
                 resource['metadata']['namespace'] = resource_reference['namespace']
             if resource['apiVersion'] != resource_reference['apiVersion']:
-                kopf.PermanentError(f"Unable to change apiVersion for resource!")
+                raise kopf.PermanentError(f"Unable to change apiVersion for resource!")
             if resource['kind'] != resource_reference['kind']:
-                kopf.PermanentError(f"Unable to change kind for resource!")
+                raise kopf.PermanentError(f"Unable to change kind for resource!")
 
         resource['metadata']['annotations'].update({
             ko.operator_domain + '/resource-provider-name': self.name,
@@ -1623,7 +1623,7 @@ def manage_handles(logger):
             **kwargs
         )
         for handle in resp.get('items', []):
-            object_logger = kopf.ObjectLogger(
+            object_logger = kopf.LocalObjectLogger(
                 body = handle,
                 settings = kopf.OperatorSettings(),
             )
