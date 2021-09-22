@@ -1623,7 +1623,14 @@ def manage_handles(logger):
             **kwargs
         )
         for handle in resp.get('items', []):
-            manage_handle(handle, logger)
+            object_logger = kopf.ObjectLogger(
+                body = handle,
+                settings = kopf.OperatorSettings(),
+            )
+            try:
+                manage_handle(handle, object_logger)
+            except Exception as e:
+                object_logger.exception("Error managing handle")
 
         _continue = resp['metadata'].get('continue')
         if not _continue:
