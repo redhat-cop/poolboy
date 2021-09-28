@@ -99,35 +99,45 @@ def bind_handle_to_claim(handle, claim, logger):
         },
     )
 
-    patch = {
-        'metadata': {
-            'labels': {
-                ko.operator_domain + '/resource-claim-name': claim_name,
-                ko.operator_domain + '/resource-claim-namespace': claim_namespace
+    dict_merge(
+        handle,
+        {
+            'metadata': {
+                'labels': {
+                    ko.operator_domain + '/resource-claim-name': claim_name,
+                    ko.operator_domain + '/resource-claim-namespace': claim_namespace
+                }
+            },
+            'spec': {
+                'lifespan': {
+                    'end': lifespan_end,
+                },
+                'resourceClaim': {
+                    'apiVersion': ko.api_version,
+                    'kind': 'ResourceClaim',
+                    'name': claim_name,
+                    'namespace': claim_namespace
+                },
             }
-        },
-        'spec': {
-            'lifespan': {
-                'end': lifespan_end,
-            },
-            'resourceClaim': {
-                'apiVersion': ko.api_version,
-                'kind': 'ResourceClaim',
-                'name': claim_name,
-                'namespace': claim_namespace
-            },
-            'resources': handle_spec['resources']
         }
-    }
+    )
 
     for i, handle_resource in enumerate(handle_spec['resources']):
         resource_name = claim_spec['resources'][i].get('name')
         if resource_name:
             handle_resource['name'] = resource_name
 
-    handle = ko.custom_objects_api.patch_namespaced_custom_object(
-        ko.operator_domain, ko.version, ko.operator_namespace, 'resourcehandles', handle_name, patch
-    )
+    try:
+        handle = ko.custom_objects_api.replace_namespaced_custom_object(
+            ko.operator_domain, ko.version, ko.operator_namespace, 'resourcehandles', handle_name, handle
+        )
+    except kubernetes.client.rest.ApiException as e:
+        if e.status == 404:
+            raise kopf.TemporaryError(f"ResourceClaim {claim_name} failed to bind ResourceHandle {handle_name}, not found", delay=1)
+        elif e.status == 409:
+            raise kopf.TemporaryError(f"ResourceClaim {claim_name} failed to bind ResourceHandle {handle_name}, conflict", delay=1)
+        else:
+            raise
 
     if pool_ref:
         manage_pool_by_ref(pool_ref, logger)
