@@ -109,9 +109,6 @@ def bind_handle_to_claim(handle, claim, logger):
                 }
             },
             'spec': {
-                'lifespan': {
-                    'end': lifespan_end,
-                },
                 'resourceClaim': {
                     'apiVersion': ko.api_version,
                     'kind': 'ResourceClaim',
@@ -121,6 +118,18 @@ def bind_handle_to_claim(handle, claim, logger):
             }
         }
     )
+
+    if lifespan_end:
+        dict_merge(
+            handle,
+            {
+                'spec': {
+                    'lifespan': {
+                        'end': lifespan_end,
+                    },
+                }
+            }
+        )
 
     for i, handle_resource in enumerate(handle_spec['resources']):
         resource_name = claim_spec['resources'][i].get('name')
