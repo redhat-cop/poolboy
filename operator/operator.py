@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import copy
-import datetime
 import gpte.kubeoperative
 import json
 import kopf
@@ -14,6 +13,7 @@ import re
 import threading
 import time
 
+from datetime import datetime, timedelta
 from gpte.util import TimeDelta, TimeStamp, defaults_from_schema, dict_merge, recursive_process_template_strings
 
 logging_level = os.environ.get('LOGGING_LEVEL', 'INFO')
@@ -271,6 +271,7 @@ def create_handle_for_pool(pool, logger):
     pool_spec = pool['spec']
     pool_namespace = pool_meta['namespace']
     pool_name = pool_meta['name']
+    pool_lifespan = pool_spec.get('lifespan')
 
     handle_spec = {
         'resourcePool': {
@@ -282,12 +283,17 @@ def create_handle_for_pool(pool, logger):
         'resources': pool_spec['resources']
     }
 
-    if 'lifespan' in pool_spec:
-        handle_spec['lifespan'] = {
-            k: v for k, v in pool_spec['lifespan'].items() if k != 'unclaimed'
-        }
-        if 'unclaimed' in pool_spec['lifespan']:
-            handle_spec['lifespan']['end'] = str(TimeStamp().add(pool_spec['lifespan']['unclaimed']))
+    if pool_lifespan:
+        handle_lifespan = {}
+        if 'default' in pool_lifespan:
+            handle_lifespan['default'] = pool_lifespan['default']
+        if 'maximum' in pool_lifespan:
+            handle_lifespan['maximum'] = pool_lifespan['maximum']
+        if 'relativeMaximum' in pool_lifespan:
+            handle_lifespan['relativeMaximum'] = pool_lifespan['relativeMaximum']
+        if 'unclaimed' in pool_lifespan:
+            handle_lifespan['end'] = str(TimeStamp().add(pool_lifespan['unclaimed']))
+        handle_spec['lifespan'] = handle_lifespan
 
     return ko.custom_objects_api.create_namespaced_custom_object(
         ko.operator_domain, ko.version, ko.operator_namespace, 'resourcehandles',
@@ -605,7 +611,7 @@ def manage_claim_init(claim, logger):
         "metadata": {
             "annotations": {
                 ko.operator_domain + '/resource-claim-init-timestamp':
-                    datetime.datetime.utcnow().strftime('%FT%TZ')
+                    datetime.utcnow().strftime('%FT%TZ')
             }
         },
         'spec': { 'resources': claim_resources_update }
@@ -838,7 +844,7 @@ def manage_handle(handle, logger):
 
         lifespan_end = handle_spec.get('lifespan', {}).get('end')
         if lifespan_end:
-            if datetime.datetime.utcnow() > datetime.datetime.strptime(lifespan_end, "%Y-%m-%dT%H:%M:%SZ"):
+            if datetime.utcnow() > datetime.strptime(lifespan_end, "%Y-%m-%dT%H:%M:%SZ"):
                 if claim:
                     claim_namespace = claim['metadata']['namespace']
                     claim_name = claim['metadata']['name']
@@ -1064,6 +1070,8 @@ def match_handle_to_claim(claim, logger):
     the search to a specific pool.
     """
     claim_meta = claim['metadata']
+    claim_spec = claim['spec']
+    claim_status = claim['status']
     annotations = claim_meta.get('annotations', {})
     pool_name = annotations.get(ko.operator_domain + '/resource-pool-name', None)
     if pool_name:
@@ -1080,9 +1088,21 @@ def match_handle_to_claim(claim, logger):
         ko.operator_domain, ko.version, ko.operator_namespace, 'resourcehandles',
         label_selector=label_selector
     ).get('items', []):
-        claim_resources = claim['spec']['resources']
-        status_resources = claim['status']['resources']
-        handle_resources = handle['spec']['resources']
+        handle_spec = handle['spec']
+
+        # Do not bind to handles that are deleting
+        if 'deletionTimestamp' in handle['metadata']:
+            continue
+
+        # Do not bind to handles that are near end of lifespan
+        lifespan_end = handle_spec.get('lifespan', {}).get('end')
+        if lifespan_end \
+        and datetime.utcnow() + timedelta(seconds=manage_handles_interval) > datetime.strptime(lifespan_end, "%Y-%m-%dT%H:%M:%SZ"):
+            continue
+
+        claim_resources = claim_spec['resources']
+        status_resources = claim_status['resources']
+        handle_resources = handle_spec['resources']
         if len(claim_resources) != len(handle_resources):
             # Claim cannot match handle if there is a different resource count
             continue
