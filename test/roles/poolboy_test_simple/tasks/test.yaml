@@ -531,8 +531,6 @@
                 name: test-pool
                 number: 2323
 
-- debug: var=first_pool_resource_handle_name
-
 - name: Verify claim test-pool-match
   k8s_info:
     api_version: "{{ poolboy_domain }}/v1"
@@ -548,7 +546,8 @@
     claim.status.resources[0].state.metadata.namespace != poolboy_test_namespace or
     claim.status.resources[0].state.spec.vars.name != 'test-pool' or
     claim.status.resources[0].state.spec.vars.number != 23 or
-    claim.status.resourceHandle.name != first_pool_resource_handle_name
+    claim.status.resourceHandle.name != first_pool_resource_handle_name or
+    claim.status.resources[0].state.spec.vars.desired_state != 'started'
   until: r_get_test_pool_match_claim is success
   retries: 10
   delay: 1

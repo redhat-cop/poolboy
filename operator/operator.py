@@ -517,7 +517,7 @@ def manage_claim_bind(claim, logger):
             'relativeMaximum': handle_lifespan.get('relativeMaximum'),
         }
 
-    ko.custom_objects_api.patch_namespaced_custom_object_status(
+    claim = ko.custom_objects_api.patch_namespaced_custom_object_status(
         ko.operator_domain, ko.version, claim_namespace, 'resourceclaims', claim_name,
         {
             'status': status
@@ -534,6 +534,8 @@ def manage_claim_bind(claim, logger):
             },
         }
     )
+
+    manage_claim(claim, logger)
 
 def manage_claim_create(claim, logger):
     """
