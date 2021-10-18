@@ -62,6 +62,40 @@ subjects:
   namespace: {{ include "poolboy.namespaceName" . }}
   name: {{ include "poolboy.name" . }}
 ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "poolboy.namespaceName" . }}:{{ include "poolboy.name" . }}-resources
+  namespace: {{ .Values.anarchy.namespace }}
+rules:
+- apiGroups:
+  - {{ include "poolboy.operatorDomain" . }}
+  resources:
+    - "resourcehandles"
+    - "resourceclaims"
+  verbs:
+    - create
+    - delete
+    - get
+    - list
+    - patch
+    - watch
+    - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Values.anarchy.namespace }}:{{ include "poolboy.namespaceName" . }}:{{ include "poolboy.name" . }}-resources
+  namespace: {{ .Values.anarchy.namespace }}
+subjects:
+- kind: ServiceAccount
+  name: anarchy-runner-default
+  namespace: {{ .Values.anarchy.namespace }}
+roleRef:
+  kind: Role
+  name: {{ include "poolboy.namespaceName" . }}:{{ include "poolboy.name" . }}-resources
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: poolboy.gpte.redhat.com/v1
 kind: ResourceProvider
 metadata:
