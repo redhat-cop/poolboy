@@ -99,7 +99,9 @@ spec:
              else resource_handle.metadata.name :}}`}}
   updateFilters:
   - pathMatch: /spec/vars/desired_state
+  {{ if .Values.anarchy.updateFilters -}}
   {{ .Values.anarchy.updateFilters | toYaml | indent 2 | trim }}
+  {{ end -}}
   validation:
     openAPIV3Schema:
       type: object
