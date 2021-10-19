@@ -28,6 +28,9 @@ anarchy:
   domain: anarchy.gpte.redhat.com
   namespace: anarchy-operator
   service: anarchy-operator
+  # Custom update filters to include in the ResourceProvider
+  #updateFilters:
+  #  - "/spec/vars/job_vars((?!/uuid)/.*)"
 
 deploy: true
 replicaCount: 1
