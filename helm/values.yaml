@@ -30,7 +30,12 @@ anarchy:
   service: anarchy-operator
   # Custom update filters to include in the ResourceProvider
   #updateFilters:
-  #  - "/spec/vars/job_vars((?!/uuid)/.*)"
+  #  - pathMatch: "/spec/vars/example"
+  #  - pathMatch: "/spec/vars/job_vars((?!/uuid)/.*)"
+  #    allowedOps:
+  #      - add
+  #      - remove
+  #      - replace
 
 deploy: true
 replicaCount: 1
