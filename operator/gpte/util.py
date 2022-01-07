@@ -111,12 +111,15 @@ class TimeStamp(object):
         return TimeStamp()
 
 jinja2envs = {
-    'jinja2': jinja2.Environment(),
+    'jinja2': jinja2.Environment(
+        undefined = jinja2.ChainableUndefined,
+    ),
     'legacy': jinja2.Environment(
         block_start_string='{%:',
         block_end_string=':%}',
         comment_start_string='{#:',
         comment_end_string=':#}',
+        undefined = jinja2.ChainableUndefined,
         variable_start_string='{{:',
         variable_end_string=':}}',
     ),
