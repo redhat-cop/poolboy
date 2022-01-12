@@ -1,8 +1,10 @@
 import collections
 import copy
 import datetime
+from distutils.util import strtobool
 import jinja2
 import json
+import re
 
 class TimeDelta(object):
     def __init__(self, set_timedelta=None):
@@ -110,8 +112,15 @@ class TimeStamp(object):
     def utcnow(self):
         return TimeStamp()
 
+def error_if_undefined(result):
+    if isinstance(result, jinja2.Undefined):
+        result._fail_with_undefined_error()
+    else:
+        return result
+
 jinja2envs = {
     'jinja2': jinja2.Environment(
+        finalize = error_if_undefined,
         undefined = jinja2.ChainableUndefined,
     ),
     'legacy': jinja2.Environment(
@@ -119,11 +128,16 @@ jinja2envs = {
         block_end_string=':%}',
         comment_start_string='{#:',
         comment_end_string=':#}',
+        finalize = error_if_undefined,
         undefined = jinja2.ChainableUndefined,
         variable_start_string='{{:',
         variable_end_string=':}}',
     ),
 }
+jinja2envs['jinja2'].filters['bool'] = lambda x: bool(strtobool(x)) if isinstance(x, str) else bool(x)
+jinja2envs['legacy'].filters['bool'] = lambda x: bool(strtobool(x)) if isinstance(x, str) else bool(x)
+jinja2envs['jinja2'].filters['object'] = lambda x: json.dumps(x)
+jinja2envs['legacy'].filters['object'] = lambda x: json.dumps(x)
 jinja2envs['jinja2'].filters['to_json'] = lambda x: json.dumps(x)
 jinja2envs['legacy'].filters['to_json'] = lambda x: json.dumps(x)
 
@@ -159,13 +173,62 @@ def defaults_from_schema(schema):
     if obj:
         return obj
 
+
+# Regex to detect if it looks like this value should be rendered as a raw type
+# rather than a string.
+#
+# So given a template in YAML of:
+#
+# example:
+#   boolean_as_string: "{{ 1 == 1 }}"
+#   boolean_raw: "{{ (1 == 1) | bool }}"
+#   float_as_string: "{{ 1 / 3 }}"
+#   float_raw: "{{ (1 / 3) | float }}"
+#   number_as_string: "{{ 1 + 1 }}"
+#   number_raw: "{{ (1 + 1) | int }}"
+#   object_as_string: "{{ {'user': {'name': 'alice'}} }}"
+#   object_raw: "{{ {'user': {'name': 'alice'}} | object }}"
+#
+# Will render to:
+#
+# example:
+#   boolean_as_string: 'True'
+#   boolean_raw: true
+#   float_as_string: '0.3333333333333333'
+#   float_raw: 0.3333333333333333
+#   number_as_string: '2'
+#   number_raw: 2
+#   object_as_string: '{''user'': {''name'': ''alice''}}'
+#   object_raw:
+#     user:
+#       name: alice
+
+type_filter_match_re = re.compile(r'^{{(?!.*{{).*\| *(bool|float|int|object) *}}$')
+
 def jinja2process(template, template_style, variables):
     variables = copy.copy(variables)
     variables['timedelta'] = TimeDelta()
     variables['timestamp'] = TimeStamp()
     jinja2env = jinja2envs.get(template_style)
     j2template = jinja2env.from_string(template)
-    return j2template.render(variables)
+    template_out = j2template.render(variables)
+
+    type_filter_match = type_filter_match_re.match(template)
+    if type_filter_match:
+        type_filter = type_filter_match.group(1)
+        try:
+            if type_filter == 'bool':
+                return bool(strtobool(template_out))
+            elif type_filter == 'float':
+                return float(template_out)
+            elif type_filter == 'int':
+                return int(template_out)
+            elif type_filter == 'object':
+                return json.loads(template_out)
+        except ValueError:
+            pass
+    else:
+        return template_out
 
 def recursive_process_template_strings(template, template_style, variables={}):
     if isinstance(template, dict):

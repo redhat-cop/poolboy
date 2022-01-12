@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-import copy
 import unittest
 import sys
 sys.path.append('../operator')

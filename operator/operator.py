@@ -2,7 +2,9 @@
 
 import copy
 import gpte.kubeoperative
+import jinja2
 import json
+import jsonpointer
 import kopf
 import kubernetes
 import logging
@@ -131,6 +133,16 @@ def bind_handle_to_claim(handle, claim, logger):
             }
         )
 
+    # Add any additional resources from claim to handle
+    for i, claim_resource in enumerate(claim_spec['resources']):
+        if i == len(handle_spec['resources']):
+            handle_spec['resources'].append({
+                "provider": claim['status']['resources'][i]['provider'],
+            })
+            if 'template' in claim_resource:
+                handle_spec['resources'][i]['template'] = claim_resource['template']
+
+    # Apply resource names from ResourceClaim to ResourceHandle resources
     for i, handle_resource in enumerate(handle_spec['resources']):
         resource_name = claim_spec['resources'][i].get('name')
         if resource_name:
@@ -880,17 +892,66 @@ def manage_handle(handle, logger):
                 ResourceProvider.find_provider_by_name(provider_name)
             )
 
+        resource_states = []
+        for i, handle_resource in enumerate(handle_resources):
+            name = handle_resource.get('name')
+            reference = handle_resource.get('reference')
+            resource_state = ko.get_resource(
+                api_version = reference['apiVersion'],
+                kind = reference['kind'],
+                name = reference['name'],
+                namespace = reference.get('namespace'),
+            ) if reference else None
+            resource_states.append(resource_state)
+
         have_handle_update = False
         resources_to_create = []
         for i, handle_resource in enumerate(handle_resources):
             provider = providers[i]
+            resource_state = resource_states[i]
 
             if provider.resource_requires_claim and not claim:
                 continue
 
+            template_vars = {}
+            wait_for_linked_provider = False
+            for linked_provider in provider.linked_resource_providers:
+                linked_resource_provider = None
+                linked_resource_state = None
+                for pn, pv in enumerate(providers):
+                    if pv.name == linked_provider.name:
+                        linked_resource_provider = pv
+                        linked_resource_state = resource_states[pn]
+                        break
+                else:
+                    raise kopf.PermanentError(f"Linked ResourceProvider, {linked_provider.name}, not found for any resources for ResourceHandle")
+
+
+                if not linked_provider.check_wait_for(
+                    linked_resource_provider = linked_resource_provider,
+                    linked_resource_state = linked_resource_state,
+                    resource_claim = claim,
+                    resource_handle = handle,
+                    resource_provider = provider,
+                    resource_state = resource_state,
+                ):
+                    wait_for_linked_provider = True
+                    break
+                if linked_resource_state:
+                    for template_var in linked_provider.template_vars:
+                        template_vars[template_var.name] = jsonpointer.resolve_pointer(
+                            linked_resource_state, template_var.value_from,
+                            default = jinja2.ChainableUndefined()
+                        )
+            if wait_for_linked_provider:
+                continue
+
             resource_definition = provider.resource_definition_from_template(
-                handle, claim, i, logger
+                handle, claim, template_vars, i, logger
             )
+            if not resource_definition:
+                continue
+
             start_resource_watch(resource_definition)
 
             resource_api_version = resource_definition['apiVersion']
@@ -910,7 +971,7 @@ def manage_handle(handle, logger):
                 have_handle_update = True
                 handle_resource['reference'] = reference
 
-            resource = ko.get_resource(
+            resource = resource_state or ko.get_resource(
                 api_version = resource_api_version,
                 kind = resource_kind,
                 name = resource_name,
@@ -1102,17 +1163,20 @@ def match_handle_to_claim(claim, logger):
         and datetime.utcnow() + timedelta(seconds=manage_handles_interval) > datetime.strptime(lifespan_end, "%Y-%m-%dT%H:%M:%SZ"):
             continue
 
+        diff_count = 0
+        is_match = True
         claim_resources = claim_spec['resources']
         status_resources = claim_status['resources']
         handle_resources = handle_spec['resources']
-        if len(claim_resources) != len(handle_resources):
-            # Claim cannot match handle if there is a different resource count
+        if len(claim_resources) < len(handle_resources):
+            # Claim cannot match handle if there are more resources in the handle than the claim
             continue
+        elif len(claim_resources) > len(handle_resources):
+            # Claim that adds resources strongly weighted in favor of normal diff match
+            diff_count += 1000
 
-        diff_count = 0
-        is_match = True
-        for i, claim_resource in enumerate(claim_resources):
-            handle_resource = handle_resources[i]
+        for i, handle_resource in enumerate(handle_resources):
+            claim_resource = claim_resources[i]
             provider_name = status_resources[i]['provider']['name']
             if provider_name != handle_resource['provider']['name']:
                 is_match = False
@@ -1266,10 +1330,59 @@ def watch_resource_event(event, logger):
     else:
         logger.warning(event)
 
+class LinkedResourceProvider:
+    class TemplateVar:
+        def __init__(self, spec):
+            self.name = spec['name']
+            self.value_from = spec['from']
+
+    def __init__(self, spec):
+        self.name = spec['name']
+        self.wait_for = spec.get('waitFor')
+        self.template_vars = [
+            LinkedResourceProvider.TemplateVar(item) for item in spec.get('templateVars', [])
+        ]
+
+    def check_wait_for(
+        self,
+        linked_resource_provider,
+        linked_resource_state,
+        resource_claim,
+        resource_handle,
+        resource_provider,
+        resource_state
+    ):
+        '''
+        Check wait condition. True means resource management should proceed.
+        '''
+        if not self.wait_for:
+            return True
+        if not linked_resource_state:
+            return False
+
+
+        template_vars = {
+            'linked_resource_provider': linked_resource_provider,
+            'linked_resource_state': linked_resource_state,
+            'resource_claim': resource_claim,
+            'resource_handle': resource_handle,
+            'resource_provider': resource_provider,
+            'resource_state': resource_state,
+        }
+        for template_var in self.template_vars:
+            template_vars[template_var.name] = jsonpointer.resolve_pointer(
+                linked_resource_state, template_var.value_from,
+                default = jinja2.ChainableUndefined()
+            )
+        return recursive_process_template_strings(
+            '{{(' + self.wait_for + ')|bool}}', resource_provider.template_style, template_vars
+        )
+
 class ResourceProvider(object):
 
     providers = {}
     resource_watchers = {}
+
 
     @staticmethod
     def find_provider_by_name(name):
@@ -1289,7 +1402,7 @@ class ResourceProvider(object):
         elif len(provider_matches) == 1:
             return provider_matches[0]
         else:
-            raise kopf.PermanentError(f"Resource template matches multiple ResourceProviders", delay=300)
+            raise kopf.PermanentError(f"Resource template matches multiple ResourceProviders")
 
     @staticmethod
     def manage_provider(provider):
@@ -1330,6 +1443,12 @@ class ResourceProvider(object):
         if 'lifespan' in self.spec \
         and 'default' in self.spec['lifespan']:
             return TimeDelta(self.spec['lifespan']['default'])
+
+    @property
+    def linked_resource_providers(self):
+        return [
+            LinkedResourceProvider(item) for item in self.spec.get('linkedResourceProviders', [])
+        ]
 
     @property
     def match(self):
@@ -1426,7 +1545,7 @@ class ResourceProvider(object):
         else:
             return defaults
 
-    def resource_definition_from_template(self, handle, claim, resource_index, logger):
+    def resource_definition_from_template(self, handle, claim, template_vars, resource_index, logger):
         if claim:
             requester_identity, requester_user = get_requester_from_namespace(
                 claim['metadata']['namespace']
@@ -1449,23 +1568,24 @@ class ResourceProvider(object):
         resource = copy.deepcopy(resource_template)
         if 'override' in self.spec:
             if self.template_enable:
+                all_template_vars = template_vars.copy()
+                all_template_vars.update({
+                    "guid": guid,
+                    "requester_identity": requester_identity,
+                    "requester_user": requester_user,
+                    "resource_provider": self,
+                    "resource_handle": handle,
+                    "resource_claim": claim,
+                    "resource_index": resource_index,
+                    "resource_name": handle_resource.get('name'),
+                    "resource_reference": resource_reference,
+                    "resource_template": resource_template,
+                })
                 dict_merge(
                     resource,
                     recursive_process_template_strings(
-                        self.override, self.template_style,
-                        {
-                            "guid": guid,
-                            "requester_identity": requester_identity,
-                            "requester_user": requester_user,
-                            "resource_provider": self,
-                            "resource_handle": handle,
-                            "resource_claim": claim,
-                            "resource_index": resource_index,
-                            "resource_name": handle_resource.get('name'),
-                            "resource_reference": resource_reference,
-                            "resource_template": resource_template,
-                        },
-                    ),
+                        self.override, self.template_style, all_template_vars
+                    )
                 )
             else:
                 dict_merge(resource, self.override)

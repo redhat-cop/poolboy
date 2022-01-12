@@ -1,0 +1,27 @@
+---
+apiVersion: {{ poolboy_domain }}/v1
+kind: ResourceProvider
+metadata:
+  name: test-base
+  namespace: {{ poolboy_namespace }}
+spec:
+  override:
+    apiVersion: {{ poolboy_domain }}/v1
+    kind: ResourceClaimTest
+    metadata:
+      generateName: test-base-
+      namespace: {{ poolboy_test_namespace }}
+    spec:
+      vars:
+{% raw %}
+        guid: >-
+          {{ resource_handle.metadata.name[5:]
+           if resource_handle.metadata.name.startswith('guid-')
+           else resource_handle.metadata.name }}
+{% endraw %}
+  template:
+    enable: true
+  validation:
+    openApiV3Schema:
+      additionalProperties: false
+      type: object

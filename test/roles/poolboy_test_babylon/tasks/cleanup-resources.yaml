@@ -1,6 +1,6 @@
 ---
 - name: Get test ResourceClaims
-  k8s_info:
+  kubernetes.core.k8s_info:
     api_version: "{{ poolboy_domain }}/v1"
     kind: ResourceClaim
     namespace: "{{ poolboy_test_namespace }}"
@@ -9,7 +9,7 @@
   register: r_test_claims
 
 - name: Remove finalizer from test ResourceClaims
-  k8s:
+  kubernetes.core.k8s:
     api_version: "{{ poolboy_domain }}/v1"
     kind: ResourceClaim
     name: "{{ _claim.metadata.name }}"
@@ -24,7 +24,7 @@
     loop_var: _claim
 
 - name: Remove test ResourceClaims
-  k8s:
+  kubernetes.core.k8s:
     state: absent
     api_version: "{{ poolboy_domain }}/v1"
     kind: ResourceClaim
@@ -36,7 +36,7 @@
     loop_var: _claim
 
 - name: Get test ResourceHandles
-  k8s_info:
+  kubernetes.core.k8s_info:
     api_version: "{{ poolboy_domain }}/v1"
     kind: ResourceHandle
     namespace: "{{ poolboy_namespace }}"
@@ -45,7 +45,7 @@
   register: r_test_handles
 
 - name: Remove test ResourceHandles
-  k8s:
+  kubernetes.core.k8s:
     state: absent
     api_version: "{{ poolboy_domain }}/v1"
     kind: ResourceHandle
@@ -57,14 +57,14 @@
     loop_var: _handle
 
 - name: Get ResourceClaimTests
-  k8s_facts:
+  kubernetes.core.k8s_info:
     api_version: "{{ poolboy_domain }}/v1"
     kind: ResourceClaimTest
     namespace: "{{ poolboy_test_namespace }}"
   register: r_resource_claim_tests
 
 - name: Remove ResourceClaimTests
-  k8s:
+  kubernetes.core.k8s:
     state: absent
     api_version: "{{ poolboy_domain }}/v1"
     kind: ResourceClaimTest
@@ -76,7 +76,7 @@
     loop_var: _resource_claim_test
 
 - name: Remove test ResourceProviders
-  k8s:
+  kubernetes.core.k8s:
     state: absent
     api_version: "{{ poolboy_domain }}/v1"
     kind: ResourceProvider
