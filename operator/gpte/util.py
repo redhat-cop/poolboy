@@ -176,6 +176,33 @@ def defaults_from_schema(schema):
 
 # Regex to detect if it looks like this value should be rendered as a raw type
 # rather than a string.
+#
+# So given a template in YAML of:
+#
+# example:
+#   boolean_as_string: "{{ 1 == 1 }}"
+#   boolean_raw: "{{ (1 == 1) | bool }}"
+#   float_as_string: "{{ 1 / 3 }}"
+#   float_raw: "{{ (1 / 3) | float }}"
+#   number_as_string: "{{ 1 + 1 }}"
+#   number_raw: "{{ (1 + 1) | int }}"
+#   object_as_string: "{{ {'user': {'name': 'alice'}} }}"
+#   object_raw: "{{ {'user': {'name': 'alice'}} | object }}"
+#
+# Will render to:
+#
+# example:
+#   boolean_as_string: 'True'
+#   boolean_raw: true
+#   float_as_string: '0.3333333333333333'
+#   float_raw: 0.3333333333333333
+#   number_as_string: '2'
+#   number_raw: 2
+#   object_as_string: '{''user'': {''name'': ''alice''}}'
+#   object_raw:
+#     user:
+#       name: alice
+
 type_filter_match_re = re.compile(r'^{{(?!.*{{).*\| *(bool|float|int|object) *}}$')
 
 def jinja2process(template, template_style, variables):
