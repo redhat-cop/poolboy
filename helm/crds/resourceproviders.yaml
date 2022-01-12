@@ -89,6 +89,45 @@ spec:
                       Ex: "3d" for 3 days.
                     type: string
                     pattern: ^[0-9]+[smhd]$
+              linkedResourceProviders:
+                description: >-
+                  List of ResourceProviders this one depends upon.
+                  Values from resources provided by linked providers can be referenced in template vars.
+                type: array
+                items:
+                  type: object
+                  required:
+                  - name
+                  properties:
+                    name:
+                      description: >-
+                        Name of linked ResourceProvider
+                      type: string
+                    waitFor:
+                      description: >-
+                        Condition to wait for in linked provider before creating resource.
+                        Condition is given in Jinja2 syntax similar to ansible "when" clauses.
+                        The linked provider's resource state may be referenced with "resource_state".
+                      type: string
+                    templateVars:
+                      description: >-
+                        Variables to make available to templating from linked resource provider.
+                      type: array
+                      items:
+                        type: object
+                        required:
+                        - from
+                        - name
+                        properties:
+                          from:
+                            description: >-
+                              Source path from resource state given in JSON Pointer (IETF RFC 6901) format.
+                              (ex: /spec/metadata/name).
+                            type: string
+                          name:
+                            description: >-
+                              Name of template variable to set.
+                            type: string
               match:
                 description: >-
                   Partial resource definition used to check if a resource in a handle or claim

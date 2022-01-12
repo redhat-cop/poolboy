@@ -1,0 +1,36 @@
+---
+apiVersion: {{ poolboy_domain }}/v1
+kind: ResourceProvider
+metadata:
+  name: test-linked
+  namespace: {{ poolboy_namespace }}
+spec:
+  linkedResourceProviders:
+  - name: test-base
+    waitFor: test_value is defined
+    templateVars:
+    - name: test_value
+      from: /spec/vars/provision_vars/test_value
+  override:
+    apiVersion: {{ poolboy_domain }}/v1
+    kind: ResourceClaimTest
+    metadata:
+      generateName: test-linked-
+      namespace: {{ poolboy_test_namespace }}
+    spec:
+{% raw %}
+      vars:
+        guid: >-
+          {{ resource_handle.metadata.name[5:]
+           if resource_handle.metadata.name.startswith('guid-')
+           else resource_handle.metadata.name }}
+        test_value: >-
+          {{ test_value }}
+{% endraw %}
+  resourceRequiresClaim: false
+  template:
+    enable: true
+  validation:
+    openApiV3Schema:
+      additionalProperties: false
+      type: object
