@@ -1127,7 +1127,8 @@ def manage_pool_by_ref(ref, logger):
             return
         else:
             raise
-    manage_pool(pool, logger)
+    if 'deletionTimestamp' not in pool['metadata']:
+        manage_pool(pool, logger)
 
 def manage_pool_deleted(pool, logger):
     pool_meta = pool['metadata']
