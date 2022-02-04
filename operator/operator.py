@@ -21,8 +21,26 @@ from gpte.util import TimeDelta, TimeStamp, defaults_from_schema, dict_merge, re
 logging_level = os.environ.get('LOGGING_LEVEL', 'INFO')
 manage_handles_interval = int(os.environ.get('MANAGE_HANDLES_INTERVAL', 60))
 
+class InfiniteRelativeBackoff:
+    def __init__(self, initial_delay=0.1, scaling_factor=2, maximum=60):
+        self.initial_delay = initial_delay
+        self.scaling_factor = scaling_factor
+        self.maximum = maximum
+
+    def __iter__(self):
+        delay = self.initial_delay
+        while True:
+            if delay > self.maximum:
+                yield self.maximum
+            else:
+                yield delay
+                delay *= self.scaling_factor
+
 @kopf.on.startup()
 def configure(settings: kopf.OperatorSettings, **_):
+    # Never give up from network errors
+    settings.networking.error_backoffs = InfiniteRelativeBackoff()
+
     # Disable scanning for CustomResourceDefinitions
     settings.scanning.disabled = True
 
@@ -1109,7 +1127,8 @@ def manage_pool_by_ref(ref, logger):
             return
         else:
             raise
-    manage_pool(pool, logger)
+    if 'deletionTimestamp' not in pool['metadata']:
+        manage_pool(pool, logger)
 
 def manage_pool_deleted(pool, logger):
     pool_meta = pool['metadata']
@@ -1807,7 +1826,7 @@ def manage_handles_loop():
             logger.exception("Error in resourcehandles")
 
 @kopf.on.startup()
-def on_startup(logger, **kwargs):
+def start_manage_handles(logger, **kwargs):
     """Main function."""
     threading.Thread(
         name = 'manage_handles',
