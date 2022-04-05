@@ -1645,6 +1645,12 @@ class ResourceProvider(object):
             ko.operator_domain + '/resource-handle-version': handle['metadata']['resourceVersion'],
             ko.operator_domain + '/resource-index': str(resource_index)
         })
+
+        if ko.operator_domain + '/resource-pool-name' in handle['metadata'].get('labels', {}):
+            resource['metadata']['annotations'][ko.operator_domain + '/resource-pool-name'] = handle['metadata']['labels'][ko.operator_domain + '/resource-pool-name']
+        if ko.operator_domain + '/resource-pool-namespace' in handle['metadata'].get('labels', {}):
+            resource['metadata']['annotations'][ko.operator_domain + '/resource-pool-namespace'] = handle['metadata']['labels'][ko.operator_domain + '/resource-pool-namespace']
+
         if claim:
             resource['metadata']['annotations'].update({
                 ko.operator_domain + '/resource-claim-name': claim['metadata']['name'],
