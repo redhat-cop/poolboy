@@ -544,6 +544,7 @@
     claim.status.resources[0].state.kind != 'ResourceClaimTest' or
     not claim.status.resources[0].state.metadata.name.startswith('test-pool-') or
     claim.status.resources[0].state.metadata.namespace != poolboy_test_namespace or
+    claim.status.resources[0].state.metadata.annotations[poolboy_domain ~ '/resource-pool-name'] != 'test' or
     claim.status.resources[0].state.spec.vars.name != 'test-pool' or
     claim.status.resources[0].state.spec.vars.number != 23 or
     claim.status.resourceHandle.name != first_pool_resource_handle_name or
