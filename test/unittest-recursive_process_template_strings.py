@@ -350,7 +350,5 @@ class TestJsonPatch(unittest.TestCase):
             recursive_process_template_strings(template, 'jinja2', template_vars), "started"
         )
 
-
-
 if __name__ == '__main__':
     unittest.main()
