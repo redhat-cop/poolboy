@@ -15,10 +15,12 @@ spec:
       vars:
 {% raw %}
         guid: >-
-          {{: resource_handle.metadata.name[5:]
+          {{ resource_handle.metadata.name[5:]
            if resource_handle.metadata.name.startswith('guid-')
-           else resource_handle.metadata.name :}}
+           else resource_handle.metadata.name }}
 {% endraw %}
+  template:
+    enable: true
   updateFilters:
   - pathMatch: /spec/vars/desired_state
     allowedOps: ['add', 'replace']

@@ -22,19 +22,21 @@ spec:
     spec:
       vars:
         action_schedule:
-          destroy: "{{: timestamp.utcnow.add('8d') :}}"
-          stop: "{{: timestamp.utcnow.add('8h') :}}"
+          destroy: "{{ timestamp.utcnow.add('8d') }}"
+          stop: "{{ timestamp.utcnow.add('8h') }}"
         desired_state: started
   override:
     metadata:
-      namespace: "{{: resource_claim.metadata.namespace :}}"
+      namespace: "{{ resource_claim.metadata.namespace }}"
     spec:
       vars:
         guid: >-
-          {{: resource_handle.metadata.name[5:]
+          {{ resource_handle.metadata.name[5:]
            if resource_handle.metadata.name.startswith('guid-')
-           else resource_handle.metadata.name :}}
+           else resource_handle.metadata.name }}
   resourceRequiresClaim: true
+  template:
+    enable: true
   updateFilters:
   - pathMatch: /spec/vars/action_schedule/destroy
     allowedOps: ['add', 'replace']
