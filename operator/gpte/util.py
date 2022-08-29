@@ -1,73 +1,23 @@
 import collections
 import copy
-import datetime
-from distutils.util import strtobool
 import jinja2
+import jmespath
 import json
+import numbers
+import pytimeparse
 import re
 
-class TimeDelta(object):
-    def __init__(self, set_timedelta=None):
-        if isinstance(set_timedelta, datetime.timedelta):
-            self.timedelta = set_timedelta
-        elif isinstance(set_timedelta, str):
-            if set_timedelta.endswith('d'):
-                self.timedelta = datetime.timedelta(days=int(set_timedelta[0:-1]))
-            elif set_timedelta.endswith('h'):
-                self.timedelta = datetime.timedelta(hours=int(set_timedelta[0:-1]))
-            elif set_timedelta.endswith('m'):
-                self.timedelta = datetime.timedelta(minutes=int(set_timedelta[0:-1]))
-            elif set_timedelta.endswith('s'):
-                self.timedelta = datetime.timedelta(seconds=int(set_timedelta[0:-1]))
-            else:
-                raise Exception("Invalid interval format {}".format(set_timedelta))
-        elif set_timedelta:
-            raise Exception("Invalid type for time interval format {}".format(type(set_timedelta).__name__))
-        else:
-            self.timedelta = datetime.timedelta()
-
-    def __call__(self, arg):
-        return TimeDelta(arg)
-
-    def __eq__(self, other):
-        return self.timedelta == other.timedelta
-
-    def __ne__(self, other):
-        return self.timedelta != other.timedelta
-
-    def __ge__(self, other):
-        return self.timedelta >= other.timedelta
-
-    def __gt__(self, other):
-        return self.timedelta > other.timedelta
-
-    def __le__(self, other):
-        return self.timedelta <= other.timedelta
-
-    def __lt__(self, other):
-        return self.timedelta < other.timedelta
-
-    def __str__(self):
-        seconds = self.timedelta.total_seconds()
-        if seconds == 0:
-            return "0s"
-        elif seconds % 86400 == 0:
-            return f"{int(seconds / 86400)}d"
-        elif seconds % 3600 == 0:
-            return f"{int(seconds / 3600)}h"
-        elif seconds % 60 == 0:
-            return f"{int(seconds / 60)}m"
-        else:
-            return f"{int(seconds)}s"
+from datetime import datetime, timedelta, timezone
+from distutils.util import strtobool
 
 class TimeStamp(object):
     def __init__(self, set_datetime=None):
         if not set_datetime:
-            self.datetime = datetime.datetime.utcnow()
-        elif isinstance(set_datetime, datetime.datetime):
+            self.datetime = datetime.utcnow()
+        elif isinstance(set_datetime, datetime):
             self.datetime = set_datetime
         elif isinstance(set_datetime, str):
-            self.datetime = datetime.datetime.strptime(set_datetime, "%Y-%m-%dT%H:%M:%SZ")
+            self.datetime = datetime.strptime(set_datetime, "%Y-%m-%dT%H:%M:%SZ")
         else:
             self.datetime = set_datetime
 
@@ -98,14 +48,16 @@ class TimeStamp(object):
     def __add__(self, interval):
         return self.add(interval)
 
-    def add(self, timedelta):
+    def add(self, interval):
         ret = TimeStamp(self.datetime)
-        if isinstance(timedelta, TimeDelta):
-            ret.datetime += timedelta.timedelta
-        elif isinstance(timedelta, datetime.timedelta):
-            ret.datetime += timedelta
+        if isinstance(interval, timedelta):
+            ret.datetime += interval
+        elif isinstance(interval, str):
+            ret.datetime += timedelta(seconds=pytimeparse.parse(interval))
+        elif isinstance(interval, number.Number):
+            ret.datetime += timedelta(seconds=interval)
         else:
-            ret.datetime += TimeDelta(timedelta).timedelta
+            raise Exception(f"Unable to add {interval} to Timestamp")
         return ret
 
     @property
@@ -123,23 +75,12 @@ jinja2envs = {
         finalize = error_if_undefined,
         undefined = jinja2.ChainableUndefined,
     ),
-    'legacy': jinja2.Environment(
-        block_start_string='{%:',
-        block_end_string=':%}',
-        comment_start_string='{#:',
-        comment_end_string=':#}',
-        finalize = error_if_undefined,
-        undefined = jinja2.ChainableUndefined,
-        variable_start_string='{{:',
-        variable_end_string=':}}',
-    ),
 }
 jinja2envs['jinja2'].filters['bool'] = lambda x: bool(strtobool(x)) if isinstance(x, str) else bool(x)
-jinja2envs['legacy'].filters['bool'] = lambda x: bool(strtobool(x)) if isinstance(x, str) else bool(x)
+jinja2envs['jinja2'].filters['json_query'] = lambda x, query: jmespath.search(query, x)
 jinja2envs['jinja2'].filters['object'] = lambda x: json.dumps(x)
-jinja2envs['legacy'].filters['object'] = lambda x: json.dumps(x)
+jinja2envs['jinja2'].filters['parse_time_interval'] = lambda x: timedelta(seconds=pytimeparse.parse(x))
 jinja2envs['jinja2'].filters['to_json'] = lambda x: json.dumps(x)
-jinja2envs['legacy'].filters['to_json'] = lambda x: json.dumps(x)
 
 def dict_merge(dct, merge_dct):
     """ Recursive dict merge. Inspired by :meth:``dict.update()``, instead of
@@ -205,9 +146,16 @@ def defaults_from_schema(schema):
 
 type_filter_match_re = re.compile(r'^{{(?!.*{{).*\| *(bool|float|int|object) *}}$')
 
+def j2now(utc=False, fmt=None):
+    dt = datetime.now(timezone.utc if utc else None)
+    return dt.strftime(fmt) if fmt else dt
+
 def jinja2process(template, template_style, variables):
     variables = copy.copy(variables)
-    variables['timedelta'] = TimeDelta()
+    variables['datetime'] = datetime
+    variables['now'] = j2now
+    variables['timedelta'] = timedelta
+    variables['timezone'] = timezone
     variables['timestamp'] = TimeStamp()
     jinja2env = jinja2envs.get(template_style)
     j2template = jinja2env.from_string(template)

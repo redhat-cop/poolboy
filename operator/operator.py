@@ -1505,8 +1505,6 @@ class ResourceProvider(object):
 
     @property
     def template_style(self):
-        if 'template' not in self.spec:
-            return 'legacy'
         return self.spec['template'].get('style', 'jinja2')
 
     def check_template_match(self, handle_resource, claim_resource, logger):
