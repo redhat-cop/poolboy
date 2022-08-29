@@ -965,7 +965,7 @@ def manage_handle(handle, logger):
                 continue
 
             resource_definition = provider.resource_definition_from_template(
-                handle, claim, template_vars, i, logger
+                handle, claim, resource_states, template_vars, i, logger
             )
             if not resource_definition:
                 continue
@@ -1562,7 +1562,7 @@ class ResourceProvider(object):
         else:
             return defaults
 
-    def resource_definition_from_template(self, handle, claim, template_vars, resource_index, logger):
+    def resource_definition_from_template(self, handle, claim, resource_states, template_vars, resource_index, logger):
         if claim:
             requester_identity, requester_user = get_requester_from_namespace(
                 claim['metadata']['namespace']
@@ -1580,8 +1580,9 @@ class ResourceProvider(object):
             guid = handle_name[-5:]
 
         handle_resource = handle['spec']['resources'][resource_index]
-        resource_reference = handle_resource.get('reference', {})
-        resource_template = handle_resource.get('template', {})
+        resource_references = [r.get('reference') for r in handle['spec']['resources']]
+        resource_reference = resource_references[resource_index] or {}
+        resource_templates = [r.get('template') for r in handle['spec']['resources']]
         resource = copy.deepcopy(resource_template)
         if 'override' in self.spec:
             if self.template_enable:
@@ -1596,7 +1597,11 @@ class ResourceProvider(object):
                     "resource_index": resource_index,
                     "resource_name": handle_resource.get('name'),
                     "resource_reference": resource_reference,
-                    "resource_template": resource_template,
+                    "resource_references": resource_references,
+                    "resource_state": resource_states[resource_index],
+                    "resource_states": resource_states,
+                    "resource_template": resource_templates[resource_index],
+                    "resource_templates": resource_templates,
                 })
                 dict_merge(
                     resource,
@@ -1624,7 +1629,7 @@ class ResourceProvider(object):
         if 'kind' not in resource:
             raise kopf.PermanentError(f"Template processing for ResourceProvider {self.name} produced definition without a kind!")
         if resource_reference:
-            # If there is an existing resoruce reference, then don't allow changes
+            # If there is an existing resource reference, then don't allow changes
             # to properties in the reference.
             resource['metadata']['name'] = resource_reference['name']
             if 'namespace' in resource_reference:
