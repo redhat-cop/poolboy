@@ -1,6 +1,6 @@
 inflection==0.5.1
 Jinja2==3.0.3
-jmespath==0.10.0
+jmespath==1.0.1
 jsonpointer==2.2
 jsonschema==3.2.0
 openapi-schema-validator==0.1.5
@@ -10,6 +10,7 @@ pyasn1-modules==0.2.8
 pyOpenSSL==20.0.1
 python-dateutil==2.8.1
 python-string-utils==1.0.0
+pytimeparse==1.1.8
 PyYAML==5.4.1
 requests==2.26.0
 urllib3==1.26.6
