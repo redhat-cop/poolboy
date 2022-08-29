@@ -16,7 +16,7 @@ import threading
 import time
 
 from datetime import datetime, timedelta
-from gpte.util import TimeDelta, TimeStamp, defaults_from_schema, dict_merge, recursive_process_template_strings
+from gpte.util import TimeStamp, defaults_from_schema, dict_merge, recursive_process_template_strings
 
 logging_level = os.environ.get('LOGGING_LEVEL', 'INFO')
 manage_handles_interval = int(os.environ.get('MANAGE_HANDLES_INTERVAL', 60))
@@ -95,7 +95,7 @@ def bind_handle_to_claim(handle, claim, logger):
         if handle_lifespan:
             handle_lifespan_default = handle_lifespan.get('default')
             if handle_lifespan_default:
-                lifespan_end = TimeStamp(claim_meta['creationTimestamp']) + TimeDelta(handle_lifespan_default)
+                lifespan_end = TimeStamp(claim_meta['creationTimestamp']).add(handle_lifespan_default)
 
     if lifespan_end:
         maximum_lifespan_end, maximum_type = maximum_lifespan_end_for_handle(handle, claim)
@@ -965,7 +965,7 @@ def manage_handle(handle, logger):
                 continue
 
             resource_definition = provider.resource_definition_from_template(
-                handle, claim, template_vars, i, logger
+                handle, claim, resource_states, template_vars, i, logger
             )
             if not resource_definition:
                 continue
@@ -1241,12 +1241,12 @@ def maximum_lifespan_end_for_handle(handle, claim):
 
     maximum_lifespan = handle['spec'].get('lifespan', {}).get('maximum')
     if maximum_lifespan:
-        end = TimeStamp(claim['metadata']['creationTimestamp']) + TimeDelta(maximum_lifespan)
+        end = TimeStamp(claim['metadata']['creationTimestamp']).add(maximum_lifespan)
         maximum_type = 'maximum'
 
     relative_maximum_lifespan = handle['spec'].get('lifespan', {}).get('relativeMaximum')
     if relative_maximum_lifespan:
-        relative_end = TimeStamp() + TimeDelta(relative_maximum_lifespan)
+        relative_end = TimeStamp().add(relative_maximum_lifespan)
         if relative_end < end:
             end = relative_end
             maximum_type = 'relativeMaximum'
@@ -1461,7 +1461,7 @@ class ResourceProvider(object):
     def default_lifespan(self):
         if 'lifespan' in self.spec \
         and 'default' in self.spec['lifespan']:
-            return TimeDelta(self.spec['lifespan']['default'])
+            return self.spec['lifespan']['default']
 
     @property
     def linked_resource_providers(self):
@@ -1485,13 +1485,13 @@ class ResourceProvider(object):
     def maximum_lifespan(self):
         if 'lifespan' in self.spec \
         and 'maximum' in self.spec['lifespan']:
-            return TimeDelta(self.spec['lifespan']['maximum'])
+            return self.spec['lifespan']['maximum']
 
     @property
     def relative_maximum_lifespan(self):
         if 'lifespan' in self.spec \
         and 'relativeMaximum' in self.spec['lifespan']:
-            return TimeDelta(self.spec['lifespan']['relativeMaximum'])
+            return self.spec['lifespan']['relativeMaximum']
 
     @property
     def resource_requires_claim(self):
@@ -1499,15 +1499,11 @@ class ResourceProvider(object):
 
     @property
     def template_enable(self):
-        if 'template' not in self.spec:
-            return True
-        return self.spec['template'].get('enable')
+        return self.spec.get('template', {}).get('enable', False)
 
     @property
     def template_style(self):
-        if 'template' not in self.spec:
-            return 'legacy'
-        return self.spec['template'].get('style', 'jinja2')
+        return self.spec.get('template', {}).get('style', 'jinja2')
 
     def check_template_match(self, handle_resource, claim_resource, logger):
         """
@@ -1564,7 +1560,7 @@ class ResourceProvider(object):
         else:
             return defaults
 
-    def resource_definition_from_template(self, handle, claim, template_vars, resource_index, logger):
+    def resource_definition_from_template(self, handle, claim, resource_states, template_vars, resource_index, logger):
         if claim:
             requester_identity, requester_user = get_requester_from_namespace(
                 claim['metadata']['namespace']
@@ -1582,8 +1578,10 @@ class ResourceProvider(object):
             guid = handle_name[-5:]
 
         handle_resource = handle['spec']['resources'][resource_index]
-        resource_reference = handle_resource.get('reference', {})
-        resource_template = handle_resource.get('template', {})
+        resource_references = [r.get('reference') for r in handle['spec']['resources']]
+        resource_reference = resource_references[resource_index] or {}
+        resource_templates = [r.get('template') for r in handle['spec']['resources']]
+        resource_template = resource_templates[resource_index] or {}
         resource = copy.deepcopy(resource_template)
         if 'override' in self.spec:
             if self.template_enable:
@@ -1598,7 +1596,11 @@ class ResourceProvider(object):
                     "resource_index": resource_index,
                     "resource_name": handle_resource.get('name'),
                     "resource_reference": resource_reference,
-                    "resource_template": resource_template,
+                    "resource_references": resource_references,
+                    "resource_state": resource_states[resource_index],
+                    "resource_states": resource_states,
+                    "resource_template": resource_templates[resource_index],
+                    "resource_templates": resource_templates,
                 })
                 dict_merge(
                     resource,
@@ -1626,7 +1628,7 @@ class ResourceProvider(object):
         if 'kind' not in resource:
             raise kopf.PermanentError(f"Template processing for ResourceProvider {self.name} produced definition without a kind!")
         if resource_reference:
-            # If there is an existing resoruce reference, then don't allow changes
+            # If there is an existing resource reference, then don't allow changes
             # to properties in the reference.
             resource['metadata']['name'] = resource_reference['name']
             if 'namespace' in resource_reference:

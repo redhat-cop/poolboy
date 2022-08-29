@@ -178,5 +178,177 @@ class TestJsonPatch(unittest.TestCase):
             }
         )
 
+    def test_12(self):
+        template = {
+            "now": "{{ now() }}"
+        }
+        template_vars = {}
+        template_out = recursive_process_template_strings(template, 'jinja2', template_vars)
+        self.assertRegex(template_out['now'], r'^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d\.\d+$')
+
+    def test_13(self):
+        template = {
+            "now": "{{ now(True, '%FT%TZ') }}"
+        }
+        template_vars = {}
+        template_out = recursive_process_template_strings(template, 'jinja2', template_vars)
+        self.assertRegex(template_out['now'], r'^\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\dZ$')
+
+    def test_14(self):
+        template = {
+            "ts": "{{ (now() + timedelta(hours=3)).strftime('%FT%TZ') }}"
+        }
+        template_vars = {}
+        template_out = recursive_process_template_strings(template, 'jinja2', template_vars)
+        self.assertRegex(template_out['ts'], r'^\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\dZ$')
+
+    def test_15(self):
+        template = {
+            "ts": "{{ (now() + timedelta(hours=3)).strftime('%FT%TZ') }}"
+        }
+        template_vars = {}
+        template_out = recursive_process_template_strings(template, 'jinja2', template_vars)
+        self.assertRegex(template_out['ts'], r'^\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\dZ$')
+
+    def test_16(self):
+        template = {
+            "ts": "{{ (datetime.now(timezone.utc) + timedelta(hours=3)).strftime('%FT%TZ') }}"
+        }
+        template_vars = {}
+        template_out = recursive_process_template_strings(template, 'jinja2', template_vars)
+        self.assertRegex(template_out['ts'], r'^\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\dZ$')
+
+    def test_17(self):
+        template = {
+            "ts": "{{ (datetime.now(timezone.utc) + '3h' | parse_time_interval).strftime('%FT%TZ') }}"
+        }
+        template_vars = {}
+        template_out = recursive_process_template_strings(template, 'jinja2', template_vars)
+        self.assertRegex(template_out['ts'], r'^\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\dZ$')
+
+    def test_18(self):
+        template = {
+            "ts1": "{{ timestamp.add('3h') }}",
+            "ts2": "{{ (datetime.now(timezone.utc) + timedelta(hours=3)).strftime('%FT%TZ') }}"
+        }
+        template_vars = {}
+        template_out = recursive_process_template_strings(template, 'jinja2', template_vars)
+        self.assertRegex(template_out['ts1'], r'^\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\dZ$')
+        self.assertEqual(template_out['ts1'], template_out['ts2'])
+
+    def test_19(self):
+        template = {
+            "ts": "{{ timestamp('1970-01-01T01:02:03Z').add('3h') }}",
+        }
+        template_vars = {}
+        template_out = recursive_process_template_strings(template, 'jinja2', template_vars)
+        self.assertEqual(template_out['ts'], '1970-01-01T04:02:03Z')
+
+    def test_20(self):
+        template = "{{ user | json_query('name') }}"
+        template_vars = {
+            "user": {
+                "name": "alice"
+            }
+        }
+        self.assertEqual(
+            recursive_process_template_strings(template, 'jinja2', template_vars), "alice"
+        )
+
+    def test_21(self):
+        template = "{{ users | json_query('[].name') | object }}"
+        template_vars = {
+            "users": [
+                {
+                    "name": "alice",
+                    "age": 120,
+                }, {
+                    "name": "bob",
+                    "age": 100,
+                }
+            ]
+        }
+        self.assertEqual(
+            recursive_process_template_strings(template, 'jinja2', template_vars), ["alice", "bob"]
+        )
+
+    # Test complicated case used to determine desired state in babylon governor
+    def test_22(self):
+        template = """
+            {%- if 0 < resource_states | json_query(\"length([?!contains(keys(status.towerJobs.provision || `{}`), 'completeTimestamp')])\") -%}
+            {#- desired_state started until all AnarchySubjects have finished provision -#}
+            started
+            {%- elif 0 < resource_templates | json_query(\"length([?spec.vars.action_schedule.start < '\" ~ now(True, \"%FT%TZ\") ~ \"' && spec.vars.action_schedule.stop > '\" ~ now(True, \"%FT%TZ\") ~ \"'])\") -%}
+            {#- desired_state started for all if any should be started -#}
+            started
+            {%- else -%}
+            stopped
+            {%- endif -%}
+        """
+        template_vars = {
+            "resource_states": [
+                {
+                    "status": {
+                        "towerJobs": {
+                            "provision": {
+                                "completeTimestamp": "2022-01-01T00:00:00Z"
+                            }
+                        }
+                    }
+                },
+                {
+                    "status": {
+                        "towerJobs": {
+                            "provision": {
+                                "completeTimestamp": "2022-01-01T00:00:00Z"
+                            }
+                        }
+                    }
+                }
+            ],
+            "resource_templates": [
+                {
+                    "spec": {
+                        "vars": {
+                            "action_schedule": {
+                                "start": "2022-01-01T00:00:00",
+                                "stop": "2022-01-01T00:00:01",
+                            }
+                        }
+                    }
+                },
+                {
+                    "spec": {
+                        "vars": {
+                            "action_schedule": {
+                                "start": "2022-01-01T00:00:00",
+                                "stop": "2022-01-01T00:00:01",
+                            }
+                        }
+                    }
+                }
+            ]
+        }
+
+        self.assertEqual(
+            recursive_process_template_strings(template, 'jinja2', template_vars), "stopped"
+        )
+
+        template_vars['resource_templates'][0]['spec']['vars']['action_schedule']['stop'] = '2099-12-31T23:59:59Z'
+        self.assertEqual(
+            recursive_process_template_strings(template, 'jinja2', template_vars), "started"
+        )
+
+        template_vars['resource_templates'][0]['spec']['vars']['action_schedule']['stop'] = '2022-01-01T00:00:00Z'
+        del template_vars['resource_states'][1]['status']['towerJobs']['provision']['completeTimestamp']
+        self.assertEqual(
+            recursive_process_template_strings(template, 'jinja2', template_vars), "started"
+        )
+
+        del template_vars['resource_states'][1]['status']['towerJobs']['provision']
+        self.assertEqual(
+            recursive_process_template_strings(template, 'jinja2', template_vars), "started"
+        )
+
 if __name__ == '__main__':
     unittest.main()
