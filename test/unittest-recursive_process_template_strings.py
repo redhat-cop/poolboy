@@ -275,10 +275,10 @@ class TestJsonPatch(unittest.TestCase):
     # Test complicated case used to determine desired state in babylon governor
     def test_22(self):
         template = """
-            {%- if 0 < resource_states | json_query(\"length([?!contains(keys(status.towerJobs.provision || `{}`), 'completeTimestamp')])\") -%}
+            {%- if 0 < resource_states | json_query("length([?!contains(keys(status.towerJobs.provision || `{}`), 'completeTimestamp')])") -%}
             {#- desired_state started until all AnarchySubjects have finished provision -#}
             started
-            {%- elif 0 < resource_templates | json_query(\"length([?spec.vars.action_schedule.start < '\" ~ now(True, \"%FT%TZ\") ~ \"' && spec.vars.action_schedule.stop > '\" ~ now(True, \"%FT%TZ\") ~ \"'])\") -%}
+            {%- elif 0 < resource_templates | json_query("length([?spec.vars.action_schedule.start < '" ~ now(True, "%FT%TZ") ~ "' && spec.vars.action_schedule.stop > '" ~ now(True, "%FT%TZ") ~ "'])") -%}
             {#- desired_state started for all if any should be started -#}
             started
             {%- else -%}
