@@ -20,6 +20,8 @@ commands:
 components:
 - container:
     env:
+    - name: MANAGE_CLAIMS_INTERVAL
+      value: "5"
     - name: MANAGE_HANDLES_INTERVAL
       value: "5"
     - name: OPERATOR_DOMAIN

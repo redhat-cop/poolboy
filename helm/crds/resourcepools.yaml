@@ -124,3 +124,14 @@ spec:
                       description: Resource template for ResourceHandle
                       type: object
                       x-kubernetes-preserve-unknown-fields: true
+          status:
+            description: ResourcePool status
+            type: object
+            properties:
+              diffBase:
+                description: Kopf diffbase
+                type: string
+              kopf:
+                description: Kopf status
+                type: object
+                x-kubernetes-preserve-unknown-fields: true

@@ -1,0 +1,446 @@
+import asyncio
+import inflection
+import kopf
+import kubernetes_asyncio
+
+from typing import List, Mapping, Optional
+
+from config import custom_objects_api, core_v1_api
+
+api_groups = {}
+
+class KindNotFoundException(Exception):
+    pass
+
+async def create_object(definition: Mapping) -> Mapping:
+    if '/' in definition['apiVersion']:
+        return await create_custom_object(definition)
+    else:
+        return await create_core_object(definition)
+
+async def create_core_object(definition: Mapping) -> Mapping:
+    if 'namespace' in definition['metadata']:
+        return await create_namespaced_core_object(definition)
+    else:
+        return await create_cluster_core_object(definition)
+
+async def create_custom_object(definition: Mapping) -> Mapping:
+    group, version = definition['apiVersion'].split('/')
+    plural = await kind_to_plural(group=group, kind=definition['kind'], version=version)
+    namespace = definition['metadata'].get('namespace')
+    if namespace:
+        return await custom_objects_api.create_namespaced_custom_object(
+            body = definition,
+            group = group,
+            namespace = namespace,
+            plural = plural,
+            version = version,
+        )
+    else:
+        return await custom_objects_api.create_cluster_custom_object(
+            body = definition,
+            group = group,
+            plural = plural,
+            version = version,
+        )
+
+async def create_cluster_core_object(definition: Mapping) -> Mapping:
+    kind = definition['kind']
+    method = getattr(
+        core_v1_api,
+        'create_' + inflection.underscore(kind)
+    )
+    return core_v1_api.api_client.sanitize_for_serialization(
+        await method(body=definition)
+    )
+
+async def create_namespaced_core_object(definition: Mapping) -> Mapping:
+    kind = definition['kind']
+    namespace = definition['metadata']['namespace']
+    method = getattr(
+        core_v1_api,
+        'create_namespaced_' + inflection.underscore(kind)
+    )
+    return core_v1_api.api_client.sanitize_for_serialization(
+        await method(body=definition, namespace=namespace)
+    )
+
+async def delete_core_object(
+    kind: str,
+    name: str,
+    namespace: Optional[str] = None,
+) -> Mapping:
+    if namespace:
+        return await delete_namespaced_core_object(
+            kind = kind,
+            name = name,
+            namespace = namespace,
+        )
+    else:
+        return await delete_cluster_core_object(
+            kind = kind,
+            name = name,
+        )
+
+async def delete_cluster_core_object(
+    kind: str,
+    name: str,
+) -> Mapping:
+    method = getattr(
+        core_v1_api,
+        'delete_' + inflection.underscore(kind)
+    )
+    return core_v1_api.api_client.sanitize_for_serialization(
+        await method(name=name)
+    )
+
+async def delete_namespaced_core_object(
+    kind: str,
+    name: str,
+    namespace: str,
+) -> Mapping:
+    method = getattr(
+        core_v1_api,
+        'delete_namespaced_' + inflection.underscore(kind)
+    )
+    return core_v1_api.api_client.sanitize_for_serialization(
+        await method(name=name, namespace=namespace)
+    )
+
+async def delete_custom_object(
+    group: str,
+    version: str,
+    kind: str,
+    name: str,
+    namespace: Optional[str] = None,
+) -> Optional[Mapping]:
+    plural = await kind_to_plural(group=group, kind=kind, version=version)
+    if namespace:
+        return await custom_objects_api.delete_namespaced_custom_object(
+            group = group,
+            name = name,
+            namespace = namespace,
+            plural = plural,
+            version = version,
+        )
+    else:
+        return await custom_objects_api.delete_cluster_custom_object(
+            group = group,
+            name = name,
+            plural = plural,
+            version = version,
+        )
+
+async def delete_object(
+    api_version: str,
+    kind: str,
+    name: str,
+    namespace: str = None,
+) -> Optional[Mapping]:
+    if '/' in api_version:
+        group, version = api_version.split('/')
+        return await delete_custom_object(
+            group = group,
+            kind = kind,
+            name = name,
+            namespace = namespace,
+            version = version,
+        )
+    else:
+        return await delete_core_object(
+            kind = kind,
+            name = name,
+            namespace = namespace
+        )
+
+async def get_object(
+    api_version: str,
+    kind: str,
+    name: str,
+    namespace: str = None,
+) -> Optional[Mapping]:
+    if '/' in api_version:
+        group, version = api_version.split('/')
+        return await get_custom_object(
+            group = group,
+            kind = kind,
+            name = name,
+            namespace = namespace,
+            version = version,
+        )
+    else:
+        return await get_core_object(
+            kind = kind,
+            name = name,
+            namespace = namespace
+        )
+
+async def get_core_object(
+    kind: str,
+    name: str,
+    namespace: Optional[str] = None,
+) -> Mapping:
+    if namespace:
+        return await get_namespaced_core_object(
+            kind = kind,
+            name = name,
+            namespace = namespace,
+        )
+    else:
+        return await get_cluster_core_object(
+            kind = kind,
+            name = name,
+        )
+
+async def get_cluster_core_object(
+    kind: str,
+    name: str,
+) -> Mapping:
+    method = getattr(
+        core_v1_api,
+        'read_' + inflection.underscore(kind)
+    )
+    return core_v1_api.api_client.sanitize_for_serialization(
+        await method(name=name)
+    )
+
+async def get_namespaced_core_object(
+    kind: str,
+    name: str,
+    namespace: str,
+) -> Mapping:
+    method = getattr(
+        core_v1_api,
+        'read_namespaced_' + inflection.underscore(kind)
+    )
+    return core_v1_api.api_client.sanitize_for_serialization(
+        await method(name=name, namespace=namespace)
+    )
+
+async def get_custom_object(
+    group: str,
+    version: str,
+    kind: str,
+    name: str,
+    namespace: Optional[str] = None,
+) -> Optional[Mapping]:
+    plural = await kind_to_plural(group=group, kind=kind, version=version)
+    if namespace:
+        return await custom_objects_api.get_namespaced_custom_object(
+            group = group,
+            name = name,
+            namespace = namespace,
+            plural = plural,
+            version = version,
+        )
+    else:
+        return await custom_objects_api.get_cluster_custom_object(
+            group = group,
+            name = name,
+            plural = plural,
+            version = version,
+        )
+
+async def get_requester_from_namespace(namespace: str) -> tuple[Optional[Mapping], Optional[List[Mapping]]]:
+    try:
+        namespace_obj = await core_v1_api.read_namespace(namespace)
+    except kubernetes_asyncio.client.exceptions.ApiException as e:
+        if e.status == 404:
+            return None, []
+        else:
+            raise
+
+    user_name = namespace_obj.metadata.annotations.get('openshift.io/requester')
+    if not user_name:
+        return None, []
+
+    try:
+        user = await custom_objects_api.get_cluster_custom_object(
+            'user.openshift.io', 'v1', 'users', user_name
+        )
+    except kubernetes_asyncio.client.exceptions.ApiException as e:
+        if e.status == 404:
+            user = {
+                "metadata": {
+                    "name": user_name,
+                },
+                "identities": []
+            }
+            return user, []
+        else:
+            raise
+
+    identities = []
+    for identity_name in user.get('identities', []):
+        try:
+            identity = await custom_objects_api.get_cluster_custom_object(
+                'user.openshift.io', 'v1', 'identities', identity_name
+            )
+        except kubernetes_asyncio.client.exceptions.ApiException as e:
+            if e.status == 404:
+                identities.append({
+                    "metadata": {
+                        "name": identity_name,
+                    },
+                    "extra": {},
+                })
+            else:
+                raise
+
+    return user, identities
+
+
+async def kind_to_plural(
+    group: str,
+    kind: str,
+    version: str,
+) -> str:
+    api_group = api_groups.get(group)
+    if api_group:
+        api_group_version  = api_group.get(version)
+        if api_group_version:
+            for resource in api_group_version['resources']:
+                if resource['kind'] == kind:
+                    return resource['name']
+
+    try:
+        resp = await custom_objects_api.api_client.call_api(
+            method = 'GET',
+            resource_path = f"/apis/{group}/{version}",
+            auth_settings=['BearerToken'],
+            response_types_map = {
+                200: "object",
+            }
+        )
+    except kubernetes_asyncio.client.exceptions.ApiException as e:
+        if e.status == 404:
+            raise kopf.TemporaryError(
+                f"API {group}/{version} not found",
+                delay=600
+            )
+        else:
+            raise
+
+    api_group_version = resp[0]
+    if group not in api_groups:
+        api_groups[group] = {}
+    api_groups[group][version] = api_group_version
+
+    for resource in api_group_version['resources']:
+        if resource['kind'] == kind:
+            return resource['name']
+
+    raise kopf.TemporaryError(
+        f"API {group}/version does not have kind {kind}",
+        delay=600
+    )
+
+async def patch_core_object(
+    kind: str,
+    name: str,
+    namespace: str,
+    patch: List[Mapping],
+) -> Mapping:
+    if namespace:
+        return await patch_namespaced_core_object(
+            kind = kind,
+            name = name,
+            namespace = namespace,
+            patch = patch,
+        )
+    else:
+        return await patch_cluster_core_object(
+            kind = kind,
+            name = name,
+            patch = patch,
+        )
+
+async def patch_cluster_core_object(
+    kind: str,
+    name: str,
+    patch: List[Mapping],
+) -> Mapping:
+    method = getattr(
+        core_v1_api,
+        'patch_' + inflection.underscore(kind)
+    )
+    return core_v1_api.api_client.sanitize_for_serialization(
+        await method(
+            name = name,
+            body = patch,
+            _content_type = 'application/json-patch+json',
+        )
+    )
+
+async def patch_namespaced_core_object(
+    kind: str,
+    name: str,
+    namespace: str,
+    patch: List[Mapping],
+) -> Mapping:
+    method = getattr(
+        core_v1_api,
+        'patch_namespaced_' + inflection.underscore(kind)
+    )
+    return core_v1_api.api_client.sanitize_for_serialization(
+        await method(
+            name = name,
+            namespace = namespace,
+            body = patch,
+            _content_type = 'application/json-patch+json',
+        )
+    )
+
+async def patch_custom_object(
+    group: str,
+    kind: str,
+    name: str,
+    namespace: str,
+    patch: List[Mapping],
+    version: str,
+) -> Mapping:
+    plural = await kind_to_plural(group=group, kind=kind, version=version)
+    if namespace:
+        return await custom_objects_api.patch_namespaced_custom_object(
+            group = group,
+            name = name,
+            namespace = namespace,
+            plural = plural,
+            version = version,
+            body = patch,
+            _content_type = 'application/json-patch+json',
+        )
+    else:
+        return await custom_objects_api.patch_cluster_custom_object(
+            group = group,
+            name = name,
+            plural = plural,
+            version = version,
+            body = patch,
+            _content_type = 'application/json-patch+json',
+        )
+
+async def patch_object(
+    api_version: str,
+    kind: str,
+    name: str,
+    patch: List[Mapping],
+    namespace: Optional[str] = None,
+) -> List:
+    if '/' in api_version:
+        group, version = api_version.split('/')
+        return await patch_custom_object(
+            group = group,
+            kind = kind,
+            name = name,
+            namespace = namespace,
+            patch = patch,
+            version = version,
+        )
+    else:
+        return await patch_core_object(
+            kind = kind,
+            name = name,
+            namespace = namespace,
+            patch = patch,
+        )

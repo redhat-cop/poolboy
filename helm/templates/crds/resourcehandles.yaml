@@ -15,6 +15,8 @@ spec:
   - name: v1
     served: true
     storage: true
+    subresources:
+      status: {}
     additionalPrinterColumns:
     - name: Pool
       type: string
@@ -78,14 +80,14 @@ spec:
                     format: date-time
                   maximum:
                     description: >-
-                      Maximum lifespan which may be requested in the ResourceClaim relative to the creation timestamp.
+                      Maximum lifespan which may be requested in the ResourceClaim relative to the ResourceClaim's lifespan start timestamp.
                       Configured as a whole number followed by units "s", "m", "h", or "d" for seconds, minutes, hours, or days.
                       Ex: "3d" for 3 days.
                     type: string
                     pattern: ^[0-9]+[smhd]$
                   relativeMaximum:
                     description: >-
-                      Maximum lifespan which may be requested in the ResourceClaim calculated from the ResourceClaim creation timestamp.
+                      Maximum lifespan which may be requested in the ResourceClaim relative to the present datetime.
                       Configured as a whole number followed by units "s", "m", "h", or "d" for seconds, minutes, hours, or days.
                       Ex: "3d" for 3 days.
                     type: string
@@ -180,4 +182,15 @@ spec:
                         claim's template is used to manage the handle template.
                       type: object
                       x-kubernetes-preserve-unknown-fields: true
+          status:
+            description: ResourceHandle status
+            type: object
+            properties:
+              diffBase:
+                description: Kopf diffbase
+                type: string
+              kopf:
+                description: Kopf status
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
 {{- end -}}

@@ -54,9 +54,9 @@ rules:
   - resourceclaims
   - resourceclaims/status
   - resourcehandles
+  - resourcehandles/status
   - resourcepools
   - resourcepools/status
-  - resourceproviders/status
   verbs:
   - create
   - delete

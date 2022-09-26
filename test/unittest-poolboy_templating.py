@@ -4,7 +4,7 @@ import unittest
 import sys
 sys.path.append('../operator')
 
-from gpte.util import recursive_process_template_strings
+from poolboy_templating import recursive_process_template_strings, seconds_to_interval
 
 class TestJsonPatch(unittest.TestCase):
     def test_00(self):
@@ -275,15 +275,18 @@ class TestJsonPatch(unittest.TestCase):
     # Test complicated case used to determine desired state in babylon governor
     def test_22(self):
         template = """
-            {%- if 0 < resource_states | json_query("length([?!contains(keys(status.towerJobs.provision || `{}`), 'completeTimestamp')])") -%}
-            {#- desired_state started until all AnarchySubjects have finished provision -#}
-            started
-            {%- elif 0 < resource_templates | json_query("length([?spec.vars.action_schedule.start < '" ~ now(True, "%FT%TZ") ~ "' && spec.vars.action_schedule.stop > '" ~ now(True, "%FT%TZ") ~ "'])") -%}
-            {#- desired_state started for all if any should be started -#}
-            started
-            {%- else -%}
-            stopped
-            {%- endif -%}
+        {%- if 0 < resource_states | map('default', {}, True) | list | json_query("length([?!contains(keys(status.towerJobs.provision || `{}`), 'completeTimestamp')])") -%}
+        {#- desired_state started until all AnarchySubjects have finished provision -#}
+        started
+        {%- elif 0 < resource_templates | json_query("length([?spec.vars.action_schedule.start < '" ~ now(True, "%FT%TZ") ~ "' && spec.vars.action_schedule.stop > '" ~ now(True, "%FT%TZ") ~ "'])") -%}
+        {#- desired_state started for all if any should be started as determined by action schedule -#}
+        started
+        {%- elif 0 < resource_templates | json_query("length([?spec.vars.default_desired_state == 'started' && !(spec.vars.action_schedule.start || spec.vars.action_schedule.stop)])") -%}
+        {#- desired_state started for all if any should be started as determined by default_desired_state -#}
+        started
+        {%- else -%}
+        stopped
+        {%- endif -%}
         """
         template_vars = {
             "resource_states": [
@@ -348,6 +351,12 @@ class TestJsonPatch(unittest.TestCase):
         del template_vars['resource_states'][1]['status']['towerJobs']['provision']
         self.assertEqual(
             recursive_process_template_strings(template, 'jinja2', template_vars), "started"
+        )
+
+    def test_23(self):
+        self.assertEqual(
+            seconds_to_interval(seconds=600.0),
+            "10m",
         )
 
 if __name__ == '__main__':

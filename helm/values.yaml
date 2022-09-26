@@ -20,6 +20,7 @@ operatorDomain:
   # If not set and create is true, a name is generated using the operatorDomain template
   name:
 
+manageClaimsInterval: 60
 manageHandlesInterval: 60
 
 anarchy:

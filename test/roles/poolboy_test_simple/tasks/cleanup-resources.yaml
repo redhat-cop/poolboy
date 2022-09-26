@@ -8,21 +8,6 @@
     - "{{ poolboy_domain }}/test=simple"
   register: r_test_claims
 
-- name: Remove finalizer from test ResourceClaims
-  kubernetes.core.k8s:
-    api_version: "{{ poolboy_domain }}/v1"
-    kind: ResourceClaim
-    name: "{{ _claim.metadata.name }}"
-    namespace: "{{ _claim.metadata.namespace }}"
-    merge_type: merge
-    definition:
-      metadata:
-        finalizers: []
-  loop: "{{ r_test_claims.resources | default([]) }}"
-  loop_control:
-    label: "{{ _claim.metadata.name }}"
-    loop_var: _claim
-
 - name: Remove test ResourceClaims
   kubernetes.core.k8s:
     state: absent
