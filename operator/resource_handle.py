@@ -761,7 +761,6 @@ class ResourceHandle:
                 if e.status == 404:
                     _name = f"{name} in {namespace}" if namespace else name
                     logger.warning(f"Mangaged resource {api_version} {kind} {_name} not found.")
-                    resource_states.append(None)
                 else:
                     raise
 

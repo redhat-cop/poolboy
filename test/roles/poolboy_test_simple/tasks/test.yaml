@@ -1,4 +1,9 @@
 ---
+- include_tasks:
+    file: test-01.yaml
+
+# OLD TESTS FOLLOW
+
 - name: Create test ResourceProvider
   kubernetes.core.k8s:
     state: present
