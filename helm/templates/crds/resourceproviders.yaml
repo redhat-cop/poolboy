@@ -15,8 +15,6 @@ spec:
   - name: v1
     served: true
     storage: true
-    subresources:
-      status: {}
     additionalPrinterColumns:
     - name: Api Version
       type: string
@@ -159,8 +157,6 @@ spec:
               template:
                 description: >-
                   Template settings for the ResourceProvider. Applied to override and defaults.
-                  If no template section is provided then templates are enable in legacy mode for
-                  backwards compatibility.
                 type: object
                 properties:
                   enable:
@@ -168,12 +164,10 @@ spec:
                     type: boolean
                   style:
                     description: >-
-                      Template style. May be either "jinja2" or "legacy". The "legacy" option is deprecated
-                      and enables Jinja2 processing with extra colons in the brackets.
+                      Template style. Currently only "jinja2" is supported.
                     type: string
                     enum:
                     - jinja2
-                    - legacy
               updateFilters:
                 description: >-
                   Restrictions to apply to changes which can propagate from the ResourceClaim

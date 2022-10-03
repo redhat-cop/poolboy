@@ -1,0 +1,90 @@
+---
+- name: Create ResourceProvider test-01
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: "{{ poolboy_domain }}/v1"
+      kind: ResourceProvider
+      metadata:
+        name: test-01
+        namespace: "{{ poolboy_namespace }}"
+      spec:
+        override:
+          apiVersion: "{{ poolboy_domain }}/v1"
+          kind: ResourceClaimTest
+          metadata:
+            namespace: "{{ poolboy_test_namespace }}"
+          spec:
+            foo: bar
+        validation:
+          openAPIV3Schema:
+            additionalProperties: false
+            properties:
+              metadata:
+                additionalProperties: false
+                properties:
+                  name:
+                    pattern: ^test-01-[a-z0-9]+$
+                    type: string
+                required:
+                - name
+                type: object
+
+- name: Create ResourceClaim test-01
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: "{{ poolboy_domain }}/v1"
+      kind: ResourceClaim
+      metadata:
+        name: test-01
+        namespace: "{{ poolboy_test_namespace }}"
+        labels: >-
+          {{ {
+            poolboy_domain ~ "/test": "simple"
+          } }}
+      spec:
+        resources:
+        - provider:
+            name: test-01 
+          template:
+            metadata:
+              name: test-01-a
+
+- name: Verify handling of ResourceClaim test-01
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-01
+    namespace: poolboy-dev-test
+  register: r_get_resource_claim
+  failed_when: >-
+    r_get_resource_claim.resources[0].status.resources[0].state is undefined
+  until: r_get_resource_claim is success
+  delay: 1
+  retries: 10 
+
+- name: Verify state of ResourceClaim test-01
+  vars:
+    __state: "{{ r_get_resource_claim.resources[0] }}"
+  assert:
+    that:
+    - __state.status.resources[0].state.metadata.name == 'test-01-a'
+
+- name: Verify creation of ResourceClaimTest test-01-a
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaimTest
+    name: test-01-a
+    namespace: poolboy-dev-test
+  register: r_get_resource_claim_test
+  failed_when: >-
+    r_get_resource_claim_test.resources | length != 1
+  until: r_get_resource_claim_test is success
+  delay: 1
+  retries: 10 
+
+- name: Verify state of ResourceClaimTest test-01-a
+  vars:
+    __state: "{{ r_get_resource_claim_test.resources[0] }}"
+  assert:
+    that:
+    - __state.spec.foo == 'bar'

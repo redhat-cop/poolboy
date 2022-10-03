@@ -58,7 +58,13 @@ spec:
                 properties:
                   end:
                     description: >-
-                      Requested end of lifespan for ResourceHandle and resources it manages.
+                      Requested end of lifespan for ResourceClaim.
+                    type: string
+                    format: date-time
+                  start:
+                    description: >-
+                      Requested start of lifespan for ResourceClaim.
+                      ResourceHandle creation or bind will wait until this timestamp has passed.
                     type: string
                     format: date-time
               resources:
@@ -96,13 +102,20 @@ spec:
             description: ResourceClaim status
             type: object
             properties:
+              diffBase:
+                description: Kopf diffbase
+                type: string
+              kopf:
+                description: Kopf status
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
               lifespan:
                 description: Lifespan configuration from ResourceHandle
                 type: object
                 properties:
                   end:
                     description: >-
-                      Configured end of lifespan for ResourceHandle and resources it manages.
+                      Effective timestamp for end of lifespan for ResourceClaim.
                     type: string
                     format: date-time
                   maximum:
@@ -119,6 +132,11 @@ spec:
                       Ex: "3d" for 3 days.
                     type: string
                     pattern: ^[0-9]+[smhd]$
+                  start:
+                    description: >-
+                      Effective timestamp for start of lifespan for ResourceClaim.
+                    type: string
+                    format: date-time
               resourceHandle:
                 description: ResourceHandle reference for handle matched to this claim
                 type: object
@@ -157,3 +175,6 @@ spec:
                       description: Resource state synchronized from managed resource
                       type: object
                       x-kubernetes-preserve-unknown-fields: true
+                    validationError:
+                      description: Error message from resource provider.
+                      type: string

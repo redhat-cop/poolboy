@@ -4,7 +4,7 @@ import unittest
 import sys
 sys.path.append('../operator')
 
-from gpte.kubeoperative import jsonpatch_from_diff
+from jsonpatch_from_diff import jsonpatch_from_diff
 
 class TestJsonPatch(unittest.TestCase):
     def test_00(self):

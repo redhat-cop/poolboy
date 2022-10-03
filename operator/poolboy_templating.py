@@ -1,9 +1,7 @@
-import collections
 import copy
 import jinja2
 import jmespath
 import json
-import numbers
 import pytimeparse
 import re
 
@@ -70,6 +68,16 @@ def error_if_undefined(result):
     else:
         return result
 
+def seconds_to_interval(seconds:int) -> str:
+    if seconds % 86400 == 0:
+        return f"{int(seconds / 86400)}d"
+    elif seconds % 3600 == 0:
+        return f"{int(seconds / 3600)}h"
+    elif seconds % 60 == 0:
+        return f"{int(seconds / 60)}m"
+    else:
+        return f"{int(seconds)}s"
+
 jinja2envs = {
     'jinja2': jinja2.Environment(
         finalize = error_if_undefined,
@@ -81,39 +89,6 @@ jinja2envs['jinja2'].filters['json_query'] = lambda x, query: jmespath.search(qu
 jinja2envs['jinja2'].filters['object'] = lambda x: json.dumps(x)
 jinja2envs['jinja2'].filters['parse_time_interval'] = lambda x: timedelta(seconds=pytimeparse.parse(x))
 jinja2envs['jinja2'].filters['to_json'] = lambda x: json.dumps(x)
-
-def dict_merge(dct, merge_dct):
-    """ Recursive dict merge. Inspired by :meth:``dict.update()``, instead of
-    updating only top-level keys, dict_merge recurses down into dicts nested
-    to an arbitrary depth, updating keys. The ``merge_dct`` is merged into
-    ``dct``.
-    :param dct: dict onto which the merge is executed
-    :param merge_dct: dct merged into dct
-    :return: None
-    """
-    # FIXME? What about lists within dicts? Such as container lists within a pod?
-    for k, v in merge_dct.items():
-        if k in dct \
-        and isinstance(dct[k], dict) \
-        and isinstance(merge_dct[k], collections.Mapping):
-            dict_merge(dct[k], merge_dct[k])
-        else:
-            dct[k] = copy.deepcopy(merge_dct[k])
-
-def defaults_from_schema(schema):
-    obj = {}
-    for prop, property_schema in schema.get('properties', {}).items():
-        if 'default' in property_schema and prop not in obj:
-            obj[prop] = property_schema['default']
-        if property_schema.get('type') == 'object':
-            defaults = defaults_from_schema(property_schema)
-            if defaults:
-                if not prop in obj:
-                    obj[prop] = {}
-                dict_merge(obj[prop], defaults)
-    if obj:
-        return obj
-
 
 # Regex to detect if it looks like this value should be rendered as a raw type
 # rather than a string.
@@ -143,14 +118,13 @@ def defaults_from_schema(schema):
 #   object_raw:
 #     user:
 #       name: alice
-
 type_filter_match_re = re.compile(r'^{{(?!.*{{).*\| *(bool|float|int|object) *}}$')
 
 def j2now(utc=False, fmt=None):
     dt = datetime.now(timezone.utc if utc else None)
     return dt.strftime(fmt) if fmt else dt
 
-def jinja2process(template, template_style, variables):
+def jinja2process(template, template_style='jinja2', variables={}):
     variables = copy.copy(variables)
     variables['datetime'] = datetime
     variables['now'] = j2now
@@ -178,12 +152,18 @@ def jinja2process(template, template_style, variables):
     else:
         return template_out
 
-def recursive_process_template_strings(template, template_style, variables={}):
+def recursive_process_template_strings(template, template_style='jinja2', variables={}):
     if isinstance(template, dict):
-        return { k: recursive_process_template_strings(v, template_style, variables) for k, v in template.items() }
+        return {
+            k: recursive_process_template_strings(v, template_style=template_style, variables=variables)
+            for k, v in template.items()
+        }
     elif isinstance(template, list):
-        return [ recursive_process_template_strings(item, template_style, variables) for item in template ]
+        return [
+            recursive_process_template_strings(item, template_style=template_style, variables=variables)
+            for item in template
+        ]
     elif isinstance(template, str):
-        return jinja2process(template, template_style, variables)
+        return jinja2process(template=template, template_style=template_style, variables=variables)
     else:
         return template

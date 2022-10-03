@@ -1,4 +1,9 @@
 ---
+- include_tasks:
+    file: test-01.yaml
+
+# OLD TESTS FOLLOW
+
 - name: Create test ResourceProvider
   kubernetes.core.k8s:
     state: present
@@ -109,7 +114,6 @@
     - resource_annotations['{{ poolboy_domain }}/resource-handle-name'] == handle.metadata.name
     - resource_annotations['{{ poolboy_domain }}/resource-handle-namespace'] == handle.metadata.namespace
     - resource_annotations['{{ poolboy_domain }}/resource-handle-uid'] == handle.metadata.uid
-    - resource_annotations['{{ poolboy_domain }}/resource-handle-version'] == handle.metadata.resourceVersion
     - resource_annotations['{{ poolboy_domain }}/resource-provider-name'] == 'test'
     - resource_annotations['{{ poolboy_domain }}/resource-provider-namespace'] == poolboy_namespace
     fail_msg: test-1 resource not found as expected
@@ -784,8 +788,9 @@
   vars:
     __test_lifespan_1: "{{ r_get_test_lifespan_1.resources[0] | default({}) }}"
   failed_when: >-
+    __test_lifespan_1.status.lifespan.start is undefined or
     __test_lifespan_1.status.lifespan.end is undefined or
-    40 != (__test_lifespan_1.status.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%SZ') - __test_lifespan_1.metadata.creationTimestamp | to_datetime('%Y-%m-%dT%H:%M:%SZ')).total_seconds()
+    40 != (__test_lifespan_1.status.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%SZ') - __test_lifespan_1.status.lifespan.start | to_datetime('%Y-%m-%dT%H:%M:%SZ')).total_seconds()
   until: r_get_test_lifespan_1 is success
   delay: 5
   retries: 10
@@ -834,8 +839,9 @@
   vars:
     __test_lifespan_2: "{{ r_get_test_lifespan_2.resources[0] | default({}) }}"
   failed_when: >-
+    __test_lifespan_2.status.lifespan.start is undefined or
     __test_lifespan_2.status.lifespan.end is undefined or
-    40 != (__test_lifespan_2.status.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%SZ') - __test_lifespan_2.metadata.creationTimestamp | to_datetime('%Y-%m-%dT%H:%M:%SZ')).total_seconds()
+    40 != (__test_lifespan_2.status.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%SZ') - __test_lifespan_2.status.lifespan.start | to_datetime('%Y-%m-%dT%H:%M:%SZ')).total_seconds()
   until: r_get_test_lifespan_2 is success
   delay: 5
   retries: 10
@@ -853,7 +859,7 @@
         lifespan:
           end: >-
             {{ "%Y-%m-%dT%H:%M:%SZ" | strftime(
-              50 + (__test_lifespan_2.metadata.creationTimestamp | to_datetime('%Y-%m-%dT%H:%M:%SZ')).timestamp()
+              50 + (__test_lifespan_2.status.lifespan.start | to_datetime('%Y-%m-%dT%H:%M:%SZ')).timestamp()
             ) }}
 
 - name: Verify ResourceClaim test-lifespan-2 lifespan extended
@@ -866,8 +872,9 @@
   vars:
     __test_lifespan_2: "{{ r_get_test_lifespan_2.resources[0] | default({}) }}"
   failed_when: >-
+    __test_lifespan_2.status.lifespan.start is undefined or
     __test_lifespan_2.status.lifespan.end is undefined or
-    50 != (__test_lifespan_2.status.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%SZ') - __test_lifespan_2.metadata.creationTimestamp | to_datetime('%Y-%m-%dT%H:%M:%SZ')).total_seconds()
+    50 != (__test_lifespan_2.status.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%SZ') - __test_lifespan_2.status.lifespan.start | to_datetime('%Y-%m-%dT%H:%M:%SZ')).total_seconds()
   until: r_get_test_lifespan_2 is success
   delay: 5
   retries: 10
@@ -942,8 +949,9 @@
   vars:
     __test_lifespan_3: "{{ r_get_test_lifespan_3.resources[0] | default({}) }}"
   failed_when: >-
+    __test_lifespan_3.status.lifespan.start is undefined or
     __test_lifespan_3.status.lifespan.end is undefined or
-    23 != (__test_lifespan_3.status.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%SZ') - __test_lifespan_3.metadata.creationTimestamp | to_datetime('%Y-%m-%dT%H:%M:%SZ')).total_seconds()
+    23 != (__test_lifespan_3.status.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%SZ') - __test_lifespan_3.status.lifespan.start | to_datetime('%Y-%m-%dT%H:%M:%SZ')).total_seconds()
   until: r_get_test_lifespan_3 is success
   delay: 5
   retries: 10

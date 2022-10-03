@@ -21,6 +21,8 @@ spec:
       containers:
         - name: manager
           env:
+          - name: MANAGE_CLAIMS_INTERVAL
+            value: "{{ .Values.manageClaimsInterval }}"
           - name: MANAGE_HANDLES_INTERVAL
             value: "{{ .Values.manageHandlesInterval }}"
           - name: OPERATOR_DOMAIN
