@@ -276,6 +276,7 @@ async def get_requester_from_namespace(namespace: str) -> tuple[Optional[Mapping
             identity = await custom_objects_api.get_cluster_custom_object(
                 'user.openshift.io', 'v1', 'identities', identity_name
             )
+            identities.append(identity)
         except kubernetes_asyncio.client.exceptions.ApiException as e:
             if e.status == 404:
                 identities.append({
