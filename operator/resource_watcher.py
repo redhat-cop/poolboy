@@ -227,6 +227,11 @@ class ResourceWatcher:
                             f"Exception when attempting to patch resource state for ResourceClaim "
                             f"{resource_claim_name} in {resource_claim_namespace}"
                         )
+        except kubernetes_asyncio.client.exceptions.ApiException as e:
+            if e.status == 410:
+                raise ResourceWatchRestartError("Received 410 expired response.")
+            else:
+                raise
         finally:
             if watch:
                 await watch.close()
