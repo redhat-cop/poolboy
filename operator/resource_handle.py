@@ -59,8 +59,8 @@ class ResourceHandle:
             if resource_handle:
                 return resource_handle
 
-            best_match = None
-            best_match_diff_count = None
+            matched_resource_handle = None
+            matched_resource_handle_diff_count = None
             claim_resources = resource_claim.resources
             claim_status_resources = resource_claim.status_resources
 
@@ -120,17 +120,17 @@ class ResourceHandle:
 
                 if not is_match:
                     continue
-                if best_match != None:
-                    if best_match_diff_count < diff_count:
+                if matched_resource_handle != None:
+                    if matched_resource_handle_diff_count < diff_count:
                         continue
-                    if best_match_diff_count == diff_count \
-                    and best_match.creation_timestamp < resource_handle.creation_timestamp:
+                    if matched_resource_handle_diff_count == diff_count \
+                    and matched_resource_handle.creation_timestamp < resource_handle.creation_timestamp:
                         continue
 
-                best_match = resource_handle
-                best_match_diff_count = diff_count
+                matched_resource_handle = resource_handle
+                matched_resource_handle_diff_count = diff_count
 
-            if not best_match:
+            if not matched_resource_handle:
                 return None
 
             patch = [
@@ -146,7 +146,7 @@ class ResourceHandle:
                 }
             ]
 
-            for resource_index in range(len(best_match.resources), len(claim_resources)):
+            for resource_index in range(len(matched_resource_handle.resources), len(claim_resources)):
                 patch.append({
                     "op": "add",
                     "path": f"/spec/resources/{resource_index}",
@@ -156,26 +156,38 @@ class ResourceHandle:
                 })
 
             # Set lifespan end from default on claim bind
-            if best_match.lifespan_default:
+            if matched_resource_handle.lifespan_default:
                 patch.append({
                     "op": "add",
                     "path": "/spec/lifespan/end",
-                    "value": (datetime.utcnow() + best_match.lifespan_default_timedelta).strftime('%FT%TZ'),
+                    "value": (
+                        datetime.utcnow() + matched_resource_handle.lifespan_default_timedelta
+                    ).strftime('%FT%TZ'),
                 })
 
             definition = await custom_objects_api.patch_namespaced_custom_object(
                 group = operator_domain,
-                name = best_match.name,
-                namespace = best_match.namespace,
+                name = matched_resource_handle.name,
+                namespace = matched_resource_handle.namespace,
                 plural = 'resourcehandles',
                 version = operator_version,
                 _content_type = 'application/json-patch+json',
                 body = patch,
             )
-            best_match.refresh_from_definition(definition)
-            logger.info(f"Bound {best_match.description} to {resource_claim.description}")
+            matched_resource_handle = ResourceHandle.__register_definition(definition=definition)
+            logger.info(f"Bound {matched_resource_handle.description} to {resource_claim.description}")
 
-            return best_match
+        if matched_resource_handle.is_from_resource_pool:
+            resource_pool = await resource_pool_module.ResourcePool.get(matched_resource_handle.resource_pool_name)
+            if resource_pool:
+                await resource_pool.manage(logger=logger)
+            else:
+                logger.warning(
+                    f"Unable to find ResourcePool {matched_resource_handle.resource_pool_name} for "
+                    f"{matched_resource_handle.description} claimed by {resource_claim.description}"
+                )
+
+        return matched_resource_handle
 
     @staticmethod
     async def create_for_claim(
@@ -724,6 +736,11 @@ class ResourceHandle:
             namespace = self.resource_claim_namespace,
         )
 
+    async def get_resource_pool(self) -> Optional[ResourcePoolT]:
+        if not self.is_from_resource_pool:
+            return None
+        return await resource_pool_module.ResourcePool.get(self.resource_pool_name)
+
     async def get_resource_providers(self):
         resource_providers = []
         for resource in self.spec.get('resources', []):
@@ -799,6 +816,11 @@ class ResourceHandle:
             except kubernetes_asyncio.client.exceptions.ApiException as e:
                 if e.status != 404:
                     raise
+
+        if self.is_from_resource_pool:
+            resource_pool = await resource_pool_module.ResourcePool.get(self.resource_pool_name)
+            if resource_pool:
+                await resource_pool.manage(logger=logger)
 
     async def handle_resource_event(self,
         logger: Union[logging.Logger, logging.LoggerAdapter],

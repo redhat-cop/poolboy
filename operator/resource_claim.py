@@ -7,7 +7,7 @@ from copy import deepcopy
 from datetime import datetime
 from typing import Mapping, Optional, TypeVar, Union
 
-from config import custom_objects_api, operator_domain, operator_api_version, operator_version 
+from config import custom_objects_api, operator_domain, operator_api_version, operator_version
 from deep_merge import deep_merge
 from jsonpatch_from_diff import jsonpatch_from_diff
 
@@ -256,17 +256,7 @@ class ResourceClaim:
             resource_claim = self,
         )
 
-        if resource_handle:
-            if resource_handle.is_from_resource_pool:
-                resource_pool = await resource_pool_module.ResourcePool.get(resource_handle.resource_pool_name)
-                if resource_pool:
-                    await resource_pool.manage(logger=logger)
-                else:
-                    logger.warning(
-                        f"Unable to find ResourcePool {resource_handle.resource_pool_name} for "
-                        f"{resource_handle.description} claimed by {self.description}"
-                    )
-        else:
+        if not resource_handle:
             for provider in await self.get_resource_providers():
                 if provider.create_disabled:
                     raise kopf.TemporaryError(

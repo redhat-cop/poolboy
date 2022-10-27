@@ -10,7 +10,7 @@ import poolboy_k8s
 import resource_claim as resource_claim_module
 import resource_handle as resource_handle_module
 
-from config import core_v1_api, custom_objects_api, operator_domain, operator_api_version , operator_version 
+from config import core_v1_api, custom_objects_api, operator_domain, operator_api_version , operator_version
 
 logger = logging.getLogger('resource_watcher')
 resource_claim_name_annotation = f"{operator_domain}/resource-claim-name"
@@ -101,7 +101,6 @@ class ResourceWatcher:
                 )
                 kwargs = {}
 
-    
             while True:
                 watch_start_dt = datetime.utcnow()
                 try:
