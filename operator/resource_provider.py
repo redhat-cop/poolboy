@@ -13,7 +13,7 @@ from typing import List, Mapping, Optional, TypeVar
 
 import poolboy_k8s
 
-from config import custom_objects_api, operator_domain, operator_namespace, operator_version 
+from config import custom_objects_api, operator_domain, operator_namespace, operator_version
 from deep_merge import deep_merge
 from jsonpatch_from_diff import jsonpatch_from_diff
 from poolboy_templating import recursive_process_template_strings
