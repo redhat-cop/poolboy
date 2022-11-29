@@ -65,6 +65,9 @@ class ResourceWatcher:
         self.kind = kind
         self.namespace = namespace
 
+    def __str__(self):
+        return f"ResourceWatch for {self.watch_target_description}"
+
     @property
     def watch_target_description(self):
         if self.namespace:
@@ -76,7 +79,7 @@ class ResourceWatcher:
         self.task.cancel()
 
     def start(self):
-        logger.info(f"Starting resource watch for {self.watch_target_description}")
+        logger.info(f"Starting {self}")
         self.task = asyncio.create_task(self.watch())
 
     async def watch(self):
@@ -108,21 +111,21 @@ class ResourceWatcher:
                 except asyncio.CancelledError:
                     return
                 except ResourceWatchRestartError as e:
-                    logger.info(f"Resource watch for {self.watch_target_description} {e}")
+                    logger.info(f"{self} restart: {e}")
                     watch_duration = (datetime.utcnow() - watch_start_dt).total_seconds()
                     if watch_duration < 10:
                         await asyncio.sleep(10 - watch_duration)
                 except ResourceWatchFailedError as e:
-                    logger.info(f"Resource watch error for {self.watch_target_description}: {e}")
+                    logger.info(f"{self} failed: {e}")
                     watch_duration = (datetime.utcnow() - watch_start_dt).total_seconds()
                     if watch_duration < 60:
                         await asyncio.sleep(60 - watch_duration)
                 except Exception as e:
-                    logger.exception(f"Exception watching {self.watch_target_description}")
+                    logger.exception(f"{self} exception")
                     watch_duration = (datetime.utcnow() - watch_start_dt).total_seconds()
                     if watch_duration < 60:
                         await asyncio.sleep(60 - watch_duration)
-                logger.info(f"Restarting watch for {self.watch_target_description}")
+                logger.info(f"Restarting {self}")
 
         except asyncio.CancelledError:
             return
@@ -165,9 +168,16 @@ class ResourceWatcher:
                         resource_index = resource_index,
                         resource_state = event_obj,
                     )
+                else:
+                    logger.debug(
+                        f"Received event for ResourceHande {resource_handle_name} "
+                        f"which seems to have been deleted."
+                    )
+                    continue
 
                 resource_claim_name = event_obj_annotations.get(resource_claim_name_annotation)
                 resource_claim_namespace = event_obj_annotations.get(resource_claim_namespace_annotation)
+
                 if not resource_claim_name or not resource_claim_namespace:
                     continue
 
@@ -181,6 +191,10 @@ class ResourceWatcher:
                             version = operator_version,
                             _content_type = 'application/json-patch+json',
                             body = [{
+                                "op": "test",
+                                "path": "/status/resourceHandle/name",
+                                "value": resource_handle_name,
+                            }, {
                                 "op": "remove",
                                 "path": f"/status/resources/{resource_index}/state",
                             }],
@@ -208,6 +222,10 @@ class ResourceWatcher:
                             version = operator_version,
                             _content_type = 'application/json-patch+json',
                             body = [{
+                                "op": "test",
+                                "path": "/status/resourceHandle/name",
+                                "value": resource_handle_name,
+                            }, {
                                 "op": "add",
                                 "path": f"/status/resources/{resource_index}/state",
                                 "value": event_obj,
