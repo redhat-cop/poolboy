@@ -3,6 +3,9 @@
     file: test-01.yaml
 
 - include_tasks:
+    file: test-02.yaml
+
+- include_tasks:
     file: test-pool-01.yaml
 
 # OLD TESTS FOLLOW

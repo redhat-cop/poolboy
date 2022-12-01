@@ -11,11 +11,11 @@ from config import core_v1_api, custom_objects_api, manage_claims_interval, mana
 from configure_kopf_logging import configure_kopf_logging
 from infinite_relative_backoff import InfiniteRelativeBackoff
 
-from resource_claim import ResourceClaim
-from resource_handle import ResourceHandle
-from resource_pool import ResourcePool
-from resource_provider import ResourceProvider
-from resource_watcher import ResourceWatcher
+from resourceclaim import ResourceClaim
+from resourcehandle import ResourceHandle
+from resourcepool import ResourcePool
+from resourceprovider import ResourceProvider
+from resourcewatcher import ResourceWatcher
 
 
 @kopf.on.startup()

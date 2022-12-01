@@ -7,8 +7,8 @@ from datetime import datetime
 from typing import Mapping, Optional
 
 import poolboy_k8s
-import resource_claim as resource_claim_module
-import resource_handle as resource_handle_module
+import resourceclaim
+import resourcehandle
 
 from config import core_v1_api, custom_objects_api, operator_domain, operator_api_version , operator_version
 
@@ -159,7 +159,7 @@ class ResourceWatcher:
                 if not resource_handle_name or not resource_handle_namespace:
                     continue
 
-                resource_handle = resource_handle_module.ResourceHandle.get_from_cache(
+                resource_handle = resourcehandle.ResourceHandle.get_from_cache(
                     name = resource_handle_name
                 )
                 if resource_handle:
@@ -199,7 +199,7 @@ class ResourceWatcher:
                                 "path": f"/status/resources/{resource_index}/state",
                             }],
                         )
-                        await resource_claim_module.ResourceClaim.register_definition(definition=definition)
+                        await resourceclaim.ResourceClaim.register_definition(definition=definition)
                     except kubernetes_asyncio.client.exceptions.ApiException as e:
                         if e.status != 404:
                             logger.warning(
@@ -231,7 +231,7 @@ class ResourceWatcher:
                                 "value": event_obj,
                             }],
                         )
-                        await resource_claim_module.ResourceClaim.register_definition(definition=definition)
+                        await resourceclaim.ResourceClaim.register_definition(definition=definition)
                     except kubernetes_asyncio.client.exceptions.ApiException as e:
                         if e.status != 404:
                             logger.warning(

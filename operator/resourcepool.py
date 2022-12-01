@@ -6,7 +6,7 @@ import pytimeparse
 from datetime import timedelta
 from typing import List, Mapping, Optional, TypeVar
 
-import resource_handle as resource_handle_module
+import resourcehandle
 
 from config import custom_objects_api, operator_api_version, operator_domain, operator_namespace, operator_version
 
@@ -158,16 +158,16 @@ class ResourcePool:
         self.uid = uid
 
     async def handle_delete(self, logger: kopf.ObjectLogger):
-        await resource_handle_module.ResourceHandle.delete_unbound_handles_for_pool(logger=logger, resource_pool=self)
+        await resourcehandle.ResourceHandle.delete_unbound_handles_for_pool(logger=logger, resource_pool=self)
 
     async def manage(self, logger: kopf.ObjectLogger):
         async with self.lock:
-            resource_handles = await resource_handle_module.ResourceHandle.get_unbound_handles_for_pool(resource_pool=self, logger=logger)
+            resource_handles = await resourcehandle.ResourceHandle.get_unbound_handles_for_pool(resource_pool=self, logger=logger)
             resource_handle_deficit = self.min_available - len(resource_handles)
             if resource_handle_deficit <= 0:
                 return
             for i in range(resource_handle_deficit):
-                resource_handle = await resource_handle_module.ResourceHandle.create_for_pool(
+                resource_handle = await resourcehandle.ResourceHandle.create_for_pool(
                     logger=logger,
                     resource_pool=self
                 )

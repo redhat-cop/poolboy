@@ -11,9 +11,9 @@ from config import custom_objects_api, operator_domain, operator_api_version, op
 from deep_merge import deep_merge
 from jsonpatch_from_diff import jsonpatch_from_diff
 
-import resource_handle as resource_handle_module
-import resource_pool as resource_pool_module
-import resource_provider as resource_provider_module
+import resourcehandle
+import resourcepool
+import resourceprovider
 
 ResourceClaimT = TypeVar('ResourceClaimT', bound='ResourceClaim')
 ResourceHandleT = TypeVar('ResourceHandleT', bound='ResourceHandle')
@@ -251,7 +251,7 @@ class ResourceClaim:
         return []
 
     async def bind_resource_handle(self, logger):
-        resource_handle = await resource_handle_module.ResourceHandle.bind_handle_to_claim(
+        resource_handle = await resourcehandle.ResourceHandle.bind_handle_to_claim(
             logger = logger,
             resource_claim = self,
         )
@@ -265,7 +265,7 @@ class ResourceClaim:
                         f"creation is disabled for ResourceProvider {provider.name}",
                         delay=600
                     )
-            resource_handle = await resource_handle_module.ResourceHandle.create_for_claim(
+            resource_handle = await resourcehandle.ResourceHandle.create_for_claim(
                 logger=logger,
                 resource_claim=self,
             )
@@ -279,8 +279,8 @@ class ResourceClaim:
         lifespan_value = {
             "start": datetime.utcnow().strftime('%FT%TZ'),
             "end": resource_handle.lifespan_end_timestamp,
-            "maximum": resource_handle.lifespan_maximum,
-            "relativeMaximum": resource_handle.lifespan_relative_maximum,
+            "maximum": resource_handle.get_lifespan_maximum(resource_claim=self),
+            "relativeMaximum": resource_handle.get_lifespan_relative_maximum(resource_claim=self),
         }
         status_patch.append({
             "op": "add",
@@ -336,12 +336,15 @@ class ResourceClaim:
         resource_handle: ResourceHandleT
     ) -> None:
         patch = []
+
+        lifespan_maximum = resource_handle.get_lifespan_maximum(resource_claim=self)
+        lifespan_relative_maximum = resource_handle.get_lifespan_relative_maximum(resource_claim=self)
         if 'lifespan' in resource_handle.spec \
         and 'lifespan' not in self.status:
             lifespan_value = {
                 "end": resource_handle.lifespan_end_timestamp,
-                "maximum": resource_handle.lifespan_maximum,
-                "relativeMaximum": resource_handle.lifespan_relative_maximum,
+                "maximum": lifespan_maximum,
+                "relativeMaximum": lifespan_relative_maximum,
             }
             patch.append({
                 "op": "add",
@@ -363,32 +366,30 @@ class ResourceClaim:
                     "value": resource_handle.lifespan_end_timestamp,
                 })
 
-            if self.lifespan_maximum \
-            and not resource_handle.lifespan_maximum:
+            if lifespan_maximum:
+                if lifespan_maximum != self.lifespan_maximum:
+                    patch.append({
+                        "op": "add",
+                        "path": "/status/lifespan/maximum",
+                        "value": lifespan_maximum,
+                    })
+            elif self.lifespan_maximum:
                 patch.append({
                     "op": "remove",
                     "path": "/status/lifespan/maximum",
-                })
-            elif resource_handle.lifespan_maximum \
-            and self.lifespan_maximum != resource_handle.lifespan_maximum:
-                patch.append({
-                    "op": "add",
-                    "path": "/status/lifespan/maximum",
-                    "value": resource_handle.lifespan_maximum,
                 })
 
-            if self.lifespan_relative_maximum \
-            and not resource_handle.lifespan_relative_maximum:
+            if lifespan_relative_maximum:
+                if lifespan_relative_maximum != self.lifespan_relative_maximum:
+                    patch.append({
+                        "op": "add",
+                        "path": "/status/lifespan/relativeMaximum",
+                        "value": lifespan_relative_maximum,
+                    })
+            elif self.lifespan_relative_maximum:
                 patch.append({
                     "op": "remove",
                     "path": "/status/lifespan/relativeMaximum",
-                })
-            elif resource_handle.lifespan_relative_maximum \
-            and self.lifespan_relative_maximum != resource_handle.lifespan_relative_maximum:
-                patch.append({
-                    "op": "add",
-                    "path": "/status/lifespan/relativeMaximum",
-                    "value": resource_handle.lifespan_relative_maximum,
                 })
 
         if patch:
@@ -433,9 +434,9 @@ class ResourceClaim:
         for resource in resources:
             provider_name = resource.get('provider', {}).get('name')
             if provider_name:
-                provider = await resource_provider_module.ResourceProvider.get(provider_name)
+                provider = await resourceprovider.ResourceProvider.get(provider_name)
             elif 'template' in resource:
-                provider = resource_provider_module.ResourceProvider.find_provider_by_template_match(resource['template'])
+                provider = resourceprovider.ResourceProvider.find_provider_by_template_match(resource['template'])
             else:
                 raise kopf.PermanentError(f"ResourceClaim spec.resources require either an explicit provider or a resource template to match.")
             providers.append(provider)
@@ -478,13 +479,13 @@ class ResourceClaim:
         )
 
     async def get_resource_handle(self):
-        return await resource_handle_module.ResourceHandle.get(self.resource_handle_name)
+        return await resourcehandle.ResourceHandle.get(self.resource_handle_name)
 
     async def get_resource_providers(self):
         resource_providers = []
         for resource in self.status.get('resources', []):
             resource_providers.append(
-                await resource_provider_module.ResourceProvider.get(resource['provider']['name'])
+                await resourceprovider.ResourceProvider.get(resource['provider']['name'])
             )
         return resource_providers
 
@@ -504,7 +505,7 @@ class ResourceClaim:
         for i, claim_resource in enumerate(claim_resources):
             claim_status_resource = claim_status_resources[i]
             provider_ref = claim_status_resource['provider']
-            provider = await resource_provider_module.ResourceProvider.get(provider_ref['name'])
+            provider = await resourceprovider.ResourceProvider.get(provider_ref['name'])
             claim_resource['provider'] = provider_ref
             template_with_defaults = provider.apply_template_defaults(
                 resource_claim = self,
@@ -587,7 +588,7 @@ class ResourceClaim:
 
         set_lifespan_end = self.requested_lifespan_end_datetime
         if set_lifespan_end:
-            maximum_datetime = resource_handle.lifespan_end_maximum_datetime
+            maximum_datetime = resource_handle.get_lifespan_end_maximum_datetime(resource_claim=self)
             if maximum_datetime \
             and set_lifespan_end > maximum_datetime:
                 logger.warning(
