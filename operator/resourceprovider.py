@@ -164,58 +164,12 @@ class ResourceProvider:
         return f"ResourceProvider {self.name}"
 
     @property
-    def lifespan_default(self) -> Optional[str]:
-        lifespan = self.spec.get('lifespan')
-        if lifespan:
-            return lifespan.get('default')
-
-    @property
-    def lifespan_default_seconds(self) -> Optional[int]:
-        interval = self.lifespan_default
-        if interval:
-            return pytimeparse.parse(interval)
-
-    @property
-    def lifespan_default_timedelta(self):
-        seconds = self.lifespan_default_seconds
-        if seconds:
-            return timedelta(seconds=seconds)
-
-    @property
     def lifespan_maximum(self) -> Optional[str]:
-        lifespan = self.spec.get('lifespan')
-        if lifespan:
-            return lifespan.get('maximum')
-
-    @property
-    def lifespan_maximum_seconds(self) -> Optional[int]:
-        interval = self.lifespan_maximum
-        if interval:
-            return pytimeparse.parse(interval)
-
-    @property
-    def lifespan_maximum_timedelta(self):
-        seconds = self.lifespan_maximum_seconds
-        if seconds:
-            return timedelta(seconds=seconds)
+        return self.spec.get('lifespan', {}).get('maximum')
 
     @property
     def lifespan_relative_maximum(self) -> Optional[str]:
-        lifespan = self.spec.get('lifespan')
-        if lifespan:
-            return lifespan.get('relativeMaximum')
-
-    @property
-    def lifespan_relative_maximum_seconds(self) -> Optional[int]:
-        interval = self.lifespan_maximum
-        if interval:
-            return pytimeparse.parse(interval)
-
-    @property
-    def lifespan_relative_maximum_timedelta(self):
-        seconds = self.lifespan_relative_maximum_seconds
-        if seconds:
-            return timedelta(seconds=seconds)
+        return self.spec.get('lifespan', {}).get('relativeMaximum')
 
     @property
     def linked_resource_providers(self) -> List[ResourceProviderT]:
@@ -262,6 +216,25 @@ class ResourceProvider:
     @property
     def update_filters(self):
         return self.spec.get('updateFilters', [])
+
+    def __lifespan_value_as_timedelta(self, name, resource_claim):
+        value = self.spec.get('lifespan', {}).get(name)
+        if not value:
+            return
+
+        value = recursive_process_template_strings(
+            template = value,
+            variables = {"resource_claim": resource_claim},
+        )
+
+        if not value:
+            return
+
+        seconds = pytimeparse.parse(value)
+        if seconds == None:
+            raise kopf.TemporaryError(f"Failed to parse {name} time interval: {value}", delay=60)
+
+        return timedelta(seconds=seconds)
 
     def apply_template_defaults(self, resource_claim, resource_index) -> Mapping:
         """
@@ -317,6 +290,15 @@ class ResourceProvider:
             if not ignored:
                 return None
         return patch
+
+    def get_lifespan_default_timedelta(self, resource_claim=None) -> Optional[int]:
+        return self.__lifespan_value_as_timedelta('default', resource_claim)
+
+    def get_lifespan_maximum_timedelta(self, resource_claim=None) -> Optional[int]:
+        return self.__lifespan_value_as_timedelta('maximum', resource_claim)
+
+    def get_lifespan_relative_maximum_timedelta(self, resource_claim=None) -> Optional[int]:
+        return self.__lifespan_value_as_timedelta('relativeMaximum', resource_claim)
 
     def is_match_for_template(self, template: Mapping) -> bool:
         """

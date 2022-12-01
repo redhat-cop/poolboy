@@ -10,13 +10,13 @@ from datetime import datetime, timedelta
 from typing import Any, List, Mapping, Optional, TypeVar, Union
 
 import poolboy_k8s
-import resource_claim as resource_claim_module
-import resource_pool as resource_pool_module
-import resource_provider as resource_provider_module
-import resource_watcher as resource_watcher_module
+import resourceclaim
+import resourcepool
+import resourceprovider
+import resourcewatcher
 
 from config import custom_objects_api, operator_api_version, operator_domain, operator_namespace, operator_version, resource_refresh_interval
-from poolboy_templating import seconds_to_interval
+from poolboy_templating import recursive_process_template_strings, seconds_to_interval
 
 ResourceClaimT = TypeVar('ResourceClaimT', bound='ResourceClaim')
 ResourceHandleT = TypeVar('ResourceHandleT', bound='ResourceHandle')
@@ -107,7 +107,7 @@ class ResourceHandle:
                         diff_count += 1
 
                     # Use provider to check if templates match and get list of allowed differences
-                    provider = await resource_provider_module.ResourceProvider.get(provider_name)
+                    provider = await resourceprovider.ResourceProvider.get(provider_name)
                     diff_patch = provider.check_template_match(
                         handle_resource_template = handle_resource.get('template', {}),
                         claim_resource_template = claim_resource.get('template', {}),
@@ -156,12 +156,13 @@ class ResourceHandle:
                 })
 
             # Set lifespan end from default on claim bind
-            if matched_resource_handle.lifespan_default:
+            lifespan_default = matched_resource_handle.get_lifespan_default(resource_claim)
+            if lifespan_default:
                 patch.append({
                     "op": "add",
                     "path": "/spec/lifespan/end",
                     "value": (
-                        datetime.utcnow() + matched_resource_handle.lifespan_default_timedelta
+                        datetime.utcnow() + matched_resource_handle.get_lifespan_default_timedelta(resource_claim)
                     ).strftime('%FT%TZ'),
                 })
 
@@ -178,7 +179,7 @@ class ResourceHandle:
             logger.info(f"Bound {matched_resource_handle.description} to {resource_claim.description}")
 
         if matched_resource_handle.is_from_resource_pool:
-            resource_pool = await resource_pool_module.ResourcePool.get(matched_resource_handle.resource_pool_name)
+            resource_pool = await resourcepool.ResourcePool.get(matched_resource_handle.resource_pool_name)
             if resource_pool:
                 await resource_pool.manage(logger=logger)
             else:
@@ -197,27 +198,31 @@ class ResourceHandle:
         resource_providers = await resource_claim.get_resource_providers()
         resources = []
         lifespan_default_timedelta = None
+        lifespan_maximum = None
         lifespan_maximum_timedelta = None
+        lifespan_relative_maximum = None
         lifespan_relative_maximum_timedelta = None
         for i, claim_resource in enumerate(resource_claim.spec['resources']):
             provider = resource_providers[i]
 
-            provider_lifespan_default_timedelta = provider.lifespan_default_timedelta
+            provider_lifespan_default_timedelta = provider.get_lifespan_default_timedelta(resource_claim)
             if provider_lifespan_default_timedelta:
                 if not lifespan_default_timedelta \
                 or provider_lifespan_default_timedelta < lifespan_default_timedelta:
                     lifespan_default_timedelta = provider_lifespan_default_timedelta
 
-            provider_lifespan_maximum_timedelta = provider.lifespan_maximum_timedelta
+            provider_lifespan_maximum_timedelta = provider.get_lifespan_maximum_timedelta(resource_claim)
             if provider_lifespan_maximum_timedelta:
                 if not lifespan_maximum_timedelta \
                 or provider_lifespan_maximum_timedelta < lifespan_maximum_timedelta:
+                    lifespan_maximum = provider.lifespan_maximum
                     lifespan_maximum_timedelta = provider_lifespan_maximum_timedelta
 
-            provider_lifespan_relative_maximum_timedelta = provider.lifespan_relative_maximum_timedelta
+            provider_lifespan_relative_maximum_timedelta = provider.get_lifespan_relative_maximum_timedelta(resource_claim)
             if provider_lifespan_relative_maximum_timedelta:
                 if not lifespan_relative_maximum_timedelta \
                 or provider_lifespan_relative_maximum_timedelta < lifespan_relative_maximum_timedelta:
+                    lifespan_relative_maximum = provider.lifespan_relative_maximum
                     lifespan_relative_maximum_timedelta = provider_lifespan_relative_maximum_timedelta
 
             resources_item = {'provider': claim_resource['provider']}
@@ -287,15 +292,11 @@ class ResourceHandle:
         if lifespan_end_datetime:
             definition['spec']['lifespan']['end'] = lifespan_end_datetime.strftime('%FT%TZ')
 
-        if lifespan_maximum_timedelta:
-            definition['spec']['lifespan']['maximum'] = seconds_to_interval(
-                lifespan_maximum_timedelta.total_seconds()
-            )
+        if lifespan_maximum:
+            definition['spec']['lifespan']['maximum'] = lifespan_maximum
 
-        if lifespan_relative_maximum_timedelta:
-            definition['spec']['lifespan']['relativeMaximum'] = seconds_to_interval(
-                lifespan_relative_maximum_timedelta.total_seconds()
-            )
+        if lifespan_relative_maximum:
+            definition['spec']['lifespan']['relativeMaximum'] = lifespan_relative_maximum
 
         definition = await custom_objects_api.create_namespaced_custom_object(
             body = definition,
@@ -561,91 +562,16 @@ class ResourceHandle:
         return dt < datetime.utcnow()
 
     @property
-    def lifespan_default(self) -> Optional[str]:
-        lifespan = self.spec.get('lifespan')
-        if lifespan:
-            return lifespan.get('default')
-
-    @property
-    def lifespan_default_seconds(self) -> Optional[timedelta]:
-        interval = self.lifespan_default
-        if interval:
-            return pytimeparse.parse(interval)
-
-    @property
-    def lifespan_default_timedelta(self):
-        seconds = self.lifespan_default_seconds
-        if seconds:
-            return timedelta(seconds=seconds)
-
-    @property
     def lifespan_end_datetime(self) -> Any:
         timestamp = self.lifespan_end_timestamp
         if timestamp:
             return datetime.strptime(timestamp, '%Y-%m-%dT%H:%M:%SZ')
 
     @property
-    def lifespan_end_maximum_datetime(self) -> Any:
-        end = self.lifespan_maximum_datetime
-        if self.lifespan_relative_maximum:
-            relative_end = self.lifespan_relative_maximum_datetime
-            if not end or relative_end < end:
-                end = relative_end
-        return end
-
-    @property
     def lifespan_end_timestamp(self) -> Optional[str]:
         lifespan = self.spec.get('lifespan')
         if lifespan:
             return lifespan.get('end')
-
-    @property
-    def lifespan_maximum(self) -> Optional[str]:
-        lifespan = self.spec.get('lifespan')
-        if lifespan:
-            return lifespan.get('maximum')
-
-    @property
-    def lifespan_maximum_datetime(self) -> Any:
-        td = self.lifespan_maximum_timedelta
-        if td:
-            return self.creation_datetime + td
-
-    @property
-    def lifespan_maximum_seconds(self) -> Optional[int]:
-        interval = self.lifespan_maximum
-        if interval:
-            return pytimeparse.parse(interval)
-
-    @property
-    def lifespan_maximum_timedelta(self):
-        seconds = self.lifespan_maximum_seconds
-        if seconds:
-            return timedelta(seconds=seconds)
-
-    @property
-    def lifespan_relative_maximum(self) -> Optional[str]:
-        lifespan = self.spec.get('lifespan')
-        if lifespan:
-            return lifespan.get('relativeMaximum')
-
-    @property
-    def lifespan_relative_maximum_datetime(self) -> Any:
-        td = self.lifespan_relative_maximum_timedelta
-        if td:
-            return datetime.utcnow() + td
-
-    @property
-    def lifespan_relative_maximum_seconds(self) -> Optional[int]:
-        interval = self.lifespan_relative_maximum
-        if interval:
-            return pytimeparse.parse(interval)
-
-    @property
-    def lifespan_relative_maximum_timedelta(self):
-        seconds = self.lifespan_relative_maximum_seconds
-        if seconds:
-            return timedelta(seconds=seconds)
 
     @property
     def metadata(self) -> Mapping:
@@ -687,6 +613,62 @@ class ResourceHandle:
         dt = self.lifespan_end_datetime
         if dt:
             return dt - datetime.utcnow()
+
+    def __lifespan_value(self, name, resource_claim):
+        value = self.spec.get('lifespan', {}).get(name)
+        if not value:
+            return
+
+        value = recursive_process_template_strings(
+            template = value,
+            variables = {
+                "resource_claim": resource_claim,
+                "resource_handle": self,
+            },
+        )
+
+        return value
+
+    def __lifespan_value_as_timedelta(self, name, resource_claim):
+        value = self.__lifespan_value(name, resource_claim)
+        if not value:
+            return
+
+        seconds = pytimeparse.parse(value)
+        if seconds == None:
+            raise kopf.TemporaryError(f"Failed to parse {name} time interval: {value}", delay=60)
+
+        return timedelta(seconds=seconds)
+
+    def get_lifespan_default(self, resource_claim=None):
+        return self.__lifespan_value('default', resource_claim=resource_claim)
+
+    def get_lifespan_default_timedelta(self, resource_claim=None):
+        return self.__lifespan_value_as_timedelta('default', resource_claim=resource_claim)
+
+    def get_lifespan_maximum(self, resource_claim=None):
+        return self.__lifespan_value('maximum', resource_claim=resource_claim)
+
+    def get_lifespan_maximum_timedelta(self, resource_claim=None):
+        return self.__lifespan_value_as_timedelta('maximum', resource_claim=resource_claim)
+
+    def get_lifespan_relative_maximum(self, resource_claim=None):
+        return self.__lifespan_value('relativeMaximum', resource_claim=resource_claim)
+
+    def get_lifespan_relative_maximum_timedelta(self, resource_claim=None):
+        return self.__lifespan_value_as_timedelta('relativeMaximum', resource_claim=resource_claim)
+
+    def get_lifespan_end_maximum_datetime(self, resource_claim=None):
+        maximum_timedelta = self.get_lifespan_maximum_timedelta(resource_claim=resource_claim)
+        maximum_end = self.creation_datetime + maximum_timedelta if maximum_timedelta else None
+        relative_maximum_timedelta = self.get_lifespan_relative_maximum_timedelta(resource_claim=resource_claim)
+        relative_maximum_end = datetime.utcnow() + relative_maximum_timedelta if relative_maximum_timedelta else None
+
+        if relative_maximum_end \
+        and (not maximum_end or relative_maximum_end < maximum_end):
+            return relative_maximum_end
+        else:
+            return maximum_end
 
     def refresh(self,
         annotations: kopf.Annotations,
@@ -731,7 +713,7 @@ class ResourceHandle:
     async def get_resource_claim(self) -> Optional[ResourceClaimT]:
         if not self.is_bound:
             return None
-        return await resource_claim_module.ResourceClaim.get(
+        return await resourceclaim.ResourceClaim.get(
             name = self.resource_claim_name,
             namespace = self.resource_claim_namespace,
         )
@@ -739,13 +721,13 @@ class ResourceHandle:
     async def get_resource_pool(self) -> Optional[ResourcePoolT]:
         if not self.is_from_resource_pool:
             return None
-        return await resource_pool_module.ResourcePool.get(self.resource_pool_name)
+        return await resourcepool.ResourcePool.get(self.resource_pool_name)
 
     async def get_resource_providers(self):
         resource_providers = []
         for resource in self.spec.get('resources', []):
             resource_providers.append(
-                await resource_provider_module.ResourceProvider.get(resource['provider']['name'])
+                await resourceprovider.ResourceProvider.get(resource['provider']['name'])
             )
         return resource_providers
 
@@ -818,7 +800,7 @@ class ResourceHandle:
                     raise
 
         if self.is_from_resource_pool:
-            resource_pool = await resource_pool_module.ResourcePool.get(self.resource_pool_name)
+            resource_pool = await resourcepool.ResourcePool.get(self.resource_pool_name)
             if resource_pool:
                 await resource_pool.manage(logger=logger)
 
@@ -976,7 +958,7 @@ class ResourceHandle:
                 if resource_namespace:
                     resource_description += f" in {resource_namespace}"
 
-                await resource_watcher_module.ResourceWatcher.start_resource_watch(
+                await resourcewatcher.ResourceWatcher.start_resource_watch(
                     api_version = resource_api_version,
                     kind = resource_kind,
                     namespace = resource_namespace,

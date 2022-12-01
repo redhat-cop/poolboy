@@ -68,11 +68,11 @@ spec:
                 properties:
                   default:
                     description: >-
-                      Default lifespan to apply to ResourceHandle when it is claimed.
+                      Default lifespan for ResourceHandle when it is claimed.
                       Configured as a whole number followed by units "s", "m", "h", or "d" for seconds, minutes, hours, or days.
                       Ex: "3d" for 3 days.
+                      This value may be a template string.
                     type: string
-                    pattern: ^[0-9]+[smhd]$
                   end:
                     description: >-
                       Configured end of lifespan for ResourceHandle and resources it manages.
@@ -80,18 +80,18 @@ spec:
                     format: date-time
                   maximum:
                     description: >-
-                      Maximum lifespan which may be requested in the ResourceClaim relative to the ResourceClaim's lifespan start timestamp.
+                      Maximum lifespan which may be requested in the ResourceClaim relative to the creation timestamp.
                       Configured as a whole number followed by units "s", "m", "h", or "d" for seconds, minutes, hours, or days.
                       Ex: "3d" for 3 days.
+                      This value may be a template string.
                     type: string
-                    pattern: ^[0-9]+[smhd]$
                   relativeMaximum:
                     description: >-
                       Maximum lifespan which may be requested in the ResourceClaim relative to the present datetime.
                       Configured as a whole number followed by units "s", "m", "h", or "d" for seconds, minutes, hours, or days.
                       Ex: "3d" for 3 days.
+                      This value may be a template string.
                     type: string
-                    pattern: ^[0-9]+[smhd]$
               resourceClaim:
                 description: >-
                   ResourceClaim reference for claim matched to this ResourceHandle when the handle has been claimed.
