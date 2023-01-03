@@ -38,15 +38,6 @@ image:
   pullPolicy: Always
   tagOverride: ""
 
-admin:
-  deploy: false
-  image:
-    repository: quay.io/redhat-cop/poolboy-admin
-    pullPolicy: Always
-    tagOverride: ""
-  redisImage: image-registry.openshift-image-registry.svc:5000/openshift/redis:5-el8
-  redisPassword: generate
-
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
