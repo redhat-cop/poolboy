@@ -8,6 +8,9 @@
 - include_tasks:
     file: test-pool-01.yaml
 
+- include_tasks:
+    file: test-pool-02.yaml
+
 # OLD TESTS FOLLOW
 
 - name: Create test ResourceProvider
