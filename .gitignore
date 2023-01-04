@@ -1,6 +1,7 @@
 *.retry
 *.swo
 *.swp
+*.swx
 *.pyc
 __pycache__
 .odo/
