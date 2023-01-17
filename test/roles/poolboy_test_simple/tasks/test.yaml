@@ -1,15 +1,24 @@
 ---
-- include_tasks:
-    file: test-01.yaml
+#- include_tasks:
+#    file: test-01.yaml
+#
+#- include_tasks:
+#    file: test-02.yaml
+#
+#- include_tasks:
+#    file: test-pool-01.yaml
+#
+#- include_tasks:
+#    file: test-pool-02.yaml
 
 - include_tasks:
-    file: test-02.yaml
+    file: test-vars-01.yaml
 
 - include_tasks:
-    file: test-pool-01.yaml
+    file: test-vars-02.yaml
 
 - include_tasks:
-    file: test-pool-02.yaml
+    file: test-vars-03.yaml
 
 # OLD TESTS FOLLOW
 

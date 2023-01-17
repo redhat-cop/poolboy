@@ -102,6 +102,7 @@ spec:
           status:
             description: ResourceClaim status
             type: object
+            x-kubernetes-preserve-unknown-fields: true
             properties:
               diffBase:
                 description: Kopf diffbase

@@ -116,7 +116,7 @@ class ResourceWatcher:
                     if watch_duration < 10:
                         await asyncio.sleep(10 - watch_duration)
                 except ResourceWatchFailedError as e:
-                    logger.info(f"{self} failed: {e}")
+                    logger.warning(f"{self} failed: {e}")
                     watch_duration = (datetime.utcnow() - watch_start_dt).total_seconds()
                     if watch_duration < 60:
                         await asyncio.sleep(60 - watch_duration)
@@ -135,6 +135,9 @@ class ResourceWatcher:
         try:
             watch = kubernetes_asyncio.watch.Watch()
             async for event in watch.stream(method, **kwargs):
+                if not isinstance(event, Mapping):
+                    raise ResourceWatchFailedError(f"UNKNOWN EVENT: {event}")
+
                 event_obj = event['object']
                 event_type = event['type']
                 if not isinstance(event_obj, Mapping):
@@ -146,7 +149,7 @@ class ResourceWatcher:
                         else:
                             raise ResourceWatchFailedError(f"{event_obj['reason']} {event_obj['message']}")
                     else:
-                        raise ResourceWatchFailedError(f"UKNOWN EVENT: {event}")
+                        raise ResourceWatchFailedError(f"UNKNOWN EVENT: {event}")
 
                 event_obj_annotations = event_obj['metadata'].get('annotations')
                 if not event_obj_annotations:

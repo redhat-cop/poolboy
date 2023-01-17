@@ -198,10 +198,9 @@ spec:
                   Validation to apply to ResourceClaim resource templates.
                 type: object
                 properties:
-                  customValidation:
+                  checks:
                     description: >-
-                      WARNING! This feature is not yet implemented!
-                      Custom validation of ResourceClaim resource template using Jinja2 expressions.
+                      Check resource template using Jinja2 expressions.
                     type: array
                     items:
                       type: object
@@ -216,7 +215,7 @@ spec:
                         check:
                           description: >-
                             Jinja2 expression which must evaluate to a true value for the ResourceClaim
-                            resource template.
+                            resource template to be valid.
                           type: string
                   openAPIV3Schema:
                     description: >-
@@ -229,3 +228,9 @@ spec:
                       fields to specific numeric ranges.
                     type: object
                     x-kubernetes-preserve-unknown-fields: true
+              vars:
+                description: >-
+                  Additional variables to use when evaluating validation checks and templates.
+                  Variables in a ResourceHandle override variables in the ResourceProvider.
+                type: object
+                x-kubernetes-preserve-unknown-fields: true

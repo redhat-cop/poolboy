@@ -2,6 +2,7 @@ import asyncio
 import jinja2
 import jsonpointer
 import kopf
+import logging
 import pytimeparse
 import re
 
@@ -48,7 +49,9 @@ class LinkedResourceProvider:
             # No linked resource state, so definitely wait
             return False
 
-        template_vars = {
+        vars_ = {
+            **resource_provider.vars,
+            **resource_handle.vars,
             'linked_resource_provider': linked_resource_provider,
             'linked_resource_state': linked_resource_state,
             'resource_claim': resource_claim,
@@ -58,13 +61,13 @@ class LinkedResourceProvider:
         }
 
         for template_var in self.template_vars:
-            template_vars[template_var.name] = jsonpointer.resolve_pointer(
+            vars_[template_var.name] = jsonpointer.resolve_pointer(
                 linked_resource_state, template_var.value_from,
                 default = jinja2.ChainableUndefined()
             )
 
         return recursive_process_template_strings(
-            '{{(' + self.wait_for + ')|bool}}', resource_provider.template_style, template_vars
+            '{{(' + self.wait_for + ')|bool}}', resource_provider.template_style, vars_
         )
 
 class ResourceProvider:
@@ -94,7 +97,7 @@ class ResourceProvider:
         elif len(provider_matches) == 1:
             return provider_matches[0]
         else:
-            raise kopf.PermanentError(f"Resource template matches multiple ResourceProviders")
+            raise kopf.TemporaryError(f"Resource template matches multiple ResourceProviders", delay=600)
 
     @staticmethod
     async def get(name: str) -> ResourceProviderT:
@@ -155,13 +158,12 @@ class ResourceProvider:
         else:
             self.resource_template_validator = None
 
+    def __str__(self) -> str:
+        return f"ResourceProvider {self.name}"
+
     @property
     def create_disabled(self) -> bool:
         return self.spec.get('disableCreation', False)
-
-    @property
-    def description(self) -> str:
-        return f"ResourceProvider {self.name}"
 
     @property
     def lifespan_maximum(self) -> Optional[str]:
@@ -210,12 +212,20 @@ class ResourceProvider:
         return self.spec.get('template', {}).get('enable', False)
 
     @property
-    def template_style(self):
+    def template_style(self) -> str:
         return self.spec.get('template', {}).get('style', 'jinja2')
+
+    @property
+    def vars(self) -> Mapping:
+        return self.spec.get('vars', {})
 
     @property
     def update_filters(self):
         return self.spec.get('updateFilters', [])
+
+    @property
+    def validation_checks(self) -> List[Mapping]:
+        return self.spec.get('validation', {}).get('checks', [])
 
     def __lifespan_value_as_timedelta(self, name, resource_claim):
         value = self.spec.get('lifespan', {}).get(name)
@@ -224,7 +234,10 @@ class ResourceProvider:
 
         value = recursive_process_template_strings(
             template = value,
-            variables = {"resource_claim": resource_claim},
+            variables = {
+                **self.vars,
+                "resource_claim": resource_claim,
+            },
         )
 
         if not value:
@@ -311,9 +324,35 @@ class ResourceProvider:
         deep_merge(cmp_template, self.match)
         return template == cmp_template
 
-    def validate_resource_template(self, template: Mapping) -> None:
+    def validate_resource_template(self,
+        template: Mapping,
+        resource_claim: Optional[ResourceClaimT],
+        resource_handle: Optional[ResourceHandleT],
+    ) -> None:
         if self.resource_template_validator:
             self.resource_template_validator.validate(template)
+
+        resource_handle_vars = resource_handle.vars if resource_handle else {}
+        vars_ = {
+            **self.vars,
+            **resource_handle_vars,
+            "resource_claim": resource_claim,
+            "resource_handle": resource_handle,
+            "resource_provider": self,
+            **template,
+        }
+        for check in self.validation_checks:
+            name = check['name']
+            try:
+                check_successful = recursive_process_template_strings(
+                    '{{(' + check['check'] + ')|bool}}', variables=vars_
+                )
+                if not check_successful:
+                    raise ValidationException(f"Validation check failed: {name}")
+            except ValidationException:
+                raise
+            except Exception as exception:
+                raise Exception(f"Validation check \"{name}\" failed with exception: {exception}")
 
     async def resource_definition_from_template(self,
         logger: kopf.ObjectLogger,
@@ -321,7 +360,7 @@ class ResourceProvider:
         resource_handle: ResourceHandleT,
         resource_index: int,
         resource_states: List[Optional[Mapping]],
-        template_vars: Mapping,
+        vars_: Mapping,
     ):
         if resource_claim:
             requester_user, requester_identities = await poolboy_k8s.get_requester_from_namespace(
@@ -340,8 +379,11 @@ class ResourceProvider:
         resource_definition = deepcopy(resource_template)
         if 'override' in self.spec:
             if self.template_enable:
-                all_template_vars = template_vars.copy()
-                all_template_vars.update({
+                all_vars = {
+                    **self.vars,
+                    **vars_,
+                }
+                all_vars.update({
                     "guid": resource_handle.guid,
                     "requester_identities": requester_identities,
                     "requester_identity": requester_identity,
@@ -361,21 +403,23 @@ class ResourceProvider:
                 deep_merge(
                     resource_definition,
                     recursive_process_template_strings(
-                        self.override, self.template_style, all_template_vars
+                        self.override, self.template_style, all_vars
                     )
                 )
             else:
                 deep_merge(resource_definition, self.override)
 
         if 'apiVersion' not in resource_definition:
-            raise kopf.PermanentError(
+            raise kopf.TemporaryError(
                 f"Template processing by ResourceProvider {self.name} for ResourceHandle {resource_handle.name} "
-                f"produced definition without an apiVersion!"
+                f"produced definition without an apiVersion!",
+                delay = 600
             )
         if 'kind' not in resource_definition:
-            raise kopf.PermanentError(
+            raise kopf.TemporaryError(
                 f"Template processing by ResourceProvider {self.name} for ResourceHandle {resource_handle.name} "
-                f"produced definition without a kind!"
+                f"produced definition without a kind!",
+                delay = 600
             )
         if 'metadata' not in resource_definition:
             resource_definition['metadata'] = {}
@@ -394,9 +438,9 @@ class ResourceProvider:
             if 'namespace' in resource_reference:
                 resource_definition['metadata']['namespace'] = resource_reference['namespace']
             if resource_definition['apiVersion'] != resource_reference['apiVersion']:
-                raise kopf.PermanentError(f"Unable to change apiVersion for resource!")
+                raise kopf.TemporaryError(f"Unable to change apiVersion for resource!", delay=600)
             if resource_definition['kind'] != resource_reference['kind']:
-                raise kopf.PermanentError(f"Unable to change kind for resource!")
+                raise kopf.TemporaryError(f"Unable to change kind for resource!", delay=600)
 
         if 'annotations' not in resource_definition['metadata']:
             resource_definition['metadata']['annotations'] = {}
@@ -461,3 +505,6 @@ class TemplateVar:
     def __init__(self, spec):
         self.name = spec['name']
         self.value_from = spec['from']
+
+class ValidationException(Exception):
+    pass

@@ -6,6 +6,7 @@ import kubernetes_asyncio
 import logging
 import pytimeparse
 
+from copy import deepcopy
 from datetime import datetime, timedelta
 from typing import Any, List, Mapping, Optional, TypeVar, Union
 
@@ -176,7 +177,7 @@ class ResourceHandle:
                 body = patch,
             )
             matched_resource_handle = ResourceHandle.__register_definition(definition=definition)
-            logger.info(f"Bound {matched_resource_handle.description} to {resource_claim.description}")
+            logger.info(f"Bound {matched_resource_handle} to {resource_claim}")
 
         if matched_resource_handle.is_from_resource_pool:
             resource_pool = await resourcepool.ResourcePool.get(matched_resource_handle.resource_pool_name)
@@ -185,7 +186,7 @@ class ResourceHandle:
             else:
                 logger.warning(
                     f"Unable to find ResourcePool {matched_resource_handle.resource_pool_name} for "
-                    f"{matched_resource_handle.description} claimed by {resource_claim.description}"
+                    f"{matched_resource_handle} claimed by {resource_claim}"
                 )
 
         return matched_resource_handle
@@ -196,6 +197,7 @@ class ResourceHandle:
         resource_claim: ResourceClaimT,
     ):
         resource_providers = await resource_claim.get_resource_providers()
+        vars_ = {}
         resources = []
         lifespan_default_timedelta = None
         lifespan_maximum = None
@@ -204,6 +206,7 @@ class ResourceHandle:
         lifespan_relative_maximum_timedelta = None
         for i, claim_resource in enumerate(resource_claim.spec['resources']):
             provider = resource_providers[i]
+            vars_.update(provider.vars)
 
             provider_lifespan_default_timedelta = provider.get_lifespan_default_timedelta(resource_claim)
             if provider_lifespan_default_timedelta:
@@ -250,7 +253,8 @@ class ResourceHandle:
                     'name': resource_claim.name,
                     'namespace': resource_claim.namespace
                 },
-                'resources': resources
+                'resources': resources,
+                'vars': vars_,
             }
         }
 
@@ -330,6 +334,7 @@ class ResourceHandle:
             "spec": {
                 "resourcePool": resource_pool.ref,
                 "resources": resource_pool.resources,
+                "vars": resource_pool.vars,
             }
         }
         if resource_pool.has_lifespan:
@@ -487,6 +492,9 @@ class ResourceHandle:
         self.resource_states = []
         self.resource_refresh_datetime = []
 
+    def __str__(self) -> str:
+        return f"ResourceHandle {self.name}"
+
     def __register(self) -> None:
         """
         Add ResourceHandle to register of bound or unbound instances.
@@ -522,10 +530,6 @@ class ResourceHandle:
     @property
     def deletion_timestamp(self) -> str:
         return self.meta.get('deletionTimestamp')
-
-    @property
-    def description(self) -> str:
-        return f"ResourceHandle {self.name}"
 
     @property
     def guid(self) -> str:
@@ -609,6 +613,10 @@ class ResourceHandle:
         return self.spec.get('resources', [])
 
     @property
+    def vars(self) -> Mapping:
+        return self.spec.get('vars', {})
+
+    @property
     def timedelta_to_lifespan_end(self) -> Any:
         dt = self.lifespan_end_datetime
         if dt:
@@ -622,6 +630,7 @@ class ResourceHandle:
         value = recursive_process_template_strings(
             template = value,
             variables = {
+                **self.vars,
                 "resource_claim": resource_claim,
                 "resource_handle": self,
             },
@@ -774,7 +783,7 @@ class ResourceHandle:
                         f"{reference['name']} in {reference['namespace']}"
                         if 'namespace' in reference else reference['name']
                     )
-                    logger.info(f"Propagating delete of {self.description} to {resource_description}")
+                    logger.info(f"Propagating delete of {self} to {resource_description}")
                     await poolboy_k8s.delete_object(
                         api_version = reference['apiVersion'],
                         kind = reference['kind'],
@@ -841,7 +850,7 @@ class ResourceHandle:
                         raise
 
             if self.is_past_lifespan_end:
-                logger.info(f"Deleting {self.description} at end of lifespan ({self.lifespan_end_timestamp})")
+                logger.info(f"Deleting {self} at end of lifespan ({self.lifespan_end_timestamp})")
                 await self.delete()
                 return
 
@@ -857,7 +866,7 @@ class ResourceHandle:
                 if resource_provider.resource_requires_claim and not resource_claim:
                     continue
 
-                template_vars = {}
+                vars_ = deepcopy(self.vars)
                 wait_for_linked_provider = False
                 for linked_provider in resource_provider.linked_resource_providers:
                     linked_resource_provider = None
@@ -868,10 +877,11 @@ class ResourceHandle:
                             linked_resource_state = resource_states[pn]
                             break
                     else:
-                        raise kopf.PermanentError(
-                            f"{self.description} uses {resource_provider.description} which has "
+                        raise kopf.TemporaryError(
+                            f"{self} uses {resource_provider} which has "
                             f"linked ResourceProvider {resource_provider.name} but no resource in this "
-                            f"ResourceHandle use this provider."
+                            f"ResourceHandle use this provider.",
+                            delay=600
                         )
 
                     if not linked_provider.check_wait_for(
@@ -887,7 +897,7 @@ class ResourceHandle:
 
                     if linked_resource_state:
                         for template_var in linked_provider.template_vars:
-                            template_vars[template_var.name] = jsonpointer.resolve_pointer(
+                            vars_[template_var.name] = jsonpointer.resolve_pointer(
                                 linked_resource_state, template_var.value_from,
                                 default = jinja2.ChainableUndefined()
                             )
@@ -901,7 +911,7 @@ class ResourceHandle:
                     resource_handle = self,
                     resource_index = resource_index,
                     resource_states = resource_states,
-                    template_vars = template_vars,
+                    vars_ = vars_,
                 )
                 if not resource_definition:
                     continue
@@ -936,14 +946,16 @@ class ResourceHandle:
                         if e.status != 404:
                             raise
                 elif resource_api_version != resource['reference']['apiVersion']:
-                    raise kopf.PermanentError(
+                    raise kopf.TemporaryError(
                         f"ResourceHandle {self.name} would change from apiVersion "
-                        f"{resource['reference']['apiVersion']} to {resource_api_version}!"
+                        f"{resource['reference']['apiVersion']} to {resource_api_version}!",
+                        delay=600
                     )
                 elif resource_kind != resource['reference']['kind']:
-                    raise kopf.PermanentError(
+                    raise kopf.TemporaryError(
                         f"ResourceHandle {self.name} would change from kind "
-                        f"{resource['reference']['kind']} to {resource_kind}!"
+                        f"{resource['reference']['kind']} to {resource_kind}!",
+                        delay=600
                     )
                 else:
                     # Maintain name and namespace

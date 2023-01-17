@@ -122,6 +122,9 @@ class ResourceClaim:
         self.status = status
         self.uid = uid
 
+    def __str__(self) -> str:
+        return f"ResourceClaim {self.name} in {self.namespace}"
+
     @property
     def claim_is_initialized(self) -> bool:
         return f"{operator_domain}/resource-claim-init-timestamp" in self.annotations
@@ -133,10 +136,6 @@ class ResourceClaim:
     @property
     def creation_timestamp(self) -> str:
         return self.meta['creationTimestamp']
-
-    @property
-    def description(self) -> str:
-        return f"ResourceClaim {self.name} in {self.namespace}"
 
     @property
     def has_resource_handle(self) -> bool:
@@ -250,6 +249,13 @@ class ResourceClaim:
             return self.status.get('resources', [])
         return []
 
+    @property
+    def validation_failed(self):
+        for resource in self.status_resources:
+            if 'validationError' in resource:
+                return True
+        return False
+
     async def bind_resource_handle(self, logger):
         resource_handle = await resourcehandle.ResourceHandle.bind_handle_to_claim(
             logger = logger,
@@ -299,7 +305,9 @@ class ResourceClaim:
         )
         self.refresh_from_definition(definition)
 
-        logger.info(f"Set {resource_handle.description} for {self.description}")
+        logger.info(f"Set {resource_handle} for {self}")
+
+        return resource_handle
 
     def get_resource_state_from_status(self, resource_number):
         if not self.status \
@@ -428,7 +436,7 @@ class ResourceClaim:
         """
         resources = self.spec.get('resources', None)
         if not resources:
-            raise kopf.PermanentError(f"ResourceClaim {self.name} in {self.namespace} has no spec.resources")
+            raise kopf.TemporaryError(f"ResourceClaim {self.name} in {self.namespace} has no spec.resources", delay=600)
 
         providers = []
         for resource in resources:
@@ -438,7 +446,7 @@ class ResourceClaim:
             elif 'template' in resource:
                 provider = resourceprovider.ResourceProvider.find_provider_by_template_match(resource['template'])
             else:
-                raise kopf.PermanentError(f"ResourceClaim spec.resources require either an explicit provider or a resource template to match.")
+                raise kopf.TemporaryError(f"ResourceClaim spec.resources require either an explicit provider or a resource template to match.", delay=600)
             providers.append(provider)
 
         definition = await custom_objects_api.patch_namespaced_custom_object_status(
@@ -521,6 +529,18 @@ class ResourceClaim:
         self.refresh_from_definition(definition)
         logger.info(f"ResourceClaim {self.name} in {self.namespace} initialized")
 
+    async def json_patch_status(self, patch) -> None:
+        definition = await custom_objects_api.patch_namespaced_custom_object_status(
+            group = operator_domain,
+            name = self.name,
+            namespace = self.namespace,
+            plural = 'resourceclaims',
+            version = operator_version,
+            body = patch,
+            _content_type = 'application/json-patch+json',
+        )
+        self.refresh_from_definition(definition)
+
     async def manage(self, logger) -> None:
         async with self.lock:
             if self.lifespan_start_datetime \
@@ -533,31 +553,36 @@ class ResourceClaim:
             if not self.claim_is_initialized:
                 await self.initialize_claim(logger=logger)
 
-            await self.validate()
-
-            if not self.has_resource_handle:
-                await self.bind_resource_handle(logger=logger)
-
-            await self.manage_resource_handle(logger=logger)
-
-    async def manage_resource_handle(self, logger: kopf.ObjectLogger):
-        try:
-            resource_handle = await self.get_resource_handle()
-        except kubernetes_asyncio.client.exceptions.ApiException as e:
-            if e.status == 404:
-                logger.info(f"Found {self.resource_handle_description} deleted, propagating to {self.description}")
-                await self.delete()
-                return
+            if self.has_resource_handle:
+                try:
+                    resource_handle = await self.get_resource_handle()
+                except kubernetes_asyncio.client.exceptions.ApiException as e:
+                    if e.status == 404:
+                        logger.info(f"Found {self.resource_handle_description} deleted, propagating to {self}")
+                        await self.delete()
+                        return
+                    else:
+                        raise
             else:
-                raise
+                resource_handle = None
 
+            await self.validate(logger=logger, resource_handle=resource_handle)
+            if self.validation_failed:
+                return
+
+            if not resource_handle:
+                resource_handle = await self.bind_resource_handle(logger=logger)
+
+            await self.__manage_resource_handle(logger=logger, resource_handle=resource_handle)
+
+    async def __manage_resource_handle(self, logger: kopf.ObjectLogger, resource_handle: Optional[ResourceHandleT]):
         patch = []
 
         # Add any new resources from claim to handle
         for resource_index in range(len(resource_handle.resources), len(self.resources)):
             resource = self.resources[resource_index]
             logger.info(
-                f"Adding new resource from {self.description} to {resource_handle.description} "
+                f"Adding new resource from {self} to {resource_handle} "
                 f"with ResourceProvider {resource['provider']['name']}"
             )
             patch.append({
@@ -592,16 +617,16 @@ class ResourceClaim:
             if maximum_datetime \
             and set_lifespan_end > maximum_datetime:
                 logger.warning(
-                    f"{self.description} specifies lifespan end of "
+                    f"{self} specifies lifespan end of "
                     f"{set_lifespan_end.strftime('%FT%TZ')} which exceeds "
-                    f"{resource_handle.description} maximum of {maximum_datetime.strftime('%FT%TZ')}"
+                    f"{resource_handle} maximum of {maximum_datetime.strftime('%FT%TZ')}"
                 )
                 set_lifespan_end = maximum_datetime
 
             set_lifespan_end_timestamp = set_lifespan_end.strftime('%FT%TZ')
 
             if not 'lifespan' in resource_handle.spec:
-                logger.info(f"Setting lifespan end for {resource_handle.description} to {set_lifespan_end_timestamp}")
+                logger.info(f"Setting lifespan end for {resource_handle} to {set_lifespan_end_timestamp}")
                 patch.append({
                     "op": "add",
                     "path": "/spec/lifespan",
@@ -610,7 +635,7 @@ class ResourceClaim:
                     }
                 })
             elif set_lifespan_end != resource_handle.lifespan_end_datetime:
-                logger.info(f"Changing lifespan end for {resource_handle.description} to {set_lifespan_end_timestamp}")
+                logger.info(f"Changing lifespan end for {resource_handle} to {set_lifespan_end_timestamp}")
                 patch.append({
                     "op": "add",
                     "path": "/spec/lifespan/end",
@@ -629,45 +654,35 @@ class ResourceClaim:
             )
             resource_handle.refresh_from_definition(definition)
 
-    async def validate(self):
+    async def validate(self, logger: kopf.ObjectLogger, resource_handle=Optional[ResourceHandleT]):
         resources = self.spec.get('resources', [])
         resource_providers = await self.get_resource_providers()
         error_messages = []
-        json_patch = []
+        status_json_patch = []
+
         for i, resource in enumerate(resources):
             resource_provider = resource_providers[i]
+            resource_template = resource.get('template', {})
             status_resource = self.status['resources'][i]
             try:
-                resource_providers[i].validate_resource_template(resource.get('template', {}))
+                resource_providers[i].validate_resource_template(
+                    resource_claim = self,
+                    resource_handle = resource_handle,
+                    template = resource.get('template', {}),
+                )
                 if 'validationError' in status_resource:
-                    json_patch.append({
+                    logger.info(f"Clearing validation error for {self}")
+                    status_json_patch.append({
                         "op": "remove",
                         "path": f"/status/resources/{i}/validationError",
                     })
-            except jsonschema.exceptions.ValidationError as e:
-                validation_error = str(e)
-                if status_resource.get('validationError') != validation_error:
-                    error_messages.append(
-                        f"Template validation failed for ResourceProvider "
-                        f"{resource_provider.name} on resources[{i}]: {validation_error}"
-                    )
-                    json_patch.append({
-                        "op": "add",
-                        "path": f"/status/resources/{i}/validationError",
-                        "value": validation_error
-                    })
-        if json_patch:
-            definition = await custom_objects_api.patch_namespaced_custom_object_status(
-                operator_domain, operator_version, self.namespace,
-                'resourceclaims', self.name, json_patch,
-                _content_type = 'application/json-patch+json'
-            )
-            self.refresh_from_definition(definition)
+            except Exception as exception:
+                logger.warning(f"Validation failed for {self}: {exception}")
+                status_json_patch.append({
+                    "op": "add",
+                    "path": f"/status/resources/{i}/validationError",
+                    "value": str(exception),
+                })
 
-        if error_messages:
-            raise kopf.PermanentError(
-                "\n".join(
-                    [f"ResourceClaim {self.name} in {self.namespace} validation failed:"] +
-                    error_messages
-                )
-            )
+        if status_json_patch:
+            await self.json_patch_status(status_json_patch)

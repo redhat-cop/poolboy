@@ -88,6 +88,7 @@ jinja2envs['jinja2'].filters['bool'] = lambda x: bool(strtobool(x)) if isinstanc
 jinja2envs['jinja2'].filters['json_query'] = lambda x, query: jmespath.search(query, x)
 jinja2envs['jinja2'].filters['object'] = lambda x: json.dumps(x)
 jinja2envs['jinja2'].filters['parse_time_interval'] = lambda x: timedelta(seconds=pytimeparse.parse(x))
+jinja2envs['jinja2'].filters['to_datetime'] = lambda s, f='%Y-%m-%d %H:%M:%S': datetime.strptime(s, f)
 jinja2envs['jinja2'].filters['to_json'] = lambda x: json.dumps(x)
 
 # Regex to detect if it looks like this value should be rendered as a raw type

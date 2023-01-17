@@ -136,6 +136,10 @@ class ResourcePool:
     def resources(self) -> List[Mapping]:
         return self.spec['resources']
 
+    @property
+    def vars(self) -> Mapping:
+        return self.spec.get('vars', {})
+
     def __register(self) -> None:
         ResourcePool.instances[self.name] = self
 

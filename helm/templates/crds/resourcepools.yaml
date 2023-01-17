@@ -125,9 +125,16 @@ spec:
                       description: Resource template for ResourceHandle
                       type: object
                       x-kubernetes-preserve-unknown-fields: true
+              vars:
+                description: >-
+                  Variables to use when evaluating validation checks and templates.
+                  Variables in a ResourceHandle override variables in the ResourceProvider.
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
           status:
             description: ResourcePool status
             type: object
+            x-kubernetes-preserve-unknown-fields: true
             properties:
               diffBase:
                 description: Kopf diffbase
