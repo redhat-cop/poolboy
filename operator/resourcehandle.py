@@ -668,8 +668,9 @@ class ResourceHandle:
         return self.__lifespan_value_as_timedelta('relativeMaximum', resource_claim=resource_claim)
 
     def get_lifespan_end_maximum_datetime(self, resource_claim=None):
+        lifespan_start_datetime = resource_claim.lifespan_start_datetime if resource_claim else self.creation_datetime
         maximum_timedelta = self.get_lifespan_maximum_timedelta(resource_claim=resource_claim)
-        maximum_end = self.creation_datetime + maximum_timedelta if maximum_timedelta else None
+        maximum_end = lifespan_start_datetime + maximum_timedelta if maximum_timedelta else None
         relative_maximum_timedelta = self.get_lifespan_relative_maximum_timedelta(resource_claim=resource_claim)
         relative_maximum_end = datetime.utcnow() + relative_maximum_timedelta if relative_maximum_timedelta else None
 
