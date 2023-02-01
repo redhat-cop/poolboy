@@ -163,6 +163,38 @@
           __state.status.lifespan.start | to_datetime('%Y-%m-%dT%H:%M:%SZ')
         ).total_seconds()
 
+- name: Request lifespan end beyond alowed relative maximum for test-pool-02
+  kubernetes.core.k8s:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-pool-02
+    namespace: "{{ poolboy_test_namespace }}"
+    definition:
+      spec:
+        lifespan:
+          end: "2999-12-31T00:00:00Z"
+
+- name: Verify lifespan end is set according to relative maximum
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-pool-02
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_resource_claim
+  vars:
+    __state: "{{ r_get_resource_claim.resources[0] }}"
+    __lifespan_total_seconds: >-
+      {{
+        (
+          __state.status.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%SZ') - now(true)
+        ).total_seconds()
+      }}
+  failed_when: >-
+    __lifespan_total_seconds | int < 3500 or __lifespan_total_seconds | int > 3700
+  until: r_get_resource_claim is successful
+  retries: 5
+  delay: 1
+
 - name: Verify ResourceHandles for test-pool-02 after bind
   kubernetes.core.k8s_info:
     api_version: "{{ poolboy_domain }}/v1"
