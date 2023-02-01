@@ -184,9 +184,9 @@ class ResourceClaim:
 
     @property
     def lifespan_start_timestamp(self) -> Optional[str]:
-        lifespan = self.status.get('lifespan')
-        if lifespan:
-            return lifespan.get('start')
+        timestamp = self.status.get('lifespan', {}).get('start')
+        if timestamp:
+            return timestamp
         return self.creation_timestamp
 
     @property
