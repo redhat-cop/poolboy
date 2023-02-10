@@ -210,6 +210,10 @@ spec:
                             fields to specific numeric ranges.
                           type: object
                           x-kubernetes-preserve-unknown-fields: true
+              resourceName:
+                description: >-
+                  Name to apply to resource list entry when resources list is generated.
+                type: string
               resourceRequiresClaim:
                 description: >-
                   Flag to indicate that creation of resource for handle should waint until a claim

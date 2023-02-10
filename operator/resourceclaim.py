@@ -459,13 +459,8 @@ class ResourceClaim:
                     raise
 
     async def assign_resource_providers(self, logger) -> None:
-        """
-        Assign resource providers in status.
-        """
-        if self.has_resource_provider:
-            resources = await self.get_resources_from_provider()
-        else:
-            resources = self.spec.get('resources', None)
+        """Assign resource providers in status for ResourceClaim with resources listed in spec."""
+        resources = self.spec.get('resources', None)
 
         if not resources:
             raise kopf.TemporaryError(f"{self} has no resources", delay=600)
@@ -900,6 +895,7 @@ class ResourceClaim:
                 )
                 patch['resources'] = [
                     {
+                        "name": resource['name'],
                         "provider": resource['provider'],
                     } for resource in resources
                 ]
