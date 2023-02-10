@@ -102,6 +102,7 @@
               type: integer
               default: 0
               minimum: 0
+        resourceName: binder
         template:
           definition:
             spec:
@@ -132,7 +133,6 @@
             stringvar: one
             numbervar: 1
 
-- fail:
 - name: Verify handling of ResourceClaim test-parameters-02-a
   kubernetes.core.k8s_info:
     api_version: "{{ poolboy_domain }}/v1"
@@ -141,11 +141,20 @@
     namespace: "{{ poolboy_test_namespace }}"
   register: r_get_resource_claim
   failed_when: >-
-    r_get_resource_claim.resources[0].status.resources[0].state is undefined
+    r_get_resource_claim.resources[0].status.resources[0].name != 'base-a' or
+    r_get_resource_claim.resources[0].status.resources[0].provider.name != 'test-parameters-02-base' or
+    r_get_resource_claim.resources[0].status.resources[0].state is undefined or
+    r_get_resource_claim.resources[0].status.resources[1].name != 'base-b' or
+    r_get_resource_claim.resources[0].status.resources[1].provider.name != 'test-parameters-02-base' or
+    r_get_resource_claim.resources[0].status.resources[1].state is undefined or
+    r_get_resource_claim.resources[0].status.resources[2].name != 'test-parameters-02-binder' or
+    r_get_resource_claim.resources[0].status.resources[2].provider.name != 'binder' or
+    r_get_resource_claim.resources[0].status.resources[2].state is undefined
   until: r_get_resource_claim is success
   delay: 1
   retries: 10
 
+- fail:
 - name: Save facts from for ResourceClaim test-parameters-02-a
   vars:
     __name: >-

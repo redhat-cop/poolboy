@@ -244,6 +244,10 @@ class ResourceProvider:
         return self.spec.get('override', {})
 
     @property
+    def resource_name(self):
+        return self.spec.get('resourceName', self.name)
+
+    @property
     def resource_requires_claim(self) -> bool:
         return self.spec.get('resourceRequiresClaim', False)
 
@@ -386,29 +390,32 @@ class ResourceProvider:
             "resource_provider": self,
         }
 
-        resources = [{
-            "name": resource_name or self.name,
+        resource = {
+            "name": resource_name or self.resource_name,
             "provider": self.as_reference(),
             "template": self.processed_template(
                 parameter_values = parameter_values,
                 resource_claim = resource_claim,
                 resource_handle = resource_handle,
             )
-        }]
+        }
 
+        linked_resources = []
         for linked_resource_provider in self.linked_resource_providers:
             resource_provider = await ResourceProvider.get(linked_resource_provider.name)
-            resources[:0] = await resource_provider.get_claim_resources(
-                resource_claim = resource_claim,
-                resource_handle = resource_handle,
-                resource_name = linked_resource_provider.resource_name,
-                parameter_values = {
-                    key: recursive_process_template_strings(value, variables=vars_)
-                    for key, value in linked_resource_provider.parameter_values.items()
-                },
+            linked_resources.extend(
+                await resource_provider.get_claim_resources(
+                    resource_claim = resource_claim,
+                    resource_handle = resource_handle,
+                    resource_name = linked_resource_provider.resource_name,
+                    parameter_values = {
+                        key: recursive_process_template_strings(value, variables=vars_)
+                        for key, value in linked_resource_provider.parameter_values.items()
+                    },
+                )
             )
 
-        return resources
+        return [*linked_resources, resource]
 
     def is_match_for_template(self, template: Mapping) -> bool:
         """
