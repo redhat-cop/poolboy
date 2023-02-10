@@ -68,7 +68,27 @@ spec:
                       ResourceHandle creation or bind will wait until this timestamp has passed.
                     type: string
                     format: date-time
+              provider:
+                description: >-
+                  ResourceProvider specification used to manage this claim.
+                  Mutually exclusive with provider.
+                type: object
+                required:
+                - name
+                properties:
+                  name:
+                    description: >-
+                      ResourceProvider name.
+                    type: string
+                  parameterValues:
+                    description: >-
+                      Parameter values used with this ResourcProvider.
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
               resources:
+                description: >-
+                  List of resources to request for this claim.
+                  Mutually exclusive with provider.
                 type: array
                 items:
                   type: object
@@ -139,6 +159,28 @@ spec:
                       Effective timestamp for start of lifespan for ResourceClaim.
                     type: string
                     format: date-time
+              provider:
+                description: >-
+                  Applied ResourceProvider configuration from spec provider.
+                type: object
+                required:
+                - name
+                properties:
+                  name:
+                    description: >-
+                      ResourceProvider name.
+                    type: string
+                  parameterValues:
+                    description: >-
+                      Parameter values used with this ResourcProvider.
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                  validationErrors:
+                    description: >-
+                      Any error messages relating to validating the resource claim.
+                    type: array
+                    items:
+                      type: string
               resourceHandle:
                 description: ResourceHandle reference for handle matched to this claim
                 type: object

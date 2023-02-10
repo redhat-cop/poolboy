@@ -104,15 +104,20 @@ spec:
                       description: >-
                         Name of linked ResourceProvider
                       type: string
-                    waitFor:
+                    parameterValues:
                       description: >-
-                        Condition to wait for in linked provider before creating resource.
-                        Condition is given in Jinja2 syntax similar to ansible "when" clauses.
-                        The linked provider's resource state may be referenced with "resource_state".
+                        Parameter values to pass to linked resource provider when ResourceClaim uses top-level provider specification.
+                        Values are automatically processed for jinja2 template strings to allow passing parameter values directly, filtered, or with conditional logic.
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
+                    resourceName:
+                      description: >-
+                        Resource name to use when generating resources list for provider.
                       type: string
                     templateVars:
                       description: >-
-                        Variables to make available to templating from linked resource provider.
+                        Variables to make available to templating from linked ResourceProvider.
+                        These variables propagate up from the resource.
                       type: array
                       items:
                         type: object
@@ -129,6 +134,12 @@ spec:
                             description: >-
                               Name of template variable to set.
                             type: string
+                    waitFor:
+                      description: >-
+                        Condition to wait for in linked provider before creating resource.
+                        Condition is given in Jinja2 syntax similar to ansible "when" clauses.
+                        The linked provider's resource state may be referenced with "resource_state".
+                      type: string
               match:
                 description: >-
                   Partial resource definition used to check if a resource in a handle or claim
@@ -151,6 +162,54 @@ spec:
                   generate the final resource definition.
                 type: object
                 x-kubernetes-preserve-unknown-fields: true
+              parameters:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    allowUpdate:
+                      description: >-
+                        Control whether this boolean may be updated after initially set.
+                      type: boolean
+                    name:
+                      type: string
+                    required:
+                      description: >-
+                        Configure whether parameter value is required.
+                      type: boolean
+                    validation:
+                      type: object
+                      properties:
+                        checks:
+                          description: >-
+                            Check parameter value using Jinja2 expressions.
+                          type: array
+                          items:
+                            type: object
+                            required:
+                            - name
+                            - check
+                            properties:
+                              name:
+                                description: >-
+                                  Descriptive name of what is checked to communicate when check fails.
+                                type: string
+                              check:
+                                description: >-
+                                  Jinja2 expression which must evaluate to a true value for the ResourceClaim
+                                  resource template to be valid.
+                                type: string
+                        openAPIV3Schema:
+                          description: >-
+                            OpenAPI 3.0 data model (schema) used to validate the parameter value.
+                            This is the same schema specification used by CustomResourceDefinitions (CRDs)
+                            but with support for additional features supported such as disallowing
+                            additional properties of objects. These schemas can be used to place limits
+                            on resource definitions beyond the definition of the cluster API such as to
+                            restrict a string field to a particular set of allowed values or numeric
+                            fields to specific numeric ranges.
+                          type: object
+                          x-kubernetes-preserve-unknown-fields: true
               resourceRequiresClaim:
                 description: >-
                   Flag to indicate that creation of resource for handle should waint until a claim
@@ -161,6 +220,11 @@ spec:
                   Template settings for the ResourceProvider. Applied to override and defaults.
                 type: object
                 properties:
+                  definition:
+                    description: >-
+                      Definition used to generate resource template using parameters.
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
                   enable:
                     description: Explicit enable or disable of templates.
                     type: boolean

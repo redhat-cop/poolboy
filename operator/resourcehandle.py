@@ -53,6 +53,7 @@ class ResourceHandle:
     async def bind_handle_to_claim(
         logger: kopf.ObjectLogger,
         resource_claim: ResourceClaimT,
+        resource_claim_resources: List[Mapping],
     ) -> Optional[ResourceHandleT]:
         async with ResourceHandle.lock:
             # Check if there is already an assigned claim
@@ -62,7 +63,6 @@ class ResourceHandle:
 
             matched_resource_handle = None
             matched_resource_handle_diff_count = None
-            claim_resources = resource_claim.resources
             claim_status_resources = resource_claim.status_resources
 
             # Loop through unbound instances to find best match
@@ -80,16 +80,16 @@ class ResourceHandle:
                 diff_count = 0
                 is_match = True
                 handle_resources = resource_handle.resources
-                if len(claim_resources) < len(handle_resources):
+                if len(resource_claim_resources) < len(handle_resources):
                     # ResourceClaim cannot match ResourceHandle if there are more
                     # resources in the ResourceHandle than the ResourceClaim
                     continue
-                elif len(claim_resources) > len(handle_resources):
+                elif len(resource_claim_resources) > len(handle_resources):
                     # Claim that adds resources strongly weighted in favor of normal diff match
                     diff_count += 1000
 
                 for i, handle_resource in enumerate(handle_resources):
-                    claim_resource = claim_resources[i]
+                    claim_resource = resource_claim_resources[i]
 
                     # ResourceProvider must match
                     provider_name = claim_status_resources[i]['provider']['name']
@@ -147,12 +147,13 @@ class ResourceHandle:
                 }
             ]
 
-            for resource_index in range(len(matched_resource_handle.resources), len(claim_resources)):
+            # Add any additional resources to handle
+            for resource_index in range(len(matched_resource_handle.resources), len(resource_claim_resources)):
                 patch.append({
                     "op": "add",
                     "path": f"/spec/resources/{resource_index}",
                     "value": {
-                        "provider": claim_resources[resource_index]['provider'],
+                        "provider": resource_claim_resources[resource_index]['provider'],
                     },
                 })
 
@@ -195,8 +196,9 @@ class ResourceHandle:
     async def create_for_claim(
         logger: kopf.ObjectLogger,
         resource_claim: ResourceClaimT,
+        resource_claim_resources: List[Mapping],
     ):
-        resource_providers = await resource_claim.get_resource_providers()
+        resource_providers = await resource_claim.get_resource_providers(resource_claim_resources)
         vars_ = {}
         resources = []
         lifespan_default_timedelta = None
@@ -204,7 +206,7 @@ class ResourceHandle:
         lifespan_maximum_timedelta = None
         lifespan_relative_maximum = None
         lifespan_relative_maximum_timedelta = None
-        for i, claim_resource in enumerate(resource_claim.spec['resources']):
+        for i, claim_resource in enumerate(resource_claim_resources):
             provider = resource_providers[i]
             vars_.update(provider.vars)
 
@@ -228,7 +230,7 @@ class ResourceHandle:
                     lifespan_relative_maximum = provider.lifespan_relative_maximum
                     lifespan_relative_maximum_timedelta = provider_lifespan_relative_maximum_timedelta
 
-            resources_item = {'provider': claim_resource['provider']}
+            resources_item = {"provider": provider.as_reference()}
             if 'name' in claim_resource:
                 resources_item['name'] = claim_resource['name']
             if 'template' in claim_resource:
@@ -257,6 +259,7 @@ class ResourceHandle:
                 'vars': vars_,
             }
         }
+
 
         lifespan_end_datetime = None
         lifespan_start_datetime = datetime.utcnow()

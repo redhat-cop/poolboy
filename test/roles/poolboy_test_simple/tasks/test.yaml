@@ -20,6 +20,12 @@
 - include_tasks:
     file: test-vars-03.yaml
 
+- include_tasks:
+    file: test-parameters-01.yaml
+
+- include_tasks:
+    file: test-parameters-02.yaml
+
 # OLD TESTS FOLLOW
 
 - name: Create test ResourceProvider

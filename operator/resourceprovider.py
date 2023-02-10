@@ -23,12 +23,15 @@ ResourceClaimT = TypeVar('ResourceClaimT', bound='ResourceClaim')
 ResourceHandleT = TypeVar('ResourceHandleT', bound='ResourceHandle')
 ResourceProviderT = TypeVar('ResourceProviderT', bound='ResourceProvider')
 
-class LinkedResourceProvider:
+
+class _LinkedResourceProvider:
     def __init__(self, spec):
         self.name = spec['name']
+        self.parameter_values = spec.get('parameterValues', {})
+        self.resource_name = spec.get('resourceName', self.name)
         self.wait_for = spec.get('waitFor')
         self.template_vars = [
-            TemplateVar(item) for item in spec.get('templateVars', [])
+            _TemplateVar(item) for item in spec.get('templateVars', [])
         ]
 
     def check_wait_for(self,
@@ -69,6 +72,43 @@ class LinkedResourceProvider:
         return recursive_process_template_strings(
             '{{(' + self.wait_for + ')|bool}}', resource_provider.template_style, vars_
         )
+
+
+class _Parameter:
+    def __init__(self, definition):
+        self.allow_update = definition.get('allowUpdate', False)
+        self.name = definition['name']
+        self.required = definition.get('required', False)
+
+        validation = definition.get('validation', {})
+        self.validation_checks = [
+            _ParameterValidationCheck(**check) for check in validation.get('checks', [])
+        ]
+        if 'openAPIV3Schema' in validation:
+            self.default = validation['openAPIV3Schema'].get('default')
+            self.open_api_v3_schema_validator = OAS30Validator(
+                validation['openAPIV3Schema']
+            )
+        else:
+            self.default = None
+            self.open_api_v3_schema_validator = None
+
+
+class _ParameterValidationCheck:
+    def __init__(self, check: str, name: str):
+        self.check = check
+        self.name = name
+
+
+class _TemplateVar:
+    def __init__(self, spec):
+        self.name = spec['name']
+        self.value_from = spec['from']
+
+
+class _ValidationException(Exception):
+    pass
+
 
 class ResourceProvider:
     instances = {}
@@ -176,7 +216,7 @@ class ResourceProvider:
     @property
     def linked_resource_providers(self) -> List[ResourceProviderT]:
         return [
-            LinkedResourceProvider(item) for item in self.spec.get('linkedResourceProviders', [])
+            _LinkedResourceProvider(item) for item in self.spec.get('linkedResourceProviders', [])
         ]
 
     @property
@@ -280,6 +320,14 @@ class ResourceProvider:
 
         return template
 
+    def as_reference(self) -> Mapping:
+        return dict(
+            apiVersion = f"{operator_domain}/{operator_version}",
+            kind = "ResourceProvider",
+            name = self.name,
+            namespace = self.namespace,
+        )
+
     def check_template_match(self,
         claim_resource_template: Mapping,
         handle_resource_template: Mapping,
@@ -313,6 +361,55 @@ class ResourceProvider:
     def get_lifespan_relative_maximum_timedelta(self, resource_claim=None) -> Optional[int]:
         return self.__lifespan_value_as_timedelta('relativeMaximum', resource_claim)
 
+    def get_parameters(self) -> List[_Parameter]:
+        return [
+            _Parameter(pd) for pd in self.spec.get('parameters', [])
+        ]
+
+    async def get_claim_resources(self,
+        resource_claim: ResourceClaimT,
+        parameter_values: Optional[Mapping] = None,
+        resource_handle: Optional[ResourceHandleT] = None,
+        resource_name: Optional[str] = None,
+    ) -> List[Mapping]:
+        """Return list of resources for managed ResourceClaim"""
+        if parameter_values == None:
+            parameter_values = resource_claim.parameter_values
+
+        resource_handle_vars = resource_handle.vars if resource_handle else {}
+        vars_ = {
+            **self.vars,
+            **resource_handle_vars,
+            **parameter_values,
+            "resource_claim": resource_claim,
+            "resource_handle": resource_handle,
+            "resource_provider": self,
+        }
+
+        resources = [{
+            "name": resource_name or self.name,
+            "provider": self.as_reference(),
+            "template": self.processed_template(
+                parameter_values = parameter_values,
+                resource_claim = resource_claim,
+                resource_handle = resource_handle,
+            )
+        }]
+
+        for linked_resource_provider in self.linked_resource_providers:
+            resource_provider = await ResourceProvider.get(linked_resource_provider.name)
+            resources[:0] = await resource_provider.get_claim_resources(
+                resource_claim = resource_claim,
+                resource_handle = resource_handle,
+                resource_name = linked_resource_provider.resource_name,
+                parameter_values = {
+                    key: recursive_process_template_strings(value, variables=vars_)
+                    for key, value in linked_resource_provider.parameter_values.items()
+                },
+            )
+
+        return resources
+
     def is_match_for_template(self, template: Mapping) -> bool:
         """
         Check if this provider is a match for the resource template by checking
@@ -323,6 +420,24 @@ class ResourceProvider:
         cmp_template = deepcopy(template)
         deep_merge(cmp_template, self.match)
         return template == cmp_template
+
+    def processed_template(self,
+        parameter_values: Mapping,
+        resource_claim: ResourceClaimT,
+        resource_handle: Optional[ResourceHandleT],
+    ) -> Mapping:
+        resource_handle_vars = resource_handle.vars if resource_handle else {}
+        return recursive_process_template_strings(
+            self.spec['template'].get('definition', {}),
+            variables = {
+                **self.vars,
+                **resource_handle_vars,
+                **parameter_values,
+                "resource_claim": resource_claim,
+                "resource_handle": resource_handle,
+                "resource_provider": self,
+            }
+        )
 
     def validate_resource_template(self,
         template: Mapping,
@@ -348,8 +463,8 @@ class ResourceProvider:
                     '{{(' + check['check'] + ')|bool}}', variables=vars_
                 )
                 if not check_successful:
-                    raise ValidationException(f"Validation check failed: {name}")
-            except ValidationException:
+                    raise _ValidationException(f"Validation check failed: {name}")
+            except _ValidationException:
                 raise
             except Exception as exception:
                 raise Exception(f"Validation check \"{name}\" failed with exception: {exception}")
@@ -499,12 +614,3 @@ class ResourceProvider:
                 patch = patch,
             )
             return patch
-
-
-class TemplateVar:
-    def __init__(self, spec):
-        self.name = spec['name']
-        self.value_from = spec['from']
-
-class ValidationException(Exception):
-    pass
