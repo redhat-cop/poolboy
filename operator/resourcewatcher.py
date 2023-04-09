@@ -158,6 +158,13 @@ class ResourceWatcher:
                 resource_handle_name = event_obj_annotations.get(resource_handle_name_annotation)
                 resource_handle_namespace = event_obj_annotations.get(resource_handle_namespace_annotation)
                 resource_index = int(event_obj_annotations.get(resource_index_annotation, 0))
+                resource_name = event_obj['metadata']['name']
+                resource_namespace = event_obj['metadata'].get('namespace')
+                resource_description = (
+                    f"{event_obj['apiVersion']} {event_obj['kind']} {resource_name} in {resource_namespace}"
+                    if resource_namespace else
+                    f"{event_obj['apiVersion']} {event_obj['kind']} {resource_name}"
+                )
 
                 if not resource_handle_name or not resource_handle_namespace:
                     continue
@@ -184,69 +191,50 @@ class ResourceWatcher:
                 if not resource_claim_name or not resource_claim_namespace:
                     continue
 
-                if event_type == 'DELETED':
-                    try:
-                        definition = await custom_objects_api.patch_namespaced_custom_object_status(
-                            group = operator_domain,
-                            name = resource_claim_name,
-                            namespace = resource_claim_namespace,
-                            plural = "resourceclaims",
-                            version = operator_version,
-                            _content_type = 'application/json-patch+json',
-                            body = [{
-                                "op": "test",
-                                "path": "/status/resourceHandle/name",
-                                "value": resource_handle_name,
-                            }, {
-                                "op": "remove",
-                                "path": f"/status/resources/{resource_index}/state",
-                            }],
+                resource_claim_description = f"ResourceClaim {resource_claim_name} in {resource_claim_namespace}"
+                try:
+                    resource_claim = await resourceclaim.ResourceClaim.get(
+                        name = resource_claim_name,
+                        namespace = resource_claim_namespace,
+                    )
+                    prev_state = resource_claim.status_resources[resource_index].get('state')
+                    prev_description = (
+                        f"{prev_state['apiVersion']} {prev_state['kind']} {resource_name} in {resource_namespace}"
+                        if resource_namespace else
+                        f"{prev_state['apiVersion']} {prev_state['kind']} {resource_name}"
+                    ) if prev_state else None
+                    if resource_claim.resource_handle_name != resource_handle_name:
+                        logger.info(
+                            f"Ignoring resource update for {resource_claim_description} due to ResourceHandle "
+                            f"name mismatch, {self.resource_handle_name} != {resource_handle_name}"
                         )
-                        await resourceclaim.ResourceClaim.register_definition(definition=definition)
-                    except kubernetes_asyncio.client.exceptions.ApiException as e:
-                        if e.status != 404:
-                            logger.warning(
-                                f"Received {e.status} response when attempting to patch resource state for deleted "
-                                f"resource for ResourceClaim {resource_claim_name} in {resource_claim_namespace}: "
-                                f"{e}"
+                    elif prev_state and prev_description != resource_description:
+                        logger.info(
+                            f"Ignoring resource update for {resource_claim_description} due to resource "
+                            f"mismatch, {resource_description} != {prev_description}"
+                        )
+                    elif event_type == 'DELETED':
+                        if prev_state:
+                            await resource_claim.remove_resource_from_status(resource_index)
+                        else:
+                            logger.info(
+                                f"Ignoring resource delete for {resource_claim_description} due to resource "
+                                f"state not present for {resource_description}"
                             )
-                    except Exception as e:
-                        logger.exception(
-                            f"Exception when attempting to patch resource state for deleted resource for "
-                            f"ResourceClaim {resource_claim_name} in {resource_claim_namespace}"
+                    else:
+                        await resource_claim.update_resource_in_status(resource_index, event_obj)
+                except kubernetes_asyncio.client.exceptions.ApiException as e:
+                    if e.status != 404:
+                        logger.warning(
+                            f"Received {e.status} response when attempting to patch resource state for "
+                            f"{event_type.lower()} resource for {resource_claim_description}: "
+                            f"{e}"
                         )
-                else:
-                    try:
-                        definition = await custom_objects_api.patch_namespaced_custom_object_status(
-                            group = operator_domain,
-                            name = resource_claim_name,
-                            namespace = resource_claim_namespace,
-                            plural = "resourceclaims",
-                            version = operator_version,
-                            _content_type = 'application/json-patch+json',
-                            body = [{
-                                "op": "test",
-                                "path": "/status/resourceHandle/name",
-                                "value": resource_handle_name,
-                            }, {
-                                "op": "add",
-                                "path": f"/status/resources/{resource_index}/state",
-                                "value": event_obj,
-                            }],
-                        )
-                        await resourceclaim.ResourceClaim.register_definition(definition=definition)
-                    except kubernetes_asyncio.client.exceptions.ApiException as e:
-                        if e.status != 404:
-                            logger.warning(
-                                f"Received {e.status} response when attempting to patch resource state for "
-                                f"ResourceClaim {resource_claim_name} in {resource_claim_namespace}: "
-                                f"{e}"
-                            )
-                    except Exception as e:
-                        logger.exception(
-                            f"Exception when attempting to patch resource state for ResourceClaim "
-                            f"{resource_claim_name} in {resource_claim_namespace}"
-                        )
+                except Exception as e:
+                    logger.exception(
+                        f"Exception when attempting to patch resource state for {event_type.lower()} resource "
+                        f"for {resource_claim_description}"
+                    )
         except kubernetes_asyncio.client.exceptions.ApiException as e:
             if e.status == 410:
                 raise ResourceWatchRestartError("Received 410 expired response.")

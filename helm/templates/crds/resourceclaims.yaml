@@ -222,4 +222,9 @@ spec:
                     validationError:
                       description: Error message from resource provider.
                       type: string
+              summary:
+                description: >-
+                  Status summary from current resources state, generated from ResourceProvider configuration.
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
 {{- end -}}

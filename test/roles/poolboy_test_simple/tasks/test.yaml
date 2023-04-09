@@ -26,6 +26,9 @@
 - include_tasks:
     file: test-parameters-02.yaml
 
+- include_tasks:
+    file: test-status-summary-01.yaml
+
 # OLD TESTS FOLLOW
 
 - name: Create test ResourceProvider
