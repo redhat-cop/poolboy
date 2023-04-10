@@ -252,6 +252,10 @@ class ResourceProvider:
         return self.spec.get('resourceRequiresClaim', False)
 
     @property
+    def status_summary_template(self) -> Optional[Mapping]:
+        return self.spec.get('statusSummaryTemplate')
+
+    @property
     def template_enable(self):
         return self.spec.get('template', {}).get('enable', False)
 
@@ -427,6 +431,20 @@ class ResourceProvider:
         cmp_template = deepcopy(template)
         deep_merge(cmp_template, self.match)
         return template == cmp_template
+
+    def make_status_summary(self,
+        resource_claim: ResourceClaimT,
+    ) -> Mapping:
+        return recursive_process_template_strings(
+            self.status_summary_template,
+            variables = {
+                **self.vars,
+                **resource_claim.parameter_values,
+                "resource_claim": resource_claim,
+                "resource_provider": self,
+                "resources": resource_claim.status_resources,
+            }
+        )
 
     def processed_template(self,
         parameter_values: Mapping,

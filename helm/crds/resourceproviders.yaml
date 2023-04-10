@@ -218,6 +218,11 @@ spec:
                   Flag to indicate that creation of resource for handle should waint until a claim
                   is bound.
                 type: boolean
+              statusSummaryTemplate:
+                description: >-
+                  Object template for generating ResourceClaim status.summary from current state.
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
               template:
                 description: >-
                   Template settings for the ResourceProvider. Applied to override and defaults.

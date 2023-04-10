@@ -900,3 +900,40 @@ class ResourceClaim:
                     } for resource in resources
                 ]
             await self.merge_patch_status(patch)
+
+    async def remove_resource_from_status(self, index):
+        patch = [{
+            "op": "remove",
+            "path": f"/status/resources/{index}/state",
+        }]
+
+        if self.has_resource_provider:
+            resource_provider = await self.get_resource_provider()
+            if resource_provider.status_summary_template:
+                del self.status_resources[index]['state']
+                patch.append({
+                    "op": "add",
+                    "path": "/status/summary",
+                    "value": resource_provider.make_status_summary(self),
+                })
+
+        await self.json_patch_status(patch)
+
+    async def update_resource_in_status(self, index, state):
+        patch = [{
+            "op": "add",
+            "path": f"/status/resources/{index}/state",
+            "value": state,
+        }]
+
+        if self.has_resource_provider:
+            resource_provider = await self.get_resource_provider()
+            if resource_provider.status_summary_template:
+                self.status_resources[index]['state'] = state
+                patch.append({
+                    "op": "add",
+                    "path": "/status/summary",
+                    "value": resource_provider.make_status_summary(self),
+                })
+
+        await self.json_patch_status(patch)
