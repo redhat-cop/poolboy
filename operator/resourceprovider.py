@@ -2,7 +2,6 @@ import asyncio
 import jinja2
 import jsonpointer
 import kopf
-import logging
 import pytimeparse
 import re
 
@@ -244,6 +243,14 @@ class ResourceProvider:
         return self.spec.get('override', {})
 
     @property
+    def parameter_defaults(self) -> Mapping:
+        return {
+            parameter.name: parameter.default
+            for parameter in self.get_parameters()
+            if parameter.default != None
+        }
+
+    @property
     def resource_name(self):
         return self.spec.get('resourceName', self.name)
 
@@ -382,7 +389,10 @@ class ResourceProvider:
     ) -> List[Mapping]:
         """Return list of resources for managed ResourceClaim"""
         if parameter_values == None:
-            parameter_values = resource_claim.parameter_values
+            parameter_values = {
+                **self.parameter_defaults,
+                **resource_claim.parameter_values,
+            }
 
         resource_handle_vars = resource_handle.vars if resource_handle else {}
         vars_ = {

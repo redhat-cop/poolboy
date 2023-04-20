@@ -3,6 +3,7 @@ import jinja2
 import jmespath
 import json
 import pytimeparse
+import random
 import re
 
 from datetime import datetime, timedelta, timezone
@@ -125,10 +126,11 @@ def j2now(utc=False, fmt=None):
     dt = datetime.now(timezone.utc if utc else None)
     return dt.strftime(fmt) if fmt else dt
 
-def jinja2process(template, template_style='jinja2', variables={}):
+def jinja2process(template, omit=None, template_style='jinja2', variables={}):
     variables = copy.copy(variables)
     variables['datetime'] = datetime
     variables['now'] = j2now
+    variables['omit'] = omit
     variables['timedelta'] = timedelta
     variables['timezone'] = timezone
     variables['timestamp'] = TimeStamp()
@@ -154,17 +156,43 @@ def jinja2process(template, template_style='jinja2', variables={}):
         return template_out
 
 def recursive_process_template_strings(template, template_style='jinja2', variables={}):
+    omit = '__omit_place_holder__' + ''.join(random.choices('abcdef0123456789', k=40))
+    return __recursive_strip_omit(
+        __recursive_process_template_strings(
+            omit = omit,
+            template = template,
+            template_style = template_style,
+            variables = variables,
+        ),
+        omit = omit,
+    )
+
+def __recursive_process_template_strings(template, omit, template_style, variables):
     if isinstance(template, dict):
         return {
-            k: recursive_process_template_strings(v, template_style=template_style, variables=variables)
-            for k, v in template.items()
+            key: __recursive_process_template_strings(val, omit=omit, template_style=template_style, variables=variables)
+            for key, val in template.items()
         }
     elif isinstance(template, list):
         return [
-            recursive_process_template_strings(item, template_style=template_style, variables=variables)
+            __recursive_process_template_strings(item, omit=omit, template_style=template_style, variables=variables)
             for item in template
         ]
     elif isinstance(template, str):
-        return jinja2process(template=template, template_style=template_style, variables=variables)
+        return jinja2process(template, omit=omit, template_style=template_style, variables=variables)
     else:
         return template
+
+def __recursive_strip_omit(value, omit):
+    if isinstance(value, dict):
+        return {
+            key: __recursive_strip_omit(val, omit=omit)
+            for key, val in value.items()
+            if val != omit
+        }
+    elif isinstance(value, list):
+        return [
+            __recursive_strip_omit(item, omit=omit) for item in value if item != omit
+        ]
+    elif value != omit:
+        return value

@@ -359,5 +359,36 @@ class TestJsonPatch(unittest.TestCase):
             "10m",
         )
 
+    def test_24(self):
+        template = {
+            "a": "A",
+            "b": "{{ omit }}",
+        }
+        template_vars = {}
+        self.assertEqual(
+            recursive_process_template_strings(template, 'jinja2', template_vars), {"a": "A"}
+        )
+
+    def test_25(self):
+        template = [
+            "a", "{{ omit }}", "b"
+        ]
+        template_vars = {}
+        self.assertEqual(
+            recursive_process_template_strings(template, 'jinja2', template_vars), ["a", "b"]
+        )
+
+    def test_26(self):
+        template = {
+            "a": "{{ a | default(omit) }}",
+            "b": "{{ b | default(omit) }}",
+        }
+        template_vars = {
+            "a": "A",
+        }
+        self.assertEqual(
+            recursive_process_template_strings(template, 'jinja2', template_vars), {"a": "A"}
+        )
+
 if __name__ == '__main__':
     unittest.main()

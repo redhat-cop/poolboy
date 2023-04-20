@@ -27,6 +27,9 @@
     file: test-parameters-02.yaml
 
 - include_tasks:
+    file: test-parameters-03.yaml
+
+- include_tasks:
     file: test-status-summary-01.yaml
 
 # OLD TESTS FOLLOW
