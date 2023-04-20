@@ -179,7 +179,7 @@ def __recursive_process_template_strings(template, omit, template_style, variabl
             for item in template
         ]
     elif isinstance(template, str):
-        return jinja2process(omit=omit, template=template, template_style=template_style, variables=variables)
+        return jinja2process(template, omit=omit, template_style=template_style, variables=variables)
     else:
         return template
 
