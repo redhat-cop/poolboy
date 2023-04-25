@@ -170,6 +170,20 @@ spec:
                       description: >-
                         Control whether this boolean may be updated after initially set.
                       type: boolean
+                    default:
+                      description: >-
+                        Default value for this parameter when no value is provided.
+                        The default includes support for a default template or value.
+                        The value is not explictly listed in the schema as kubernetes does not support undefined types.
+                        If both template and value are set then template is used.
+                      type: object
+                      properties:
+                        template:
+                          description: >-
+                            Jinja2 template string used to generate default value.
+                          type: string
+                      # Supports field "value" with undefined type
+                      x-kubernetes-preserve-unknown-fields: true
                     name:
                       type: string
                     required:
