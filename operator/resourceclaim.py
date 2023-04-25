@@ -835,8 +835,16 @@ class ResourceClaim:
         parameter_states = self.status.get('provider', {}).get('parameterValues')
 
         for parameter in resource_provider.get_parameters():
-            if parameter.name not in parameter_values and parameter.default != None:
-                parameter_values[parameter.name] = parameter.default
+            if parameter.name not in parameter_values:
+                if parameter_states and parameter.name in parameter_states:
+                    parameter_values[parameter.name] = parameter_states[parameter.name]
+                elif parameter.default_template != None:
+                    parameter_values[parameter.name] = recursive_process_template_strings(
+                        parameter.default_template,
+                        variables = { **vars_, **parameter_values }
+                    )
+                elif parameter.default_value != None:
+                    parameter_values[parameter.name] = parameter.default_value
 
         parameter_names = set()
         for parameter in resource_provider.get_parameters():

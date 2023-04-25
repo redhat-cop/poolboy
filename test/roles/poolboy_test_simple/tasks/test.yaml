@@ -1,36 +1,20 @@
 ---
-- include_tasks:
-    file: test-01.yaml
 
 - include_tasks:
-    file: test-02.yaml
-
-- include_tasks:
-    file: test-pool-01.yaml
-
-- include_tasks:
-    file: test-pool-02.yaml
-
-- include_tasks:
-    file: test-vars-01.yaml
-
-- include_tasks:
-    file: test-vars-02.yaml
-
-- include_tasks:
-    file: test-vars-03.yaml
-
-- include_tasks:
-    file: test-parameters-01.yaml
-
-- include_tasks:
-    file: test-parameters-02.yaml
-
-- include_tasks:
-    file: test-parameters-03.yaml
-
-- include_tasks:
-    file: test-status-summary-01.yaml
+    file: "{{ item }}"
+  loop:
+  - test-01.yaml
+  - test-02.yaml
+  - test-pool-01.yaml
+  - test-pool-02.yaml
+  - test-vars-01.yaml
+  - test-vars-02.yaml
+  - test-vars-03.yaml
+  - test-parameters-01.yaml
+  - test-parameters-02.yaml
+  - test-parameters-03.yaml
+  - test-parameters-04.yaml
+  - test-status-summary-01.yaml
 
 # OLD TESTS FOLLOW
 

@@ -83,13 +83,18 @@ class _Parameter:
         self.validation_checks = [
             _ParameterValidationCheck(**check) for check in validation.get('checks', [])
         ]
+
+        default = definition.get('default', {})
+        self.default_template = default.get('template')
+        self.default_value = default.get('value')
+
         if 'openAPIV3Schema' in validation:
-            self.default = validation['openAPIV3Schema'].get('default')
+            if self.default_value == None:
+                self.default_value = validation['openAPIV3Schema'].get('default')
             self.open_api_v3_schema_validator = OAS30Validator(
                 validation['openAPIV3Schema']
             )
         else:
-            self.default = None
             self.open_api_v3_schema_validator = None
 
 
@@ -245,9 +250,9 @@ class ResourceProvider:
     @property
     def parameter_defaults(self) -> Mapping:
         return {
-            parameter.name: parameter.default
+            parameter.name: parameter.default_value
             for parameter in self.get_parameters()
-            if parameter.default != None
+            if parameter.default_value != None
         }
 
     @property
