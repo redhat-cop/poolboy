@@ -9,7 +9,6 @@ spec:
     plural: resourceproviders
     singular: resourceprovider
     kind: ResourceProvider
-    shortNames: []
   versions:
   - name: v1
     served: true

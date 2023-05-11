@@ -10,7 +10,6 @@ spec:
     plural: resourcehandles
     singular: resourcehandle
     kind: ResourceHandle
-    shortNames: []
   versions:
   - name: v1
     served: true
