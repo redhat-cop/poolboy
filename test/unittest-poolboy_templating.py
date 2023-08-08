@@ -391,9 +391,27 @@ class TestJsonPatch(unittest.TestCase):
         )
 
     def test_27(self):
+        template = "{{ l | json_query('from_items(zip([].keys(@)[], [].values(@)[]))') | object }}"
+        template_vars = {
+            "l": [{"a": "A", "b": "X"}, {"b": "B", "c": "C"}, {"d": "D"}]
+        }
+        self.assertEqual(
+            recursive_process_template_strings(template, 'jinja2', template_vars), {"a": "A", "b": "B", "c": "C", "d": "D"}
+        )
+
+    def test_28(self):
         template = "{{ l | merge_list_of_dicts | object }}"
         template_vars = {
             "l": [{"a": "A", "b": "X"}, {"b": "B", "c": "C"}, {"d": "D"}]
+        }
+        self.assertEqual(
+            recursive_process_template_strings(template, 'jinja2', template_vars), {"a": "A", "b": "B", "c": "C", "d": "D"}
+        )
+
+    def test_29(self):
+        template = "{{ l | merge_list_of_dicts | object }}"
+        template_vars = {
+            "l": [{"a": "A", "b": "X"}, None, {"b": "B", "c": "C"}, {}, {"d": "D"}]
         }
         self.assertEqual(
             recursive_process_template_strings(template, 'jinja2', template_vars), {"a": "A", "b": "B", "c": "C", "d": "D"}
