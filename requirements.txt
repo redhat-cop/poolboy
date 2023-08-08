@@ -13,6 +13,6 @@ python-dateutil==2.8.1
 python-string-utils==1.0.0
 pytimeparse==1.1.8
 PyYAML==6.0.1
-requests==2.26.0
+requests==2.31.0
 StringGenerator==0.4.4
 urllib3==1.26.6
