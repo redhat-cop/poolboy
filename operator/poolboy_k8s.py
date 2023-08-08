@@ -5,7 +5,7 @@ import kubernetes_asyncio
 
 from typing import List, Mapping, Optional
 
-from config import custom_objects_api, core_v1_api
+from poolboy import Poolboy
 
 api_groups = {}
 
@@ -29,7 +29,7 @@ async def create_custom_object(definition: Mapping) -> Mapping:
     plural = await kind_to_plural(group=group, kind=definition['kind'], version=version)
     namespace = definition['metadata'].get('namespace')
     if namespace:
-        return await custom_objects_api.create_namespaced_custom_object(
+        return await Poolboy.custom_objects_api.create_namespaced_custom_object(
             body = definition,
             group = group,
             namespace = namespace,
@@ -37,7 +37,7 @@ async def create_custom_object(definition: Mapping) -> Mapping:
             version = version,
         )
     else:
-        return await custom_objects_api.create_cluster_custom_object(
+        return await Poolboy.custom_objects_api.create_cluster_custom_object(
             body = definition,
             group = group,
             plural = plural,
@@ -47,10 +47,10 @@ async def create_custom_object(definition: Mapping) -> Mapping:
 async def create_cluster_core_object(definition: Mapping) -> Mapping:
     kind = definition['kind']
     method = getattr(
-        core_v1_api,
+        Poolboy.core_v1_api,
         'create_' + inflection.underscore(kind)
     )
-    return core_v1_api.api_client.sanitize_for_serialization(
+    return Poolboy.api_client.sanitize_for_serialization(
         await method(body=definition)
     )
 
@@ -58,10 +58,10 @@ async def create_namespaced_core_object(definition: Mapping) -> Mapping:
     kind = definition['kind']
     namespace = definition['metadata']['namespace']
     method = getattr(
-        core_v1_api,
+        Poolboy.core_v1_api,
         'create_namespaced_' + inflection.underscore(kind)
     )
-    return core_v1_api.api_client.sanitize_for_serialization(
+    return Poolboy.api_client.sanitize_for_serialization(
         await method(body=definition, namespace=namespace)
     )
 
@@ -87,10 +87,10 @@ async def delete_cluster_core_object(
     name: str,
 ) -> Mapping:
     method = getattr(
-        core_v1_api,
+        Poolboy.core_v1_api,
         'delete_' + inflection.underscore(kind)
     )
-    return core_v1_api.api_client.sanitize_for_serialization(
+    return Poolboy.api_client.sanitize_for_serialization(
         await method(name=name)
     )
 
@@ -100,10 +100,10 @@ async def delete_namespaced_core_object(
     namespace: str,
 ) -> Mapping:
     method = getattr(
-        core_v1_api,
+        Poolboy.core_v1_api,
         'delete_namespaced_' + inflection.underscore(kind)
     )
-    return core_v1_api.api_client.sanitize_for_serialization(
+    return Poolboy.api_client.sanitize_for_serialization(
         await method(name=name, namespace=namespace)
     )
 
@@ -116,7 +116,7 @@ async def delete_custom_object(
 ) -> Optional[Mapping]:
     plural = await kind_to_plural(group=group, kind=kind, version=version)
     if namespace:
-        return await custom_objects_api.delete_namespaced_custom_object(
+        return await Poolboy.custom_objects_api.delete_namespaced_custom_object(
             group = group,
             name = name,
             namespace = namespace,
@@ -124,7 +124,7 @@ async def delete_custom_object(
             version = version,
         )
     else:
-        return await custom_objects_api.delete_cluster_custom_object(
+        return await Poolboy.custom_objects_api.delete_cluster_custom_object(
             group = group,
             name = name,
             plural = plural,
@@ -197,10 +197,10 @@ async def get_cluster_core_object(
     name: str,
 ) -> Mapping:
     method = getattr(
-        core_v1_api,
+        Poolboy.core_v1_api,
         'read_' + inflection.underscore(kind)
     )
-    return core_v1_api.api_client.sanitize_for_serialization(
+    return Poolboy.api_client.sanitize_for_serialization(
         await method(name=name)
     )
 
@@ -210,10 +210,10 @@ async def get_namespaced_core_object(
     namespace: str,
 ) -> Mapping:
     method = getattr(
-        core_v1_api,
+        Poolboy.core_v1_api,
         'read_namespaced_' + inflection.underscore(kind)
     )
-    return core_v1_api.api_client.sanitize_for_serialization(
+    return Poolboy.api_client.sanitize_for_serialization(
         await method(name=name, namespace=namespace)
     )
 
@@ -226,7 +226,7 @@ async def get_custom_object(
 ) -> Optional[Mapping]:
     plural = await kind_to_plural(group=group, kind=kind, version=version)
     if namespace:
-        return await custom_objects_api.get_namespaced_custom_object(
+        return await Poolboy.custom_objects_api.get_namespaced_custom_object(
             group = group,
             name = name,
             namespace = namespace,
@@ -234,7 +234,7 @@ async def get_custom_object(
             version = version,
         )
     else:
-        return await custom_objects_api.get_cluster_custom_object(
+        return await Poolboy.custom_objects_api.get_cluster_custom_object(
             group = group,
             name = name,
             plural = plural,
@@ -243,7 +243,7 @@ async def get_custom_object(
 
 async def get_requester_from_namespace(namespace: str) -> tuple[Optional[Mapping], Optional[List[Mapping]]]:
     try:
-        namespace_obj = await core_v1_api.read_namespace(namespace)
+        namespace_obj = await Poolboy.core_v1_api.read_namespace(namespace)
     except kubernetes_asyncio.client.exceptions.ApiException as e:
         if e.status == 404:
             return None, []
@@ -255,7 +255,7 @@ async def get_requester_from_namespace(namespace: str) -> tuple[Optional[Mapping
         return None, []
 
     try:
-        user = await custom_objects_api.get_cluster_custom_object(
+        user = await Poolboy.custom_objects_api.get_cluster_custom_object(
             'user.openshift.io', 'v1', 'users', user_name
         )
     except kubernetes_asyncio.client.exceptions.ApiException as e:
@@ -273,7 +273,7 @@ async def get_requester_from_namespace(namespace: str) -> tuple[Optional[Mapping
     identities = []
     for identity_name in user.get('identities', []):
         try:
-            identity = await custom_objects_api.get_cluster_custom_object(
+            identity = await Poolboy.custom_objects_api.get_cluster_custom_object(
                 'user.openshift.io', 'v1', 'identities', identity_name
             )
             identities.append(identity)
@@ -305,7 +305,7 @@ async def kind_to_plural(
                     return resource['name']
 
     try:
-        resp = await custom_objects_api.api_client.call_api(
+        resp = await Poolboy.api_client.call_api(
             method = 'GET',
             resource_path = f"/apis/{group}/{version}",
             auth_settings=['BearerToken'],
@@ -362,10 +362,10 @@ async def patch_cluster_core_object(
     patch: List[Mapping],
 ) -> Mapping:
     method = getattr(
-        core_v1_api,
+        Poolboy.core_v1_api,
         'patch_' + inflection.underscore(kind)
     )
-    return core_v1_api.api_client.sanitize_for_serialization(
+    return Poolboy.api_client.sanitize_for_serialization(
         await method(
             name = name,
             body = patch,
@@ -380,10 +380,10 @@ async def patch_namespaced_core_object(
     patch: List[Mapping],
 ) -> Mapping:
     method = getattr(
-        core_v1_api,
+        Poolboy.core_v1_api,
         'patch_namespaced_' + inflection.underscore(kind)
     )
-    return core_v1_api.api_client.sanitize_for_serialization(
+    return Poolboy.api_client.sanitize_for_serialization(
         await method(
             name = name,
             namespace = namespace,
@@ -402,7 +402,7 @@ async def patch_custom_object(
 ) -> Mapping:
     plural = await kind_to_plural(group=group, kind=kind, version=version)
     if namespace:
-        return await custom_objects_api.patch_namespaced_custom_object(
+        return await Poolboy.custom_objects_api.patch_namespaced_custom_object(
             group = group,
             name = name,
             namespace = namespace,
@@ -412,7 +412,7 @@ async def patch_custom_object(
             _content_type = 'application/json-patch+json',
         )
     else:
-        return await custom_objects_api.patch_cluster_custom_object(
+        return await Poolboy.custom_objects_api.patch_cluster_custom_object(
             group = group,
             name = name,
             plural = plural,

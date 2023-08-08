@@ -13,9 +13,9 @@ from typing import List, Mapping, Optional, TypeVar
 
 import poolboy_k8s
 
-from config import custom_objects_api, operator_domain, operator_namespace, operator_version
 from deep_merge import deep_merge
 from jsonpatch_from_diff import jsonpatch_from_diff
+from poolboy import Poolboy
 from poolboy_templating import recursive_process_template_strings
 
 ResourceClaimT = TypeVar('ResourceClaimT', bound='ResourceClaim')
@@ -149,8 +149,8 @@ class ResourceProvider:
             resource_provider = ResourceProvider.instances.get(name)
             if resource_provider:
                 return resource_provider
-            definition = await custom_objects_api.get_cluster_custom_object(
-                operator_domain, operator_version, 'resourceproviders', name
+            definition = await Poolboy.custom_objects_api.get_cluster_custom_object(
+                Poolboy.operator_domain, Poolboy.operator_version, 'resourceproviders', name
             )
             return ResourceProvider.__register_definition(definition=definition)
 
@@ -159,8 +159,8 @@ class ResourceProvider:
         async with ResourceProvider.lock:
             _continue = None
             while True:
-                resource_provider_list = await custom_objects_api.list_namespaced_custom_object(
-                    operator_domain, operator_version, operator_namespace, 'resourceproviders',
+                resource_provider_list = await Poolboy.custom_objects_api.list_namespaced_custom_object(
+                    Poolboy.operator_domain, Poolboy.operator_version, Poolboy.namespace, 'resourceproviders',
                     _continue = _continue,
                     limit = 50,
                 )
@@ -204,6 +204,14 @@ class ResourceProvider:
 
     def __str__(self) -> str:
         return f"ResourceProvider {self.name}"
+
+    @property
+    def approval_pending_message(self) -> bool:
+        return self.spec.get('approval', {}).get('pendingMessage', 'Approval pending.')
+
+    @property
+    def approval_required(self) -> bool:
+        return self.spec.get('approval', {}).get('required', False)
 
     @property
     def create_disabled(self) -> bool:
@@ -342,7 +350,7 @@ class ResourceProvider:
 
     def as_reference(self) -> Mapping:
         return dict(
-            apiVersion = f"{operator_domain}/{operator_version}",
+            apiVersion = Poolboy.operator_api_version,
             kind = "ResourceProvider",
             name = self.name,
             namespace = self.namespace,
@@ -601,36 +609,36 @@ class ResourceProvider:
             resource_definition['metadata']['annotations'] = {}
 
         resource_definition['metadata']['annotations'].update({
-            f"{operator_domain}/resource-provider-name": self.name,
-            f"{operator_domain}/resource-provider-namespace": self.namespace,
-            f"{operator_domain}/resource-handle-name": resource_handle.name,
-            f"{operator_domain}/resource-handle-namespace": resource_handle.namespace,
-            f"{operator_domain}/resource-handle-uid": resource_handle.uid,
-            f"{operator_domain}/resource-index": str(resource_index)
+            f"{Poolboy.operator_domain}/resource-provider-name": self.name,
+            f"{Poolboy.operator_domain}/resource-provider-namespace": self.namespace,
+            f"{Poolboy.operator_domain}/resource-handle-name": resource_handle.name,
+            f"{Poolboy.operator_domain}/resource-handle-namespace": resource_handle.namespace,
+            f"{Poolboy.operator_domain}/resource-handle-uid": resource_handle.uid,
+            f"{Poolboy.operator_domain}/resource-index": str(resource_index)
         })
 
         if resource_claim:
             resource_definition['metadata']['annotations'].update({
-                f"{operator_domain}/resource-claim-name": resource_claim.name,
-                f"{operator_domain}/resource-claim-namespace": resource_claim.namespace,
+                f"{Poolboy.operator_domain}/resource-claim-name": resource_claim.name,
+                f"{Poolboy.operator_domain}/resource-claim-namespace": resource_claim.namespace,
             })
 
         if resource_handle.resource_pool_name:
             resource_definition['metadata']['annotations'].update({
-                f"{operator_domain}/resource-pool-name": resource_handle.resource_pool_name,
-                f"{operator_domain}/resource-pool-namespace": resource_handle.resource_pool_namespace,
+                f"{Poolboy.operator_domain}/resource-pool-name": resource_handle.resource_pool_name,
+                f"{Poolboy.operator_domain}/resource-pool-namespace": resource_handle.resource_pool_namespace,
             })
 
         if requester_user:
             resource_definition['metadata']['annotations'].update({
-                f"{operator_domain}/resource-requester-user": requester_user['metadata']['name'],
+                f"{Poolboy.operator_domain}/resource-requester-user": requester_user['metadata']['name'],
             })
 
         if requester_identity:
             resource_definition['metadata']['annotations'].update({
-                f"{operator_domain}/resource-requester-email": requester_identity.get('extra', {}).get('email', ''),
-                f"{operator_domain}/resource-requester-name": requester_identity.get('extra', {}).get('name', ''),
-                f"{operator_domain}/resource-requester-preferred-username": requester_identity.get('extra', {}).get('preferred_username', ''),
+                f"{Poolboy.operator_domain}/resource-requester-email": requester_identity.get('extra', {}).get('email', ''),
+                f"{Poolboy.operator_domain}/resource-requester-name": requester_identity.get('extra', {}).get('name', ''),
+                f"{Poolboy.operator_domain}/resource-requester-preferred-username": requester_identity.get('extra', {}).get('preferred_username', ''),
             })
 
         return resource_definition
@@ -642,7 +650,7 @@ class ResourceProvider:
         resource_state: Mapping,
     ) -> Optional[List]:
         update_filters = self.update_filters + [{
-            'pathMatch': f"/metadata/annotations/{re.escape(operator_domain)}~1resource-.*"
+            'pathMatch': f"/metadata/annotations/{re.escape(Poolboy.operator_domain)}~1resource-.*"
         }]
         patch = jsonpatch_from_diff(resource_state, resource_definition, update_filters=update_filters)
         if patch:

@@ -7,9 +7,9 @@ from copy import deepcopy
 from datetime import datetime
 from typing import List, Mapping, Optional, TypeVar, Union
 
-from config import custom_objects_api, operator_domain, operator_api_version, operator_version
 from deep_merge import deep_merge
 from jsonpatch_from_diff import jsonpatch_from_diff
+from poolboy import Poolboy
 from poolboy_templating import recursive_process_template_strings
 
 import resourcehandle
@@ -51,8 +51,8 @@ class ResourceClaim:
             resource_claim = ResourceClaim.instances.get((namespace, name))
             if resource_claim:
                 return resource_claim
-            definition = await custom_objects_api.get_namespaced_custom_object(
-                operator_domain, operator_version, namespace, 'resourceclaims', name
+            definition = await Poolboy.custom_objects_api.get_namespaced_custom_object(
+                Poolboy.operator_domain, Poolboy.operator_version, namespace, 'resourceclaims', name
             )
             return ResourceClaim.__register_definition(definition=definition)
 
@@ -128,8 +128,13 @@ class ResourceClaim:
         return f"ResourceClaim {self.name} in {self.namespace}"
 
     @property
+    def approval_state(self) -> Optional[str]:
+        """Return approval state of this ResourceClaim."""
+        return self.status.get('approval', {}).get('state')
+
+    @property
     def claim_is_initialized(self) -> bool:
-        return f"{operator_domain}/resource-claim-init-timestamp" in self.annotations
+        return f"{Poolboy.operator_domain}/resource-claim-init-timestamp" in self.annotations
 
     @property
     def creation_datetime(self):
@@ -165,6 +170,12 @@ class ResourceClaim:
             if not 'provider' in resource:
                 return False
         return True
+
+    @property
+    def is_approved(self) -> bool:
+        """Return whether this ResourceClaim has been approved.
+        If claim is already has a resource hadle then it is considered approved."""
+        return self.has_resource_handle or self.approval_state == 'approved'
 
     @property
     def lifespan_end_datetime(self) -> Optional[datetime]:
@@ -218,6 +229,10 @@ class ResourceClaim:
         return self.status.get('provider', {}).get('parameterValues', {})
 
     @property
+    def provider_name(self) -> Optional[str]:
+        return 
+
+    @property
     def requested_lifespan_end_datetime(self):
         timestamp = self.requested_lifespan_end_timestamp
         if timestamp:
@@ -261,7 +276,7 @@ class ResourceClaim:
     def resource_pool_name(self):
         if not self.annotations:
             return None
-        return self.annotations.get(f"{operator_domain}/resource-pool-name")
+        return self.annotations.get(f"{Poolboy.operator_domain}/resource-pool-name")
 
     @property
     def resource_provider_name(self) -> str:
@@ -443,12 +458,12 @@ class ResourceClaim:
     async def handle_delete(self, logger: kopf.ObjectLogger):
         if self.has_resource_handle:
             try:
-                await custom_objects_api.delete_namespaced_custom_object(
-                    group = operator_domain,
+                await Poolboy.custom_objects_api.delete_namespaced_custom_object(
+                    group = Poolboy.operator_domain,
                     name = self.resource_handle_name,
                     namespace = self.resource_handle_namespace,
                     plural = 'resourcehandles',
-                    version = operator_version,
+                    version = Poolboy.operator_version,
                 )
                 logger.info(
                     f"Propagated delete of ResourceClaim {self.name} in {self.namespace} "
@@ -480,7 +495,7 @@ class ResourceClaim:
             "resources": [{
                 "name": resources[i].get('name'),
                 "provider": {
-                    "apiVersion": operator_api_version,
+                    "apiVersion": Poolboy.operator_api_version,
                     "kind": "ResourceProvider",
                     "name": provider.name,
                     "namespace": provider.namespace,
@@ -495,12 +510,12 @@ class ResourceClaim:
         )
 
     async def delete(self):
-        await custom_objects_api.delete_namespaced_custom_object(
-            group = operator_domain,
+        await Poolboy.custom_objects_api.delete_namespaced_custom_object(
+            group = Poolboy.operator_domain,
             name = self.name,
             namespace = self.namespace,
             plural = 'resourceclaims',
-            version = operator_version,
+            version = Poolboy.operator_version,
         )
 
     async def get_resource_handle(self):
@@ -535,7 +550,7 @@ class ResourceClaim:
         patch = {
             "metadata": {
                 "annotations": {
-                    f"{operator_domain}/resource-claim-init-timestamp": datetime.utcnow().strftime('%FT%TZ')
+                    f"{Poolboy.operator_domain}/resource-claim-init-timestamp": datetime.utcnow().strftime('%FT%TZ')
                 }
             },
         }
@@ -562,12 +577,12 @@ class ResourceClaim:
 
     async def json_patch_status(self, patch: List[Mapping]) -> None:
         """Apply json patch to object status and update definition."""
-        definition = await custom_objects_api.patch_namespaced_custom_object_status(
-            group = operator_domain,
+        definition = await Poolboy.custom_objects_api.patch_namespaced_custom_object_status(
+            group = Poolboy.operator_domain,
             name = self.name,
             namespace = self.namespace,
             plural = 'resourceclaims',
-            version = operator_version,
+            version = Poolboy.operator_version,
             body = patch,
             _content_type = 'application/json-patch+json',
         )
@@ -598,6 +613,20 @@ class ResourceClaim:
                         f"spec.provider is immutable!",
                         delay = 600
                     )
+
+                provider = await self.get_resource_provider()
+                if provider.approval_required:
+                    if not 'approval' in self.status:
+                        await self.merge_patch_status({
+                            "approval": {
+                                "message": provider.approval_pending_message,
+                                "state": "pending"
+                            }
+                        })
+                        return
+                    elif not self.is_approved:
+                        return
+
 
             elif self.has_spec_resources:
                 if not self.have_resource_providers:
@@ -718,25 +747,25 @@ class ResourceClaim:
                 })
 
         if patch:
-            definition = await custom_objects_api.patch_namespaced_custom_object(
+            definition = await Poolboy.custom_objects_api.patch_namespaced_custom_object(
                 body = patch,
-                group = operator_domain,
+                group = Poolboy.operator_domain,
                 name = resource_handle.name,
                 namespace = resource_handle.namespace,
                 plural = 'resourcehandles',
-                version = operator_version,
+                version = Poolboy.operator_version,
                 _content_type = 'application/json-patch+json',
             )
             resource_handle.refresh_from_definition(definition)
 
     async def merge_patch(self, patch: Mapping) -> None:
         """Apply merge patch to object status and update definition."""
-        definition = await custom_objects_api.patch_namespaced_custom_object(
-            group = operator_domain,
+        definition = await Poolboy.custom_objects_api.patch_namespaced_custom_object(
+            group = Poolboy.operator_domain,
             name = self.name,
             namespace = self.namespace,
             plural = 'resourceclaims',
-            version = operator_version,
+            version = Poolboy.operator_version,
             body = patch,
             _content_type = 'application/merge-patch+json'
         )
@@ -744,12 +773,12 @@ class ResourceClaim:
 
     async def merge_patch_status(self, patch: Mapping) -> None:
         """Apply merge patch to object status and update definition."""
-        definition = await custom_objects_api.patch_namespaced_custom_object_status(
-            group = operator_domain,
+        definition = await Poolboy.custom_objects_api.patch_namespaced_custom_object_status(
+            group = Poolboy.operator_domain,
             name = self.name,
             namespace = self.namespace,
             plural = 'resourceclaims',
-            version = operator_version,
+            version = Poolboy.operator_version,
             body = {
                 "status": patch
             },

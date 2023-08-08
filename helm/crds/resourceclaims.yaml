@@ -122,6 +122,24 @@ spec:
             type: object
             x-kubernetes-preserve-unknown-fields: true
             properties:
+              approval:
+                description: Approval status
+                type: object
+                required:
+                - state
+                properties:
+                  message:
+                    description: >-
+                      Approval message suitable to show to end user to describe the approval state and reason.
+                    type: string
+                  state:
+                    description: >-
+                      Approval state which must be one of "approved", "pending", or "rejected".
+                    type: string
+                    enum:
+                    - approved
+                    - pending
+                    - rejected
               diffBase:
                 description: Kopf diffbase
                 type: string

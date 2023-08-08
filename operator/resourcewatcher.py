@@ -10,14 +10,14 @@ import poolboy_k8s
 import resourceclaim
 import resourcehandle
 
-from config import core_v1_api, custom_objects_api, operator_domain, operator_api_version , operator_version
+from poolboy import Poolboy
 
 logger = logging.getLogger('resource_watcher')
-resource_claim_name_annotation = f"{operator_domain}/resource-claim-name"
-resource_claim_namespace_annotation = f"{operator_domain}/resource-claim-namespace"
-resource_handle_name_annotation = f"{operator_domain}/resource-handle-name"
-resource_handle_namespace_annotation = f"{operator_domain}/resource-handle-namespace"
-resource_index_annotation = f"{operator_domain}/resource-index"
+resource_claim_name_annotation = f"{Poolboy.operator_domain}/resource-claim-name"
+resource_claim_namespace_annotation = f"{Poolboy.operator_domain}/resource-claim-namespace"
+resource_handle_name_annotation = f"{Poolboy.operator_domain}/resource-handle-name"
+resource_handle_namespace_annotation = f"{Poolboy.operator_domain}/resource-handle-namespace"
+resource_index_annotation = f"{Poolboy.operator_domain}/resource-index"
 
 class ResourceWatchFailedError(Exception):
     pass
@@ -89,18 +89,18 @@ class ResourceWatcher:
                 plural = await poolboy_k8s.kind_to_plural(group=group, version=version, kind=self.kind)
                 kwargs = dict(group = group, plural = plural, version = version)
                 if self.namespace:
-                    method = custom_objects_api.list_namespaced_custom_object
+                    method = Poolboy.custom_objects_api.list_namespaced_custom_object
                     kwargs['namespace'] = self.namespace
                 else:
-                    method = custom_objects_api.list_cluster_custom_object
+                    method = Poolboy.custom_objects_api.list_cluster_custom_object
             elif self.namespace:
                 method = getattr(
-                    core_v1_api, "list_namespaced_" + inflection.underscore(kind)
+                    Poolboy.core_v1_api, "list_namespaced_" + inflection.underscore(kind)
                 )
                 kwargs = dict(namespace=namespace)
             else:
                 method = getattr(
-                    core_v1_api, "list_" + inflection.underscore(kind)
+                    Poolboy.core_v1_api, "list_" + inflection.underscore(kind)
                 )
                 kwargs = {}
 
@@ -141,7 +141,7 @@ class ResourceWatcher:
                 event_obj = event['object']
                 event_type = event['type']
                 if not isinstance(event_obj, Mapping):
-                    event_obj = core_v1_api.api_client.sanitize_for_serialization(event_obj)
+                    event_obj = Poolboy.api_client.sanitize_for_serialization(event_obj)
                 if event_type == 'ERROR':
                     if event_obj['kind'] == 'Status':
                         if event_obj['reason'] in ('Expired', 'Gone'):

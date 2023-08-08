@@ -1,6 +1,5 @@
 inflection==0.5.1
 Jinja2==3.1.2
-jmespath==1.0.1
 jmespath-community==1.1.2
 jsonpointer==2.2
 jsonschema==3.2.0
@@ -13,7 +12,7 @@ pyOpenSSL==20.0.1
 python-dateutil==2.8.1
 python-string-utils==1.0.0
 pytimeparse==1.1.8
-PyYAML==5.4.1
+PyYAML==6.0.1
 requests==2.26.0
 StringGenerator==0.4.4
 urllib3==1.26.6

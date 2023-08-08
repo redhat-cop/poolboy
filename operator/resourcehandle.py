@@ -16,7 +16,7 @@ import resourcepool
 import resourceprovider
 import resourcewatcher
 
-from config import custom_objects_api, operator_api_version, operator_domain, operator_namespace, operator_version, resource_refresh_interval
+from poolboy import Poolboy
 from poolboy_templating import recursive_process_template_strings, seconds_to_interval
 
 ResourceClaimT = TypeVar('ResourceClaimT', bound='ResourceClaim')
@@ -41,7 +41,7 @@ class ResourceHandle:
                 labels = definition['metadata'].get('labels', {}),
                 meta = definition['metadata'],
                 name = name,
-                namespace = operator_namespace,
+                namespace = Poolboy.namespace,
                 spec = definition['spec'],
                 status = definition.get('status', {}),
                 uid = definition['metadata']['uid'],
@@ -139,7 +139,7 @@ class ResourceHandle:
                     "op": "add",
                     "path": "/spec/resourceClaim",
                     "value": {
-                        "apiVersion": operator_api_version,
+                        "apiVersion": Poolboy.operator_api_version,
                         "kind": "ResourceClaim",
                         "name": resource_claim.name,
                         "namespace": resource_claim.namespace,
@@ -168,12 +168,12 @@ class ResourceHandle:
                     ).strftime('%FT%TZ'),
                 })
 
-            definition = await custom_objects_api.patch_namespaced_custom_object(
-                group = operator_domain,
+            definition = await Poolboy.custom_objects_api.patch_namespaced_custom_object(
+                group = Poolboy.operator_domain,
                 name = matched_resource_handle.name,
                 namespace = matched_resource_handle.namespace,
                 plural = 'resourcehandles',
-                version = operator_version,
+                version = Poolboy.operator_version,
                 _content_type = 'application/json-patch+json',
                 body = patch,
             )
@@ -238,19 +238,19 @@ class ResourceHandle:
             resources.append(resources_item)
 
         definition = {
-            'apiVersion': operator_api_version,
+            'apiVersion': Poolboy.operator_api_version,
             'kind': 'ResourceHandle',
             'metadata': {
-                'finalizers': [ operator_domain ],
+                'finalizers': [ Poolboy.operator_domain ],
                 'generateName': 'guid-',
                 'labels': {
-                    f"{operator_domain}/resource-claim-name": resource_claim.name,
-                    f"{operator_domain}/resource-claim-namespace": resource_claim.namespace,
+                    f"{Poolboy.operator_domain}/resource-claim-name": resource_claim.name,
+                    f"{Poolboy.operator_domain}/resource-claim-namespace": resource_claim.namespace,
                 }
             },
             'spec': {
                 'resourceClaim': {
-                    'apiVersion': operator_api_version,
+                    'apiVersion': Poolboy.operator_api_version,
                     'kind': 'ResourceClaim',
                     'name': resource_claim.name,
                     'namespace': resource_claim.namespace
@@ -305,12 +305,12 @@ class ResourceHandle:
         if lifespan_relative_maximum:
             definition['spec']['lifespan']['relativeMaximum'] = lifespan_relative_maximum
 
-        definition = await custom_objects_api.create_namespaced_custom_object(
+        definition = await Poolboy.custom_objects_api.create_namespaced_custom_object(
             body = definition,
-            group = operator_domain,
-            namespace = operator_namespace,
+            group = Poolboy.operator_domain,
+            namespace = Poolboy.namespace,
             plural = 'resourcehandles',
-            version = operator_version,
+            version = Poolboy.operator_version,
         )
         resource_handle = await ResourceHandle.register_definition(definition=definition)
         logger.info(
@@ -325,13 +325,13 @@ class ResourceHandle:
         resource_pool: ResourcePoolT,
     ):
         definition = {
-            "apiVersion": operator_api_version,
+            "apiVersion": Poolboy.operator_api_version,
             "kind": "ResourceHandle",
             "metadata": {
                 "generateName": "guid-",
                 "labels": {
-                    f"{operator_domain}/resource-pool-name": resource_pool.name,
-                    f"{operator_domain}/resource-pool-namespace": resource_pool.namespace,
+                    f"{Poolboy.operator_domain}/resource-pool-name": resource_pool.name,
+                    f"{Poolboy.operator_domain}/resource-pool-namespace": resource_pool.namespace,
                 },
             },
             "spec": {
@@ -353,12 +353,12 @@ class ResourceHandle:
                     datetime.utcnow() + resource_pool.lifespan_unclaimed_timedelta
                 ).strftime("%FT%TZ")
 
-        definition = await custom_objects_api.create_namespaced_custom_object(
+        definition = await Poolboy.custom_objects_api.create_namespaced_custom_object(
             body = definition,
-            group = operator_domain,
-            namespace = operator_namespace,
+            group = Poolboy.operator_domain,
+            namespace = Poolboy.namespace,
             plural = "resourcehandles",
-            version = operator_version,
+            version = Poolboy.operator_version,
         )
         resource_handle = await ResourceHandle.register_definition(definition=definition)
         logger.info(f"Created ResourceHandle {resource_handle.name} for ResourcePool {resource_pool.name}")
@@ -388,8 +388,8 @@ class ResourceHandle:
             resource_handle = ResourceHandle.all_instances.get(name)
             if resource_handle:
                 return resource_handle
-            definition = await custom_objects_api.get_namespaced_custom_object(
-                operator_domain, operator_version, operator_namespace, 'resourcehandles', name
+            definition = await Poolboy.custom_objects_api.get_namespaced_custom_object(
+                Poolboy.operator_domain, Poolboy.operator_version, Poolboy.namespace, 'resourcehandles', name
             )
 
             return ResourceHandle.__register_definition(definition=definition)
@@ -413,8 +413,8 @@ class ResourceHandle:
         async with ResourceHandle.lock:
             _continue = None
             while True:
-                resource_handle_list = await custom_objects_api.list_namespaced_custom_object(
-                    operator_domain, operator_version, operator_namespace, 'resourcehandles',
+                resource_handle_list = await Poolboy.custom_objects_api.list_namespaced_custom_object(
+                    Poolboy.operator_domain, Poolboy.operator_version, Poolboy.namespace, 'resourcehandles',
                     _continue = _continue,
                     limit = 50,
                 )
@@ -587,7 +587,7 @@ class ResourceHandle:
     @property
     def reference(self) -> Mapping:
         return {
-            "apiVersion": operator_api_version,
+            "apiVersion": Poolboy.operator_api_version,
             "kind": "ResourceHandle",
             "name": self.name,
             "namespace": self.namespace,
@@ -609,7 +609,7 @@ class ResourceHandle:
     @property
     def resource_pool_namespace(self) -> Optional[str]:
         if 'resourcePool' in self.spec:
-            return self.spec['resourcePool'].get('namespace', operator_namespace)
+            return self.spec['resourcePool'].get('namespace', Poolboy.namespace)
 
     @property
     def resources(self) -> List[Mapping]:
@@ -708,12 +708,12 @@ class ResourceHandle:
 
     async def delete(self):
         try:
-            await custom_objects_api.delete_namespaced_custom_object(
-                group = operator_domain,
+            await Poolboy.custom_objects_api.delete_namespaced_custom_object(
+                group = Poolboy.operator_domain,
                 name = self.name,
                 namespace = self.namespace,
                 plural = 'resourcehandles',
-                version = operator_version,
+                version = Poolboy.operator_version,
             )
         except kubernetes_asyncio.client.exceptions.ApiException as e:
             if e.status != 404:
@@ -749,8 +749,11 @@ class ResourceHandle:
             if i >= len(self.resource_states):
                 self.resource_states.append(None)
                 self.resource_refresh_datetime.append(None)
-            elif self.resource_states[i] \
-            and (datetime.utcnow() - self.resource_refresh_datetime[i]).total_seconds() > resource_refresh_interval:
+            elif (
+                self.resource_states[i] and
+                self.resource_refresh_datetime[i] and
+                (datetime.utcnow() - self.resource_refresh_datetime[i]).total_seconds() > Poolboy.resource_refresh_interval
+            ):
                 continue
 
             reference = resource.get('reference')
@@ -800,12 +803,12 @@ class ResourceHandle:
 
         if self.is_bound:
             try:
-                await custom_objects_api.delete_namespaced_custom_object(
-                    group = operator_domain,
+                await Poolboy.custom_objects_api.delete_namespaced_custom_object(
+                    group = Poolboy.operator_domain,
                     name = self.resource_claim_name,
                     namespace = self.resource_claim_namespace,
                     plural = 'resourceclaims',
-                    version = operator_version,
+                    version = Poolboy.operator_version,
                 )
                 logger.info(f"Propagated delete of ResourceHandle {self.name} to ResourceClaim {self.resource_claim_name} in {self.resource_claim_namespace}")
             except kubernetes_asyncio.client.exceptions.ApiException as e:
@@ -993,12 +996,12 @@ class ResourceHandle:
                     resources_to_create.append(resource_definition)
 
             if patch:
-                definition = await custom_objects_api.patch_namespaced_custom_object(
-                    group = operator_domain,
+                definition = await Poolboy.custom_objects_api.patch_namespaced_custom_object(
+                    group = Poolboy.operator_domain,
                     name = self.name,
                     namespace = self.namespace,
                     plural = 'resourcehandles',
-                    version = operator_version,
+                    version = Poolboy.operator_version,
                     _content_type = 'application/json-patch+json',
                     body = patch,
                 )

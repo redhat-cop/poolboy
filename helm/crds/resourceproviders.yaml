@@ -51,6 +51,20 @@ spec:
               Specification of how the ResourceProvider should manage resources.
             type: object
             properties:
+              approval:
+                description: >-
+                  Approval configuration for ResourceClaims.
+                type: object
+                properties:
+                  pendingMessage:
+                    description: >-
+                      Message to add to approval status when initially pending.
+                      If unset then "Approval pending." will be used.
+                    type: string
+                  required:
+                    description: >-
+                      Boolean to mark that approval is required.
+                    type: boolean
               default:
                 description: >-
                   Template applied to resource claims immediately after matching to the provider

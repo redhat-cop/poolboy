@@ -8,7 +8,7 @@ from typing import List, Mapping, Optional, TypeVar
 
 import resourcehandle
 
-from config import custom_objects_api, operator_api_version, operator_domain, operator_namespace, operator_version
+from poolboy import Poolboy
 
 ResourceHandleT = TypeVar('ResourceHandleT', bound='ResourceHandle')
 ResourcePoolT = TypeVar('ResourcePoolT', bound='ResourcePool')
@@ -126,7 +126,7 @@ class ResourcePool:
     @property
     def ref(self) -> Mapping:
         return {
-            "apiVersion": operator_api_version,
+            "apiVersion": Poolboy.operator_api_version,
             "kind": "ResourcePool",
             "name": self.name,
             "namespace": self.namespace,

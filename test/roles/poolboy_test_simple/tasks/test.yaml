@@ -5,6 +5,7 @@
   loop:
   - test-01.yaml
   - test-02.yaml
+  - test-approval-01.yaml
   - test-pool-01.yaml
   - test-pool-02.yaml
   - test-vars-01.yaml

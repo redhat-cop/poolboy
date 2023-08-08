@@ -216,7 +216,7 @@
   register: r_get_resource_claim
   failed_when: r_get_resource_claim.resources | length != 0
   until: r_get_resource_claim is success
-  retries: 5
+  retries: 10
   delay: 1
 
 - name: Verify delete of ResourceHandle for test-02
@@ -228,7 +228,7 @@
   register: r_get_resource_handle
   failed_when: r_get_resource_handle.resources | length != 0
   until: r_get_resource_handle is success
-  retries: 5
+  retries: 10
   delay: 1
 
 - name: Verify delete of ResourceClaimTest test-02-a
