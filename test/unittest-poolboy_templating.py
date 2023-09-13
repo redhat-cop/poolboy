@@ -417,5 +417,23 @@ class TestJsonPatch(unittest.TestCase):
             recursive_process_template_strings(template, 'jinja2', template_vars), {"a": "A", "b": "B", "c": "C", "d": "D"}
         )
 
+    def test_30(self):
+        template = "{{ l | merge_list_of_dicts | object }}"
+        template_vars = {
+            "l": []
+        }
+        self.assertEqual(
+            recursive_process_template_strings(template, 'jinja2', template_vars), {}
+        )
+
+    def test_31(self):
+        template = "{{ l | merge_list_of_dicts | object }}"
+        template_vars = {
+            "l": [{"a": "A"}]
+        }
+        self.assertEqual(
+            recursive_process_template_strings(template, 'jinja2', template_vars), {"a": "A"}
+        )
+
 if __name__ == '__main__':
     unittest.main()
