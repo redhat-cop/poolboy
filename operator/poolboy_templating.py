@@ -89,7 +89,7 @@ jinja2envs = {
 }
 jinja2envs['jinja2'].filters['bool'] = lambda x: bool(strtobool(x)) if isinstance(x, str) else bool(x)
 jinja2envs['jinja2'].filters['json_query'] = lambda x, query: jmespath.search(query, x)
-jinja2envs['jinja2'].filters['merge_list_of_dicts'] = lambda a: functools.reduce(lambda d1, d2: {**(d1 or {}), **(d2 or {})}, a)
+jinja2envs['jinja2'].filters['merge_list_of_dicts'] = lambda a: functools.reduce(lambda d1, d2: {**(d1 or {}), **(d2 or {})}, a) if a else {}
 jinja2envs['jinja2'].filters['object'] = lambda x: json.dumps(x)
 jinja2envs['jinja2'].filters['parse_time_interval'] = lambda x: timedelta(seconds=pytimeparse.parse(x))
 jinja2envs['jinja2'].filters['strgen'] = lambda x: StringGenerator(x).render()
