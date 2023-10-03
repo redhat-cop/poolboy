@@ -15,4 +15,4 @@ pytimeparse==1.1.8
 PyYAML==6.0.1
 requests==2.31.0
 StringGenerator==0.4.4
-urllib3==1.26.6
+urllib3==1.26.17
