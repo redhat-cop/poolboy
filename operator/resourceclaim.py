@@ -863,6 +863,7 @@ class ResourceClaim:
         parameter_values = self.spec.get('provider', {}).get('parameterValues', {})
         parameter_states = self.status.get('provider', {}).get('parameterValues')
 
+        # Collect parameter values from status and resource provider defaults
         for parameter in resource_provider.get_parameters():
             if parameter.name not in parameter_values:
                 if parameter_states and parameter.name in parameter_states:
@@ -880,7 +881,7 @@ class ResourceClaim:
             parameter_names.add(parameter.name)
             if parameter.name in parameter_values:
                 value = parameter_values[parameter.name]
-                if parameter_states:
+                if parameter_states != None:
                     if value == parameter_states.get(parameter.name):
                         # Unchanged from current state is automatically considered valid
                         # even if validation rules have changed.
@@ -894,10 +895,11 @@ class ResourceClaim:
                         parameter.open_api_v3_schema_validator.validate(value)
                     except Exception as exception:
                         validation_errors.append(f"Parameter {parameter.name} schema validation failed: {exception}")
+                        continue
 
                 for validation_check in parameter.validation_checks:
                     try:
-                        successful = recursive_process_template_strings(
+                        check_successful = recursive_process_template_strings(
                             '{{(' + validation_check.check + ')|bool}}',
                             variables = { **vars_, **parameter_values, "value": value }
                         )
@@ -916,15 +918,27 @@ class ResourceClaim:
             if name not in parameter_names:
                 validation_errors.append(f"No such parameter {name}.")
 
-        if parameter_values != parameter_states \
-        or validation_errors != self.status.get('provider', {}).get('validationErrors'):
+        if validation_errors:
+            if validation_errors == self.status.get('provider', {}).get('validationErrors'):
+                return
+            logger.info(f"Validation failed with {validation_errors}")
+            await self.merge_patch_status({
+                "provider": {
+                    "name": resource_provider.name,
+                    "validationErrors": validation_errors,
+                }
+            })
+            return
+
+        if parameter_values != parameter_states or 'validationErrors' in self.status.get('provider', {}):
             patch = {
                 "provider": {
                     "name": resource_provider.name,
-                    "parameterValues": parameter_values if parameter_values else None,
-                    "validationErrors": validation_errors if validation_errors else None,
+                    "parameterValues": parameter_values,
+                    "validationErrors": None,
                 }
             }
+
             if 'resources' not in self.status:
                 resources = await resource_provider.get_claim_resources(
                     parameter_values = parameter_values,

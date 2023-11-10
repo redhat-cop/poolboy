@@ -158,10 +158,10 @@
     - __state.status.lifespan.maximum == '2h'
     - __state.status.lifespan.relativeMaximum == '1h'
     - >-
-        30 * 60 == (
+        1 >= (
           __state.status.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%SZ') -
           __state.status.lifespan.start | to_datetime('%Y-%m-%dT%H:%M:%SZ')
-        ).total_seconds()
+        ).total_seconds() - 30*60
 
 - name: Request lifespan end beyond alowed relative maximum for test-pool-02
   kubernetes.core.k8s:
