@@ -20,10 +20,11 @@
             namespace: "{{ poolboy_test_namespace }}"
         parameters:
         - name: stringvar
+          allowUpdate: true
           required: true
           validation:
             openAPIV3Schema:
-              type: sting
+              type: string
               default: one
               enum:
               - one
@@ -56,8 +57,7 @@
       spec:
         provider:
           name: test-status-summary-01
-          parameterValues:
-            numbervar: 1
+          parameterValues: {}
 
 - name: Verify handling of ResourceClaim test-status-summary-01-a
   kubernetes.core.k8s_info:

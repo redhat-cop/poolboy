@@ -20,21 +20,27 @@
             namespace: "{{ poolboy_test_namespace }}"
         parameters:
         - name: string_with_default_value
+          allowUpdate: true
           default:
             value: foo
         - name: int_with_default_value
+          allowUpdate: true
           default:
             value: 23
         - name: boolean_with_default_value
+          allowUpdate: true
           default:
             value: true
         - name: string_with_default_template
+          allowUpdate: true
           default:
             template: "{% raw %}{{ '[0-9a-f]{8}' | strgen }}{% endraw %}"
         - name: int_with_default_template
+          allowUpdate: true
           default:
             template: "{% raw %}{{ (13 + 10) | int }}{% endraw %}"
         - name: boolean_with_default_template
+          allowUpdate: true
           default:
             template: "{% raw %}{{ 'true' | bool }}{% endraw %}"
         template:

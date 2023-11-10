@@ -20,20 +20,23 @@
             namespace: "{{ poolboy_test_namespace }}"
         parameters:
         - name: optionalvar
+          allowUpdate: true
           validation:
             openAPIV3Schema:
-              type: sting
+              type: string
         - name: requiredvar
+          allowUpdate: true
           required: true
           validation:
             openAPIV3Schema:
-              type: sting
+              type: string
         - name: varwithdefault
+          allowUpdate: true
           required: true
           validation:
             openAPIV3Schema:
               default: defaultvalue
-              type: sting
+              type: string
         template:
           definition:
             spec:

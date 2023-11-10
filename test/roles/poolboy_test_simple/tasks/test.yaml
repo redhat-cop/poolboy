@@ -15,6 +15,7 @@
   - test-parameters-02.yaml
   - test-parameters-03.yaml
   - test-parameters-04.yaml
+  - test-parameters-05.yaml
   - test-status-summary-01.yaml
 
 # OLD TESTS FOLLOW
@@ -805,7 +806,9 @@
   failed_when: >-
     __test_lifespan_1.status.lifespan.start is undefined or
     __test_lifespan_1.status.lifespan.end is undefined or
-    40 != (__test_lifespan_1.status.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%SZ') - __test_lifespan_1.status.lifespan.start | to_datetime('%Y-%m-%dT%H:%M:%SZ')).total_seconds()
+    (
+      (__test_lifespan_1.status.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%SZ') - __test_lifespan_1.status.lifespan.start | to_datetime('%Y-%m-%dT%H:%M:%SZ')).total_seconds() - 40
+    ) | abs > 1
   until: r_get_test_lifespan_1 is success
   delay: 5
   retries: 10

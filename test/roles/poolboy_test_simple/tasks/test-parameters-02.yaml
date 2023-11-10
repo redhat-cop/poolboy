@@ -20,10 +20,11 @@
             namespace: "{{ poolboy_test_namespace }}"
         parameters:
         - name: stringvar
+          allowUpdate: true
           required: true
           validation:
             openAPIV3Schema:
-              type: sting
+              type: string
               default: one
               enum:
               - one
@@ -79,10 +80,11 @@
             namespace: "{{ poolboy_test_namespace }}"
         parameters:
         - name: stringvar
+          allowUpdate: true
           required: true
           validation:
             openAPIV3Schema:
-              type: sting
+              type: string
               default: one
               enum:
               - one
