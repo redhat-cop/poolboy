@@ -32,4 +32,4 @@
   register: r_get_namespace
   until: r_get_namespace.resources | default([]) | length == 0
   delay: 5
-  retries: 10
+  retries: 30

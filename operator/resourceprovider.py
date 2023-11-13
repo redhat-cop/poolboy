@@ -218,6 +218,10 @@ class ResourceProvider:
         return self.spec.get('disableCreation', False)
 
     @property
+    def has_template_definition(self) -> bool:
+        return 'template' in self.spec and 'definition' in self.spec['template']
+
+    @property
     def lifespan_maximum(self) -> Optional[str]:
         return self.spec.get('lifespan', {}).get('maximum')
 
@@ -401,6 +405,8 @@ class ResourceProvider:
         resource_name: Optional[str] = None,
     ) -> List[Mapping]:
         """Return list of resources for managed ResourceClaim"""
+        resources = []
+
         if parameter_values == None:
             parameter_values = {
                 **self.parameter_defaults,
@@ -417,20 +423,10 @@ class ResourceProvider:
             "resource_provider": self,
         }
 
-        resource = {
-            "name": resource_name or self.resource_name,
-            "provider": self.as_reference(),
-            "template": self.processed_template(
-                parameter_values = parameter_values,
-                resource_claim = resource_claim,
-                resource_handle = resource_handle,
-            )
-        }
-
-        linked_resources = []
+        resources = []
         for linked_resource_provider in self.linked_resource_providers:
             resource_provider = await ResourceProvider.get(linked_resource_provider.name)
-            linked_resources.extend(
+            resources.extend(
                 await resource_provider.get_claim_resources(
                     resource_claim = resource_claim,
                     resource_handle = resource_handle,
@@ -442,7 +438,18 @@ class ResourceProvider:
                 )
             )
 
-        return [*linked_resources, resource]
+        if self.has_template_definition:
+            resources.append({
+                "name": resource_name or self.resource_name,
+                "provider": self.as_reference(),
+                "template": self.processed_template(
+                    parameter_values = parameter_values,
+                    resource_claim = resource_claim,
+                    resource_handle = resource_handle,
+                )
+            })
+
+        return resources
 
     def is_match_for_template(self, template: Mapping) -> bool:
         """

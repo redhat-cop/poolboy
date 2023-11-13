@@ -6,6 +6,8 @@
   - test-01.yaml
   - test-02.yaml
   - test-approval-01.yaml
+  - test-linked-01.yaml
+  - test-linked-02.yaml
   - test-pool-01.yaml
   - test-pool-02.yaml
   - test-vars-01.yaml
@@ -1050,7 +1052,7 @@
   failed_when: >-
     "resourceHandle" not in __claim.status
   until: r_get_disable_creation is success
-  delay: 2
+  delay: 3
   retries: 30
 
 - name: Delete ResourceClaim test-disable-creation

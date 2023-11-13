@@ -614,7 +614,17 @@ class ResourceClaim:
                         delay = 600
                     )
 
-                provider = await self.get_resource_provider()
+                try:
+                    provider = await self.get_resource_provider()
+                except kubernetes_asyncio.client.exceptions.ApiException as e:
+                    if e.status == 404:
+                        raise kopf.TemporaryError(
+                            f"ResourceProvider ({self.resource_provider_name_from_spec}) not found",
+                            delay = 600
+                        )
+                    else:
+                        raise
+
                 if provider.approval_required:
                     if not 'approval' in self.status:
                         await self.merge_patch_status({
