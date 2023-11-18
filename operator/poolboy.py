@@ -8,6 +8,7 @@ class Poolboy():
     operator_version = os.environ.get('OPERATOR_VERSION', 'v1')
     operator_api_version = f"{operator_domain}/{operator_version}"
     resource_refresh_interval = int(os.environ.get('RESOURCE_REFRESH_INTERVAL', 600))
+    ignore_label = f"{operator_domain}/ignore"
 
     @classmethod
     async def on_cleanup(cls):

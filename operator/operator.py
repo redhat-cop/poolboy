@@ -53,9 +53,18 @@ async def cleanup(logger: kopf.ObjectLogger, **_):
     await Poolboy.on_cleanup()
 
 
-@kopf.on.create(Poolboy.operator_domain, Poolboy.operator_version, 'resourceclaims', id='resource_claim_create')
-@kopf.on.resume(Poolboy.operator_domain, Poolboy.operator_version, 'resourceclaims', id='resource_claim_resume')
-@kopf.on.update(Poolboy.operator_domain, Poolboy.operator_version, 'resourceclaims', id='resource_claim_update')
+@kopf.on.create(
+    Poolboy.operator_domain, Poolboy.operator_version, 'resourceclaims',
+    id='resource_claim_create', labels={Poolboy.ignore_label: kopf.ABSENT},
+)
+@kopf.on.resume(
+    Poolboy.operator_domain, Poolboy.operator_version, 'resourceclaims',
+    id='resource_claim_resume', labels={Poolboy.ignore_label: kopf.ABSENT},
+)
+@kopf.on.update(
+    Poolboy.operator_domain, Poolboy.operator_version, 'resourceclaims',
+    id='resource_claim_update', labels={Poolboy.ignore_label: kopf.ABSENT},
+)
 async def resource_claim_event(
     annotations: kopf.Annotations,
     labels: kopf.Labels,
@@ -81,7 +90,10 @@ async def resource_claim_event(
     await resource_claim.manage(logger=logger)
 
 
-@kopf.on.delete(Poolboy.operator_domain, Poolboy.operator_version, 'resourceclaims')
+@kopf.on.delete(
+    Poolboy.operator_domain, Poolboy.operator_version, 'resourceclaims',
+    labels={Poolboy.ignore_label: kopf.ABSENT},
+)
 async def resource_claim_delete(
     annotations: kopf.Annotations,
     labels: kopf.Labels,
@@ -111,6 +123,7 @@ async def resource_claim_delete(
 @kopf.daemon(Poolboy.operator_domain, Poolboy.operator_version, 'resourceclaims',
     cancellation_timeout = 1,
     initial_delay = Poolboy.manage_handles_interval,
+    labels = {Poolboy.ignore_label: kopf.ABSENT},
 )
 async def resource_claim_daemon(
     annotations: kopf.Annotations,
@@ -137,15 +150,29 @@ async def resource_claim_daemon(
     )
     try:
         while not stopped:
-            await resource_claim.manage(logger=logger)
+            resource_claim = await resource_claim.refetch()
+            if not resource_claim:
+                logger.info(f"{resource_claim} found deleted in daemon")
+                return
+            if not resource_claim.ignore:
+                await resource_claim.manage(logger=logger)
             await asyncio.sleep(Poolboy.manage_claims_interval)
     except asyncio.CancelledError:
         pass
 
 
-@kopf.on.create(Poolboy.operator_domain, Poolboy.operator_version, 'resourcehandles', id='resource_handle_create')
-@kopf.on.resume(Poolboy.operator_domain, Poolboy.operator_version, 'resourcehandles', id='resource_handle_resume')
-@kopf.on.update(Poolboy.operator_domain, Poolboy.operator_version, 'resourcehandles', id='resource_handle_update')
+@kopf.on.create(
+    Poolboy.operator_domain, Poolboy.operator_version, 'resourcehandles',
+    id='resource_handle_create', labels={Poolboy.ignore_label: kopf.ABSENT},
+)
+@kopf.on.resume(
+    Poolboy.operator_domain, Poolboy.operator_version, 'resourcehandles',
+    id='resource_handle_resume', labels={Poolboy.ignore_label: kopf.ABSENT},
+)
+@kopf.on.update(
+    Poolboy.operator_domain, Poolboy.operator_version, 'resourcehandles',
+    id='resource_handle_update', labels={Poolboy.ignore_label: kopf.ABSENT},
+)
 async def resource_handle_event(
     annotations: kopf.Annotations,
     labels: kopf.Labels,
@@ -171,7 +198,10 @@ async def resource_handle_event(
     await resource_handle.manage(logger=logger)
 
 
-@kopf.on.delete(Poolboy.operator_domain, Poolboy.operator_version, 'resourcehandles')
+@kopf.on.delete(
+    Poolboy.operator_domain, Poolboy.operator_version, 'resourcehandles',
+    labels={Poolboy.ignore_label: kopf.ABSENT},
+)
 async def resource_handle_delete(
     annotations: kopf.Annotations,
     labels: kopf.Labels,
@@ -184,7 +214,7 @@ async def resource_handle_delete(
     uid: str,
     **_
 ):
-    await ResourceHandle.unregister(name, logger=logger)
+    await ResourceHandle.unregister(name)
     resource_handle = ResourceHandle(
         annotations = annotations,
         labels = labels,
@@ -201,6 +231,7 @@ async def resource_handle_delete(
 @kopf.daemon(Poolboy.operator_domain, Poolboy.operator_version, 'resourcehandles',
     cancellation_timeout = 1,
     initial_delay = Poolboy.manage_handles_interval,
+    labels = {Poolboy.ignore_label: kopf.ABSENT},
 )
 async def resource_handle_daemon(
     annotations: kopf.Annotations,
@@ -227,15 +258,29 @@ async def resource_handle_daemon(
     )
     try:
         while not stopped:
-            await resource_handle.manage(logger=logger)
+            resource_handle = await resource_handle.refetch()
+            if not resource_handle:
+                logger.info(f"{resource_handle} found deleted in daemon")
+                return
+            if not resource_handle.ignore:
+                await resource_handle.manage(logger=logger)
             await asyncio.sleep(Poolboy.manage_handles_interval)
     except asyncio.CancelledError:
         pass
 
 
-@kopf.on.create(Poolboy.operator_domain, Poolboy.operator_version, 'resourcepools', id='resource_pool_create')
-@kopf.on.resume(Poolboy.operator_domain, Poolboy.operator_version, 'resourcepools', id='resource_pool_resume')
-@kopf.on.update(Poolboy.operator_domain, Poolboy.operator_version, 'resourcepools', id='resource_pool_update')
+@kopf.on.create(
+    Poolboy.operator_domain, Poolboy.operator_version, 'resourcepools',
+    id='resource_pool_create', labels={Poolboy.ignore_label: kopf.ABSENT},
+)
+@kopf.on.resume(
+    Poolboy.operator_domain, Poolboy.operator_version, 'resourcepools',
+    id='resource_pool_resume', labels={Poolboy.ignore_label: kopf.ABSENT},
+)
+@kopf.on.update(
+    Poolboy.operator_domain, Poolboy.operator_version, 'resourcepools',
+    id='resource_pool_update', labels={Poolboy.ignore_label: kopf.ABSENT},
+)
 async def resource_pool_event(
     annotations: kopf.Annotations,
     labels: kopf.Labels,
@@ -261,7 +306,10 @@ async def resource_pool_event(
     await resource_pool.manage(logger=logger)
 
 
-@kopf.on.delete(Poolboy.operator_domain, Poolboy.operator_version, 'resourcepools')
+@kopf.on.delete(
+    Poolboy.operator_domain, Poolboy.operator_version, 'resourcepools',
+    labels={Poolboy.ignore_label: kopf.ABSENT},
+)
 async def resource_pool_delete(
     annotations: kopf.Annotations,
     labels: kopf.Labels,
