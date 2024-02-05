@@ -172,6 +172,10 @@ class ResourceClaim:
         return True
 
     @property
+    def ignore(self) -> bool:
+        return Poolboy.ignore_label in self.labels
+
+    @property
     def is_approved(self) -> bool:
         """Return whether this ResourceClaim has been approved.
         If claim is already has a resource hadle then it is considered approved."""
@@ -795,6 +799,20 @@ class ResourceClaim:
             _content_type = 'application/merge-patch+json'
         )
         self.refresh_from_definition(definition)
+
+    async def refetch(self) -> Optional[ResourceClaimT]:
+        try:
+            definition = await Poolboy.custom_objects_api.get_namespaced_custom_object(
+                Poolboy.operator_domain, Poolboy.operator_version, self.namespace, 'resourceclaims', self.name
+            )
+            self.refresh_from_definition(definition)
+            return self
+        except kubernetes_asyncio.client.exceptions.ApiException as e:
+            if e.status == 404:
+                ResourceClaim.unregister(name=self.name, namespace=self.namespace)
+                return None
+            else:
+                raise
 
     async def validate(self,
         logger: kopf.ObjectLogger,

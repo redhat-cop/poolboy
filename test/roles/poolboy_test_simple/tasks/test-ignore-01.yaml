@@ -1,0 +1,500 @@
+---
+- name: Create ResourceProvider test-ignore-01
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: "{{ poolboy_domain }}/v1"
+      kind: ResourceProvider
+      metadata:
+        name: test-ignore-01
+        namespace: "{{ poolboy_namespace }}"
+        labels: >-
+          {{ {
+            poolboy_domain ~ "/test": "simple"
+          } }}
+      spec:
+        override:
+          apiVersion: "{{ poolboy_domain }}/v1"
+          kind: ResourceClaimTest
+          metadata:
+            name: test-ignore-01-{% raw %}{{ guid }}{% endraw %}
+            namespace: "{{ poolboy_test_namespace }}"
+        parameters:
+        - name: stringvar
+          allowUpdate: true
+          required: true
+          validation:
+            openAPIV3Schema:
+              type: string
+              default: one
+              enum:
+              - one
+              - two
+              - three
+        template:
+          definition:
+            spec:
+              stringvalue: "{% raw %}{{ stringvar }}{% endraw %}"
+              ts: "{% raw %}{{ now(true, '%FT%TZ') }}{% endraw %}"
+          enable: true
+        updateFilters:
+        - pathMatch: /spec/.*
+          allowedOps:
+          - replace
+
+- name: Create ResourceClaim test-ignore-01-a
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: "{{ poolboy_domain }}/v1"
+      kind: ResourceClaim
+      metadata:
+        name: test-ignore-01-a
+        namespace: "{{ poolboy_test_namespace }}"
+        labels: >-
+          {{ {
+            poolboy_domain ~ "/test": "simple"
+          } }}
+      spec:
+        provider:
+          name: test-ignore-01
+          parameterValues:
+            stringvar: "one"
+
+- name: Verify handling of ResourceClaim test-ignore-01-a
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-ignore-01-a
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_resource_claim
+  failed_when: >-
+    r_get_resource_claim.resources[0].status.resources[0].state is undefined
+  until: r_get_resource_claim is success
+  delay: 1
+  retries: 10
+
+- name: Save facts from for ResourceClaim test-ignore-01-a
+  vars:
+    __name: >-
+      {{ r_get_resource_claim.resources[0].status.resourceHandle.name }}
+  set_fact:
+    resource_claim_test_ignore_01_a_resource_handle_name: "{{ __name }}"
+    resource_claim_test_ignore_01_a_resource_name: test-ignore-01-{{ __name[5:] }}
+
+- name: Verify state of ResourceClaim test-ignore-01-a
+  vars:
+    __state: "{{ r_get_resource_claim.resources[0] }}"
+  assert:
+    that:
+    - __state.status.resources[0].state.metadata.name == resource_claim_test_ignore_01_a_resource_name
+    - __state.status.resources[0].state.spec.stringvalue == "one"
+    - __state.status.resources[0].state.spec.ts is match("\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
+
+- name: Verify creation of ResourceClaimTest test-ignore-01-a
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaimTest
+    name: "{{ resource_claim_test_ignore_01_a_resource_name }}"
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_resource_claim_test
+  failed_when:  r_get_resource_claim_test.resources | length != 1
+  until: r_get_resource_claim_test is success
+  delay: 1
+  retries: 10
+
+- name: Set ignore label on ResourceHandle for test-ignore-01-a
+  kubernetes.core.k8s:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceHandle
+    name: "{{ resource_claim_test_ignore_01_a_resource_handle_name }}"
+    namespace: "{{ poolboy_namespace }}"
+    definition:
+      metadata:
+        labels: >-
+          {{ {poolboy_domain ~ '/ignore': ''} }}
+
+- name: Set ignore label on ResourceClaim test-ignore-01-a
+  kubernetes.core.k8s:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-ignore-01-a
+    namespace: "{{ poolboy_test_namespace }}"
+    definition:
+      metadata:
+        labels: >-
+          {{ {poolboy_domain ~ '/ignore': ''} }}
+
+- name: Verify ResourceClaimTest for test-ignore-01-a is no longer managed
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaimTest
+    name: "{{ resource_claim_test_ignore_01_a_resource_name }}"
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_resource_claim_test
+  failed_when: >-
+    r_get_resource_claim_test.resources | length != 1 or
+    (now(true) - r_get_resource_claim_test.resources[0].spec.ts | to_datetime('%Y-%m-%dT%H:%M:%SZ')).total_seconds() < 10
+  until: r_get_resource_claim_test is success
+  delay: 1
+  retries: 20
+
+- name: Clear ignore label on ResourceHandle for test-ignore-01-a
+  kubernetes.core.k8s:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceHandle
+    name: "{{ resource_claim_test_ignore_01_a_resource_handle_name }}"
+    namespace: "{{ poolboy_namespace }}"
+    definition:
+      metadata:
+        labels: >-
+          {{ {poolboy_domain ~ '/ignore': None} }}
+
+- name: Clear ignore label on ResourceClaim test-ignore-01-a
+  kubernetes.core.k8s:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-ignore-01-a
+    namespace: "{{ poolboy_test_namespace }}"
+    definition:
+      metadata:
+        labels: >-
+          {{ {poolboy_domain ~ '/ignore': None} }}
+
+- name: Verify ResourceClaimTest for test-ignore-01-a is again managed
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaimTest
+    name: "{{ resource_claim_test_ignore_01_a_resource_name }}"
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_resource_claim_test
+  failed_when: >-
+    r_get_resource_claim_test.resources | length != 1 or
+    (now(true) - r_get_resource_claim_test.resources[0].spec.ts | to_datetime('%Y-%m-%dT%H:%M:%SZ')).total_seconds() > 10
+  until: r_get_resource_claim_test is success
+  delay: 1
+  retries: 20
+
+- name: Delete ResourceClaim test-ignore-01-a
+  kubernetes.core.k8s:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-ignore-01-a
+    namespace: "{{ poolboy_test_namespace }}"
+    state: absent
+
+- name: Verify delete of ResourceClaim test-ignore-01-a
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-ignore-01-a
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_resource_claim
+  failed_when: r_get_resource_claim.resources | length != 0
+  until: r_get_resource_claim is success
+  retries: 5
+  delay: 1
+
+- name: Verify delete of ResourceHandle for test-ignore-01-a
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceHandle
+    name: "{{ resource_claim_test_ignore_01_a_resource_handle_name }}"
+    namespace: "{{ poolboy_namespace }}"
+  register: r_get_resource_handle
+  failed_when: r_get_resource_handle.resources | length != 0
+  until: r_get_resource_handle is success
+  retries: 5
+  delay: 1
+
+- name: Verify delete of ResourceClaimTest for test-ignore-01-a
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaimTest
+    name: "{{ resource_claim_test_ignore_01_a_resource_name }}"
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_resource_claim_test
+  failed_when: r_get_resource_claim_test.resources | length != 0
+  until: r_get_resource_claim_test is success
+  delay: 1
+  retries: 10
+
+- name: Create ResourceClaim test-ignore-01-b
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: "{{ poolboy_domain }}/v1"
+      kind: ResourceClaim
+      metadata:
+        annotations: 
+          poolboy.dev.local/resource-claim-init-timestamp: "1970-01-01T00:00:00Z"
+        finalizers:
+        - "{{ poolboy_domain }}"
+        labels: >-
+          {{ {
+            poolboy_domain ~ "/ignore": "",
+            poolboy_domain ~ "/test": "simple",
+          } }}
+        name: test-ignore-01-b
+        namespace: "{{ poolboy_test_namespace }}"
+      spec:
+        provider:
+          name: test-ignore-01
+          parameterValues:
+            stringvar: "one"
+
+- name: Verify ResourceClaim test-ignore-01-b has been ignored
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-ignore-01-b
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_resource_claim
+  failed_when: >-
+    r_get_resource_claim.resources | length != 1 or
+    r_get_resource_claim.resources[0].status is defined
+
+- name: Restore status on ResourceClaim test-ignore-01-b
+  poolboy_test_merge_patch_status:
+    api_version: "{{ poolboy_domain }}/v1"
+    name: test-ignore-01-b
+    namespace: "{{ poolboy_test_namespace }}"
+    plural: resourceclaims
+    status_patch:
+      diffBase: |
+
+        {
+          "metadata": {
+            "labels": {
+              "{{ poolboy_domain }}/test": "simple"
+            },
+            "annotations": {
+              "poolboy.dev.local/resource-claim-init-timestamp": "1970-01-01T00:00:00Z"
+            }
+          },
+          "spec": {
+            "provider": {
+              "name": "test-ignore-01",
+              "parameterValues": {
+                "stringvar": "one"
+              }
+            }
+          }
+        }
+      lifespan:
+        start: "2023-11-16T03:49:33Z"
+      provider:
+        name: test-ignore-01
+        parameterValues:
+          stringvar: one
+      resourceHandle:
+        apiVersion: poolboy.dev.local/v1
+        kind: ResourceHandle
+        name: guid-abcde
+        namespace: poolboy-dev
+      resources:
+      - name: test-ignore-01
+        provider:
+          apiVersion: poolboy.dev.local/v1
+          kind: ResourceProvider
+          name: test-ignore-01
+          namespace: poolboy-dev
+
+- name: Create ResourceHandle guid-abcde
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: "{{ poolboy_domain }}/v1"
+      kind: ResourceHandle
+      metadata:
+        finalizers:
+        - "{{ poolboy_domain }}"
+        generateName: guid-
+        labels: >-
+          {{ {
+            poolboy_domain ~ "/ignore": "",
+            poolboy_domain ~ "/resource-claim-name": "test-ignore-01-b",
+            poolboy_domain ~ "/resource-claim-namespace": poolboy_test_namespace,
+          } }}
+        name: guid-abcde
+        namespace: "{{ poolboy_namespace }}"
+      spec:
+        resourceClaim:
+          apiVersion: "{{ poolboy_domain }}/v1"
+          kind: ResourceClaim
+          name: test-ignore-01-b
+          namespace: "{{ poolboy_test_namespace }}"
+        resources:
+        - name: test-ignore-01
+          provider:
+            apiVersion: "{{ poolboy_domain }}/v1"
+            kind: ResourceProvider
+            name: test-ignore-01
+            namespace: "{{ poolboy_namespace }}"
+          reference:
+            apiVersion: "{{ poolboy_domain }}/v1"
+            kind: ResourceClaimTest
+            name: test-ignore-01-abcde
+            namespace: "{{ poolboy_test_namespace }}"
+          template:
+            spec:
+              stringvalue: one
+              ts: "1970-01-01T00:00:00Z"
+        vars: {}
+
+- name: Verify ResourceHandle guid-abcde has been ignored
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceHandle
+    name: guid-abcde
+    namespace: "{{ poolboy_namespace }}"
+  register: r_get_resource_handle
+  failed_when: >-
+    r_get_resource_handle.resources | length != 1 or
+    r_get_resource_handle.resources[0].status is defined
+
+- name: Restore status on ResourceHandle guid-abcde
+  poolboy_test_merge_patch_status:
+    api_version: "{{ poolboy_domain }}/v1"
+    name: guid-abcde
+    namespace: "{{ poolboy_namespace }}"
+    plural: resourcehandles
+    status_patch:
+      diffBase: |
+
+        {
+          "metadata": {
+            "labels": {
+              "{{ poolboy_domain }}/resource-claim-name": "test-ignore-01-b",
+              "{{ poolboy_domain }}/resource-claim-namespace": "{{ poolboy_test_namespace }}"
+            }
+          },
+          "spec": {
+            "resourceClaim": {
+              "apiVersion": "{{ poolboy_domain }}/v1",
+              "kind": "ResourceClaim",
+              "name": "test-ignore-01-b",
+              "namespace": "{{ poolboy_test_namespace }}"
+            },
+            "resources": [{
+              "name": "test-ignore-01",
+              "provider": {
+                "apiVersion": "{{ poolboy_domain }}/v1",
+                "kind": "ResourceProvider",
+                "name": "test-ignore-01",
+                "namespace": "{{ poolboy_namespace }}"
+              },
+              "reference": {
+                "apiVersion": "{{ poolboy_domain }}/v1",
+                "kind": "ResourceClaimTest",
+                "name":" test-ignore-01-abcde",
+                "namespace": "{{ poolboy_test_namespace }}"
+              },
+              "template": {
+                "spec": {
+                  "stringvalue": "one",
+                  "ts":"1970-01-01T00:00:00Z"
+                }
+              }
+            }],
+            "vars":{}
+          }
+        }
+
+- name: Create ResourceHandle guid-abcde
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: poolboy.dev.local/v1
+      kind: ResourceClaimTest
+      metadata:
+        annotations:
+          poolboy.dev.local/resource-claim-name: test-ignore-01-b
+          poolboy.dev.local/resource-claim-namespace: "{{ poolboy_test_namespace }}"
+          poolboy.dev.local/resource-handle-name: guid-abcde
+          poolboy.dev.local/resource-handle-namespace: "{{ poolboy_namespace }}"
+          poolboy.dev.local/resource-handle-uid: 00000000-0000-0000-0000-000000000000
+          poolboy.dev.local/resource-index: "0"
+          poolboy.dev.local/resource-provider-name: test-ignore-01
+          poolboy.dev.local/resource-provider-namespace: "{{ poolboy_namespace }}"
+        name: test-ignore-01-abcde
+        namespace: "{{ poolboy_test_namespace }}"
+      spec:
+        stringvalue: one
+        ts: "1970-01-01T00:00:00Z"
+  
+- name: Clear ignore label on ResourceHandle for test-ignore-01-a
+  kubernetes.core.k8s:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceHandle
+    name: guid-abcde
+    namespace: "{{ poolboy_namespace }}"
+    definition:
+      metadata:
+        labels: >-
+          {{ {poolboy_domain ~ '/ignore': None} }}
+
+- name: Clear ignore label on ResourceClaim test-ignore-01-a
+  kubernetes.core.k8s:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-ignore-01-b
+    namespace: "{{ poolboy_test_namespace }}"
+    definition:
+      metadata:
+        labels: >-
+          {{ {poolboy_domain ~ '/ignore': None} }}
+
+- name: Verify ResourceClaimTest for test-ignore-01-b is managed
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaimTest
+    name: test-ignore-01-abcde
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_resource_claim_test
+  failed_when: >-
+    r_get_resource_claim_test.resources | length != 1 or
+    (now(true) - r_get_resource_claim_test.resources[0].spec.ts | to_datetime('%Y-%m-%dT%H:%M:%SZ')).total_seconds() > 10
+  until: r_get_resource_claim_test is success
+  delay: 1
+  retries: 20
+
+- name: Delete ResourceClaim test-ignore-01-b
+  kubernetes.core.k8s:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-ignore-01-b
+    namespace: "{{ poolboy_test_namespace }}"
+    state: absent
+
+- name: Verify delete of ResourceClaim test-ignore-01-b
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-ignore-01-b
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_resource_claim
+  failed_when: r_get_resource_claim.resources | length != 0
+  until: r_get_resource_claim is success
+  retries: 5
+  delay: 1
+
+- name: Verify delete of ResourceHandle for test-ignore-01-b
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceHandle
+    name: test-ignore-01-abcde
+    namespace: "{{ poolboy_namespace }}"
+  register: r_get_resource_handle
+  failed_when: r_get_resource_handle.resources | length != 0
+  until: r_get_resource_handle is success
+  retries: 5
+  delay: 1
+
+- name: Verify delete of ResourceClaimTest for test-ignore-01-b
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaimTest
+    name: test-ignore-01-abcde
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_resource_claim_test
+  failed_when: r_get_resource_claim_test.resources | length != 0
+  until: r_get_resource_claim_test is success
+  delay: 1
+  retries: 10
+...

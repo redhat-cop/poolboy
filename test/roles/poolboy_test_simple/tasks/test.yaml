@@ -6,6 +6,7 @@
   - test-01.yaml
   - test-02.yaml
   - test-approval-01.yaml
+  - test-ignore-01.yaml
   - test-linked-01.yaml
   - test-linked-02.yaml
   - test-pool-01.yaml

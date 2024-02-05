@@ -466,7 +466,7 @@ class ResourceHandle:
             return ResourceHandle.__register_definition(definition)
 
     @staticmethod
-    async def unregister(name: str, logger: kopf.ObjectLogger) -> Optional[ResourceHandleT]:
+    async def unregister(name: str) -> Optional[ResourceHandleT]:
         async with ResourceHandle.lock:
             resource_handle = ResourceHandle.all_instances.pop(name, None)
             if resource_handle:
@@ -548,6 +548,10 @@ class ResourceHandle:
     @property
     def has_lifespan_end(self) -> bool:
         'end' in self.spec.get('lifespan', {})
+
+    @property
+    def ignore(self) -> bool:
+        return Poolboy.ignore_label in self.labels
 
     @property
     def is_bound(self) -> bool:
@@ -1011,3 +1015,17 @@ class ResourceHandle:
                 changes = await poolboy_k8s.create_object(resource_definition)
                 if changes:
                     logger.info(f"Created {resource_description} for ResourceHandle {self.name}")
+
+    async def refetch(self) -> Optional[ResourceHandleT]:
+        try:
+            definition = await Poolboy.custom_objects_api.get_namespaced_custom_object(
+                Poolboy.operator_domain, Poolboy.operator_version, Poolboy.namespace, 'resourcehandles', self.name
+            )
+            self.refresh_from_definition(definition)
+            return self
+        except kubernetes_asyncio.client.exceptions.ApiException as e:
+            if e.status == 404:
+                ResourceHandle.unregister(name=self.name)
+                return None
+            else:
+                raise
