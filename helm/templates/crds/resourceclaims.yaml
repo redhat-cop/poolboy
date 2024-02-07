@@ -90,7 +90,7 @@ spec:
               provider:
                 description: >-
                   ResourceProvider specification used to manage this claim.
-                  Mutually exclusive with provider.
+                  Mutually exclusive with resources.
                 type: object
                 required:
                 - name
@@ -101,7 +101,7 @@ spec:
                     type: string
                   parameterValues:
                     description: >-
-                      Parameter values used with this ResourcProvider.
+                      Parameter values used with the ResourceProvider.
                     type: object
                     x-kubernetes-preserve-unknown-fields: true
               resources:
