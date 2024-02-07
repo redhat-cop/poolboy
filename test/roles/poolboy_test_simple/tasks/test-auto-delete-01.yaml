@@ -148,6 +148,4 @@
   until: r_get_resource_claim_test is success
   delay: 1
   retries: 10
-
-- fail:
 ...
