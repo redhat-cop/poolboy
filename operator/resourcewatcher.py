@@ -197,6 +197,11 @@ class ResourceWatcher:
                         name = resource_claim_name,
                         namespace = resource_claim_namespace,
                     )
+
+                    # Do not manage status for detached ResourceClaim
+                    if resource_claim.is_detached:
+                        continue
+
                     prev_state = resource_claim.status_resources[resource_index].get('state')
                     prev_description = (
                         f"{prev_state['apiVersion']} {prev_state['kind']} {resource_name} in {resource_namespace}"

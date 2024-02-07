@@ -20,6 +20,8 @@
   - test-parameters-04.yaml
   - test-parameters-05.yaml
   - test-status-summary-01.yaml
+  - test-auto-delete-01.yaml
+  - test-auto-detach-01.yaml
 
 # OLD TESTS FOLLOW
 

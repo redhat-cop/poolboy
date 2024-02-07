@@ -133,6 +133,16 @@ class ResourceClaim:
         return self.status.get('approval', {}).get('state')
 
     @property
+    def auto_delete_when(self) -> Optional[str]:
+        """Return condition which triggers automatic delete if defined."""
+        return self.spec.get('autoDelete', {}).get('when')
+
+    @property
+    def auto_detach_when(self) -> Optional[str]:
+        """Return condition which triggers automatic detach if defined."""
+        return self.spec.get('autoDetach', {}).get('when')
+
+    @property
     def claim_is_initialized(self) -> bool:
         return f"{Poolboy.operator_domain}/resource-claim-init-timestamp" in self.annotations
 
@@ -180,6 +190,13 @@ class ResourceClaim:
         """Return whether this ResourceClaim has been approved.
         If claim is already has a resource hadle then it is considered approved."""
         return self.has_resource_handle or self.approval_state == 'approved'
+
+    @property
+    def is_detached(self) -> bool:
+        """Return whether this ResourceClaim has been detached from its ResourceHandle."""
+        if not self.status:
+            return False
+        return self.status.get('resourceHandle', {}).get('detached', False)
 
     @property
     def lifespan_end_datetime(self) -> Optional[datetime]:
@@ -365,6 +382,53 @@ class ResourceClaim:
 
         return resource_handle
 
+    def check_condition(self, when_condition, resource_handle, resource_provider):
+        # resource_provider may be None if there is no top-level provider.
+        resource_provider_vars = resource_provider.vars if resource_provider else {}
+        vars_ = {
+            **resource_provider_vars,
+            **resource_handle.vars,
+            "resource_claim": self,
+            "resource_handle": resource_handle,
+            "resource_provider": resource_provider,
+            "metadata": self.meta,
+            "spec": self.spec,
+            "status": self.status,
+        }
+        check_value = recursive_process_template_strings(
+            '{{(' + when_condition + ')|bool}}',
+            variables = vars_
+        )
+        return check_value
+
+    def check_auto_delete(self, logger, resource_handle, resource_provider) -> bool:
+        if not self.auto_delete_when:
+            return False
+        try:
+            check_value = self.check_condition(
+                resource_handle=resource_handle,
+                resource_provider=resource_provider,
+                when_condition=self.auto_delete_when
+            )
+            return check_value
+        except Exception as exception:
+            logger.warning(f"Auto delete check failed for {self}: {exception}")
+        return False
+
+    def check_auto_detach(self, logger, resource_handle, resource_provider):
+        if not self.auto_detach_when:
+            return False
+        try:
+            check_value = self.check_condition(
+                resource_handle=resource_handle,
+                resource_provider=resource_provider,
+                when_condition=self.auto_detach_when
+            )
+            return check_value
+        except Exception as exception:
+            logger.warning(f"Auto detach check failed for {self}: {exception}")
+        return False
+
     def get_resource_state_from_status(self, resource_number):
         if not self.status \
         or not 'resources' in self.status \
@@ -522,6 +586,14 @@ class ResourceClaim:
             version = Poolboy.operator_version,
         )
 
+    async def detach(self, resource_handle):
+        await self.merge_patch_status({
+            "resourceHandle": {
+                "detached": True
+            }
+        })
+        await resource_handle.delete()
+
     async def get_resource_handle(self):
         return await resourcehandle.ResourceHandle.get(self.resource_handle_name)
 
@@ -598,6 +670,17 @@ class ResourceClaim:
             and self.lifespan_start_datetime > datetime.utcnow():
                 return
 
+            if self.is_detached:
+                # Normally lifespan end is tracked by the ResourceHandle.
+                # Detached ResourceClaims have no handle.
+                if self.lifespan_end_datetime \
+                and self.lifespan_start_datetime < datetime.utcnow():
+                    logger.info(f"Deleting detacthed {self} at end of lifespan")
+                    await self.delete()
+                # No further processing for detached ResourceClaim
+                return
+
+            resource_provider = None
             if self.has_resource_provider:
                 if self.has_spec_resources:
                     raise kopf.TemporaryError(
@@ -619,7 +702,7 @@ class ResourceClaim:
                     )
 
                 try:
-                    provider = await self.get_resource_provider()
+                    resource_provider = await self.get_resource_provider()
                 except kubernetes_asyncio.client.exceptions.ApiException as e:
                     if e.status == 404:
                         raise kopf.TemporaryError(
@@ -629,11 +712,11 @@ class ResourceClaim:
                     else:
                         raise
 
-                if provider.approval_required:
+                if resource_provider.approval_required:
                     if not 'approval' in self.status:
                         await self.merge_patch_status({
                             "approval": {
-                                "message": provider.approval_pending_message,
+                                "message": resource_provider.approval_pending_message,
                                 "state": "pending"
                             }
                         })
@@ -682,6 +765,16 @@ class ResourceClaim:
                     logger = logger,
                     resource_claim_resources = resource_claim_resources,
                 )
+
+            if self.check_auto_delete(logger=logger, resource_handle=resource_handle, resource_provider=resource_provider):
+                logger.info(f"auto-delete of {self} triggered")
+                await self.delete()
+                return
+
+            if self.check_auto_detach(logger=logger, resource_handle=resource_handle, resource_provider=resource_provider):
+                logger.info(f"auto-detach of {self} triggered")
+                await self.detach(resource_handle=resource_handle)
+                return
 
             await self.__manage_resource_handle(
                 logger = logger,
