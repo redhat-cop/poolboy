@@ -90,6 +90,24 @@ spec:
                       Ex: "3d" for 3 days.
                       This value may be a template string.
                     type: string
+              provider:
+                description: >-
+                  ResourceProvider specification used to generate resources rather than
+                  explicitly list spec.
+                  Mutually exclusive with resources.
+                type: object
+                required:
+                - name
+                properties:
+                  name:
+                    description: >-
+                      ResourceProvider name.
+                    type: string
+                  parameterValues:
+                    description: >-
+                      Parameter values used with the ResourceProvider to generate resources list.
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
               resourceClaim:
                 description: >-
                   ResourceClaim reference for claim matched to this ResourceHandle when the handle has been claimed.
@@ -204,5 +222,10 @@ spec:
                 type: string
               kopf:
                 description: Kopf status
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+              summary:
+                description: >-
+                  Status summary from current resources state, generated from ResourceProvider configuration.
                 type: object
                 x-kubernetes-preserve-unknown-fields: true
