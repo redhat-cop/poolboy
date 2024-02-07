@@ -723,10 +723,6 @@ class ResourceHandle:
             if e.status != 404:
                 raise
 
-    async def delete_resource_claim(self, logger: kopf.ObjectLogger) -> None:
-        if not self.is_bound:
-            return
-
     async def get_resource_claim(self) -> Optional[ResourceClaimT]:
         if not self.is_bound:
             return None
@@ -807,14 +803,10 @@ class ResourceHandle:
 
         if self.is_bound:
             try:
-                await Poolboy.custom_objects_api.delete_namespaced_custom_object(
-                    group = Poolboy.operator_domain,
-                    name = self.resource_claim_name,
-                    namespace = self.resource_claim_namespace,
-                    plural = 'resourceclaims',
-                    version = Poolboy.operator_version,
-                )
-                logger.info(f"Propagated delete of ResourceHandle {self.name} to ResourceClaim {self.resource_claim_name} in {self.resource_claim_namespace}")
+                resource_claim = await self.get_resource_claim()
+                if not resource_claim.is_detached:
+                    await resource_claim.delete()
+                    logger.info(f"Propagated delete of ResourceHandle {self.name} to ResourceClaim {self.resource_claim_name} in {self.resource_claim_namespace}")
             except kubernetes_asyncio.client.exceptions.ApiException as e:
                 if e.status != 404:
                     raise

@@ -51,6 +51,26 @@ spec:
             description: ResourceClaim specification
             type: object
             properties:
+              autoDelete:
+                description: |
+                  Configuration for auto-delete of the ResourceClaim.
+                type: object
+                properties:
+                  when:
+                    description: |
+                      Condition to check which triggers deletion.
+                      Condition is given in Jinja2 syntax similar to ansible "when" clauses.
+                    type: string
+              autoDetach:
+                description: |
+                  Configuration for auto-delete of the ResourceClaim.
+                type: object
+                properties:
+                  when:
+                    description: |
+                      Condition to check which triggers detach of ResourceHandle from the ResourceClaim.
+                      Condition is given in Jinja2 syntax similar to ansible "when" clauses.
+                    type: string
               lifespan:
                 description: >-
                   Lifespan configuration for the ResourceClaim.
@@ -204,6 +224,10 @@ spec:
                 properties:
                   apiVersion:
                     type: string
+                  detached:
+                    description: >-
+                      If true then ResourceHandle is no longer associated to this ResourceClaim.
+                    type: boolean
                   kind:
                     type: string
                   name:
