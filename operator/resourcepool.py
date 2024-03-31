@@ -3,6 +3,8 @@ import kopf
 import kubernetes_asyncio
 import pytimeparse
 
+from metrics import ResourcePoolMetrics
+
 from datetime import timedelta
 from typing import List, Mapping, Optional, TypeVar
 
@@ -120,6 +122,17 @@ class ResourcePool:
         return self.meta
 
     @property
+    def metrics_labels(self) -> Mapping:
+        return {
+            'name': self.name,
+            'namespace': self.namespace,
+        }
+
+    @property
+    def metric_state_labels(self) -> Mapping:
+        return {'name': self.name, 'namespace': self.namespace, 'state': ''}
+
+    @property
     def min_available(self) -> int:
         return self.spec.get('minAvailable', 0)
 
@@ -161,13 +174,54 @@ class ResourcePool:
         self.status = status
         self.uid = uid
 
+    async def handle_metrics(self, logger: kopf.ObjectLogger, resource_handles):
+        logger.info("Handling metrics for resource pool")
+        resource_handle_deficit = self.min_available - len(resource_handles)
+
+        ResourcePoolMetrics.resource_pool_min_available.set(
+            labels=self.metrics_labels,
+            value=self.min_available
+            )
+
+        ResourcePoolMetrics.resource_pool_available.set(
+            labels=self.metrics_labels,
+            value=len(resource_handles)
+            )
+
+        if resource_handle_deficit < 0:
+            ResourcePoolMetrics.resource_pool_used_total.inc(
+                labels=self.metrics_labels,
+                value=resource_handle_deficit
+                )
+
+        state_labels = self.metric_state_labels
+        state_labels['state'] = 'available'
+        ResourcePoolMetrics.resource_pool_state.set(
+            labels=state_labels,
+            value=len(resource_handles)
+            )
+
+        state_labels['state'] = 'used'
+        ResourcePoolMetrics.resource_pool_state.set(
+            labels=state_labels,
+            value=resource_handle_deficit
+            )
+
     async def handle_delete(self, logger: kopf.ObjectLogger):
         await resourcehandle.ResourceHandle.delete_unbound_handles_for_pool(logger=logger, resource_pool=self)
 
+    @ResourcePoolMetrics.measure_execution_time(
+        'response_time_seconds',
+        method='manage',
+        resource_type='resourcepool'
+        )
     async def manage(self, logger: kopf.ObjectLogger):
         async with self.lock:
             resource_handles = await resourcehandle.ResourceHandle.get_unbound_handles_for_pool(resource_pool=self, logger=logger)
             resource_handle_deficit = self.min_available - len(resource_handles)
+
+            await self.handle_metrics(logger=logger, resource_handles=resource_handles)
+
             if resource_handle_deficit <= 0:
                 return
             for i in range(resource_handle_deficit):
