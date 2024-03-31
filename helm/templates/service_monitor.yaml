@@ -1,0 +1,18 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "poolboy.name" . }}
+  namespace: {{ include "poolboy.namespaceName" . }}
+  labels:
+    {{- include "poolboy.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "poolboy.name" . }}
+  namespaceSelector:
+    matchNames:
+    - {{ include "poolboy.namespaceName" . }}
+  endpoints:
+  - port: {{ include "poolboy.name" . }}
+    interval: "30s"
+    path: /metrics

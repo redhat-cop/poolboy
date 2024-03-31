@@ -59,6 +59,12 @@ service:
     port: 8000
     protocol: TCP
     targetPort: 8000
+  - name: metrics-service
+    port: 8000
+    protocol: web
+    targetPort: 8000
+    path: /metrics
+
 
 resources: {}
   # We usually recommend not to specify default resources and to leave this as a conscious

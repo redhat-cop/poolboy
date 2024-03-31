@@ -254,9 +254,6 @@ async def get_requester_from_namespace(namespace: str) -> tuple[Optional[Mapping
     if not user_name:
         return None, []
 
-    if user_name == 'system:admin':
-        user_name = 'mamorim-redhat.com'
-
     try:
         user = await Poolboy.custom_objects_api.get_cluster_custom_object(
             'user.openshift.io', 'v1', 'users', user_name

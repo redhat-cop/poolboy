@@ -1,0 +1,18 @@
+{{- if .Values.deploy -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "poolboy.name" . }}-metrics
+  namespace: {{ include "poolboy.namespaceName" . }}
+  labels:
+    {{- include "poolboy.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.serviceMetrics.type }}
+  {{- with .Values.serviceMetrics.ports }}
+  ports:
+    {{- toYaml . | nindent 2 }}
+  {{- end }}
+  selector:
+    {{- include "poolboy.selectorLabels" . | nindent 4 }}
+  sessionAffinity: None
+{{- end -}}
