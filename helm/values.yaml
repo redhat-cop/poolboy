@@ -53,15 +53,21 @@ serviceAccount:
 
 service:
   type: ClusterIP
-  port: 8000
+  port: 8080
+  ports:
+  - name: health-check
+    port: 8080
+    protocol: TCP
+    targetPort: 8080
+
+serviceMetrics:
+  type: ClusterIP
+  port: 80
+  name: metrics
   ports:
   - name: metrics
-    port: 8000
+    port: 80
     protocol: TCP
-    targetPort: 8000
-  - name: metrics-service
-    port: 8000
-    protocol: web
     targetPort: 8000
     path: /metrics
 

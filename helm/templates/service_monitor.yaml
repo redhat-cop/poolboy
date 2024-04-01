@@ -6,13 +6,13 @@ metadata:
   labels:
     {{- include "poolboy.labels" . | nindent 4 }}
 spec:
+  endpoints:
+    - interval: 30s
+      path: /metrics
+      port: {{ .Values.serviceMetrics.name}}
+  namespaceSelector:
+    matchNames:
+      - {{ include "poolboy.namespaceName" . }}
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ include "poolboy.name" . }}
-  namespaceSelector:
-    matchNames:
-    - {{ include "poolboy.namespaceName" . }}
-  endpoints:
-  - port: {{ include "poolboy.name" . }}
-    interval: "30s"
-    path: /metrics

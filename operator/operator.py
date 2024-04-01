@@ -22,6 +22,11 @@ from metrics import MetricsManager, MetricsService, AppMetrics
 
 
 @kopf.on.startup()
+@AppMetrics.measure_execution_time(
+    'response_time_seconds',
+    method='on_startup',
+    resource_type='poolboy'
+    )
 async def startup(logger: kopf.ObjectLogger, settings: kopf.OperatorSettings, **_):
     # Store last handled configuration in status
     settings.persistence.diffbase_storage = kopf.StatusDiffBaseStorage(field='status.diffBase')
