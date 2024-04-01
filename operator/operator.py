@@ -3,6 +3,8 @@ import asyncio
 import kopf
 import logging
 
+from aioprometheus import timer
+
 from copy import deepcopy
 from datetime import datetime, timedelta
 from typing import Any, Mapping, Optional
@@ -20,13 +22,11 @@ from resourcewatcher import ResourceWatcher
 from metrics import MetricsManager, MetricsService, AppMetrics
 
 
-
 @kopf.on.startup()
-@AppMetrics.measure_execution_time(
-    'response_time_seconds',
-    method='on_startup',
-    resource_type='poolboy'
-    )
+@timer(
+    AppMetrics.response_time_seconds,
+    labels={'method': 'startup', 'resource_type': 'poolboy_operator'}
+)
 async def startup(logger: kopf.ObjectLogger, settings: kopf.OperatorSettings, **_):
     # Store last handled configuration in status
     settings.persistence.diffbase_storage = kopf.StatusDiffBaseStorage(field='status.diffBase')
@@ -62,6 +62,10 @@ async def startup(logger: kopf.ObjectLogger, settings: kopf.OperatorSettings, **
 
 
 @kopf.on.cleanup()
+@timer(
+    AppMetrics.response_time_seconds,
+    labels={'method': 'cleanup', 'resource_type': 'poolboy_operator'}
+)
 async def cleanup(logger: kopf.ObjectLogger, **_):
     await ResourceWatcher.stop_all()
     await Poolboy.on_cleanup()
@@ -80,11 +84,10 @@ async def cleanup(logger: kopf.ObjectLogger, **_):
     Poolboy.operator_domain, Poolboy.operator_version, 'resourceclaims',
     id='resource_claim_update', labels={Poolboy.ignore_label: kopf.ABSENT},
 )
-@AppMetrics.measure_execution_time(
-    'response_time_seconds',
-    method='on_create',
-    resource_type='resourceclaims'
-    )
+@timer(
+    AppMetrics.response_time_seconds,
+    labels={'method': 'resource_claim_event', 'resource_type': 'resourceclaims'}
+)
 async def resource_claim_event(
     annotations: kopf.Annotations,
     labels: kopf.Labels,
@@ -114,11 +117,10 @@ async def resource_claim_event(
     Poolboy.operator_domain, Poolboy.operator_version, 'resourceclaims',
     labels={Poolboy.ignore_label: kopf.ABSENT},
 )
-@AppMetrics.measure_execution_time(
-    'response_time_seconds',
-    method='on_delete',
-    resource_type='resourceclaims'
-    )
+@timer(
+    AppMetrics.response_time_seconds,
+    labels={'method': 'resource_claim_delete', 'resource_type': 'resourceclaims'}
+)
 async def resource_claim_delete(
     annotations: kopf.Annotations,
     labels: kopf.Labels,
@@ -198,11 +200,10 @@ async def resource_claim_daemon(
     Poolboy.operator_domain, Poolboy.operator_version, 'resourcehandles',
     id='resource_handle_update', labels={Poolboy.ignore_label: kopf.ABSENT},
 )
-@AppMetrics.measure_execution_time(
-    'response_time_seconds',
-    method='on_create',
-    resource_type='resourcehandles'
-    )
+@timer(
+    AppMetrics.response_time_seconds,
+    labels={'method': 'resource_handle_event', 'resource_type': 'resourcehandles'}
+)
 async def resource_handle_event(
     annotations: kopf.Annotations,
     labels: kopf.Labels,
@@ -232,10 +233,9 @@ async def resource_handle_event(
     Poolboy.operator_domain, Poolboy.operator_version, 'resourcehandles',
     labels={Poolboy.ignore_label: kopf.ABSENT},
 )
-@AppMetrics.measure_execution_time(
-    'response_time_seconds',
-    method='on_delete',
-    resource_type='resourcehandles'
+@timer(
+    AppMetrics.response_time_seconds,
+    labels={'method': 'resource_handle_delete', 'resource_type': 'resourcehandles'}
 )
 async def resource_handle_delete(
     annotations: kopf.Annotations,
@@ -316,11 +316,10 @@ async def resource_handle_daemon(
     Poolboy.operator_domain, Poolboy.operator_version, 'resourcepools',
     id='resource_pool_update', labels={Poolboy.ignore_label: kopf.ABSENT},
 )
-@AppMetrics.measure_execution_time(
-    'response_time_seconds',
-    method='on_event',
-    resource_type='resourcepools'
-    )
+@timer(
+    AppMetrics.response_time_seconds,
+    labels={'method': 'resource_pool_event', 'resource_type': 'resourcepools'}
+)
 async def resource_pool_event(
     annotations: kopf.Annotations,
     labels: kopf.Labels,
@@ -350,11 +349,10 @@ async def resource_pool_event(
     Poolboy.operator_domain, Poolboy.operator_version, 'resourcepools',
     labels={Poolboy.ignore_label: kopf.ABSENT},
 )
-@AppMetrics.measure_execution_time(
-    'response_time_seconds',
-    method='on_delete',
-    resource_type='resourcepools'
-    )
+@timer(
+    AppMetrics.response_time_seconds,
+    labels={'method': 'resource_pool_delete', 'resource_type': 'resourcepools'}
+)
 async def resource_pool_delete(
     annotations: kopf.Annotations,
     labels: kopf.Labels,
@@ -382,11 +380,10 @@ async def resource_pool_delete(
 
 
 @kopf.on.event(Poolboy.operator_domain, Poolboy.operator_version, 'resourceproviders')
-@AppMetrics.measure_execution_time(
-    'response_time_seconds',
-    method='on_event',
-    resource_type='resourceproviders'
-    )
+@timer(
+    AppMetrics.response_time_seconds,
+    labels={'method': 'resource_provider_event', 'resource_type': 'resourceproviders'}
+)
 async def resource_provider_event(event: Mapping, logger: kopf.ObjectLogger, **_) -> None:
     definition = event['object']
     if event['type'] == 'DELETED':
