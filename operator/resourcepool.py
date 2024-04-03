@@ -178,34 +178,37 @@ class ResourcePool:
         logger.info("Handling metrics for resource pool")
         resource_handle_deficit = self.min_available - len(resource_handles)
 
-        ResourcePoolMetrics.resource_pool_min_available.set(
-            labels=self.metrics_labels,
-            value=self.min_available
-            )
-
-        ResourcePoolMetrics.resource_pool_available.set(
-            labels=self.metrics_labels,
-            value=len(resource_handles)
-            )
-
-        if resource_handle_deficit < 0:
-            ResourcePoolMetrics.resource_pool_used_total.inc(
+        try:
+            ResourcePoolMetrics.resource_pool_min_available.set(
                 labels=self.metrics_labels,
-                value=resource_handle_deficit
+                value=self.min_available
                 )
 
-        state_labels = self.metric_state_labels
-        state_labels['state'] = 'available'
-        ResourcePoolMetrics.resource_pool_state.set(
-            labels=state_labels,
-            value=len(resource_handles)
-            )
+            ResourcePoolMetrics.resource_pool_available.set(
+                labels=self.metrics_labels,
+                value=len(resource_handles)
+                )
 
-        state_labels['state'] = 'used'
-        ResourcePoolMetrics.resource_pool_state.set(
-            labels=state_labels,
-            value=resource_handle_deficit
-            )
+            if resource_handle_deficit < 0:
+                ResourcePoolMetrics.resource_pool_used_total.inc(
+                    labels=self.metrics_labels,
+                    )
+
+            state_labels = self.metric_state_labels
+            state_labels['state'] = 'available'
+            ResourcePoolMetrics.resource_pool_state.set(
+                labels=state_labels,
+                value=len(resource_handles)
+                )
+
+            state_labels['state'] = 'used'
+            ResourcePoolMetrics.resource_pool_state.set(
+                labels=state_labels,
+                value=resource_handle_deficit
+                )
+        except Exception as e:
+            logger.error(f"Error handling metrics for resource pool: {e}")
+            return
 
     async def handle_delete(self, logger: kopf.ObjectLogger):
         await resourcehandle.ResourceHandle.delete_unbound_handles_for_pool(logger=logger, resource_pool=self)
@@ -214,7 +217,7 @@ class ResourcePool:
         'response_time_seconds',
         method='manage',
         resource_type='resourcepool'
-        )
+    )
     async def manage(self, logger: kopf.ObjectLogger):
         async with self.lock:
             resource_handles = await resourcehandle.ResourceHandle.get_unbound_handles_for_pool(resource_pool=self, logger=logger)
