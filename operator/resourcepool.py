@@ -5,6 +5,7 @@ import pytimeparse
 
 from metrics import ResourcePoolMetrics
 
+
 from datetime import timedelta
 from typing import List, Mapping, Optional, TypeVar
 
@@ -213,11 +214,6 @@ class ResourcePool:
     async def handle_delete(self, logger: kopf.ObjectLogger):
         await resourcehandle.ResourceHandle.delete_unbound_handles_for_pool(logger=logger, resource_pool=self)
 
-    @ResourcePoolMetrics.measure_execution_time(
-        'response_time_seconds',
-        method='manage',
-        resource_type='resourcepool'
-    )
     async def manage(self, logger: kopf.ObjectLogger):
         async with self.lock:
             resource_handles = await resourcehandle.ResourceHandle.get_unbound_handles_for_pool(resource_pool=self, logger=logger)
