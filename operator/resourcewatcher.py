@@ -3,7 +3,7 @@ import inflection
 import kubernetes_asyncio
 import logging
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Mapping, Optional
 
 import poolboy_k8s
@@ -105,24 +105,24 @@ class ResourceWatcher:
                 kwargs = {}
 
             while True:
-                watch_start_dt = datetime.utcnow()
+                watch_start_dt = datetime.now(timezone.utc)
                 try:
                     await self.__watch(method, **kwargs)
                 except asyncio.CancelledError:
                     return
                 except ResourceWatchRestartError as e:
                     logger.info(f"{self} restart: {e}")
-                    watch_duration = (datetime.utcnow() - watch_start_dt).total_seconds()
+                    watch_duration = (datetime.now(timezone.utc) - watch_start_dt).total_seconds()
                     if watch_duration < 10:
                         await asyncio.sleep(10 - watch_duration)
                 except ResourceWatchFailedError as e:
                     logger.warning(f"{self} failed: {e}")
-                    watch_duration = (datetime.utcnow() - watch_start_dt).total_seconds()
+                    watch_duration = (datetime.now(timezone.utc) - watch_start_dt).total_seconds()
                     if watch_duration < 60:
                         await asyncio.sleep(60 - watch_duration)
                 except Exception as e:
                     logger.exception(f"{self} exception")
-                    watch_duration = (datetime.utcnow() - watch_start_dt).total_seconds()
+                    watch_duration = (datetime.now(timezone.utc) - watch_start_dt).total_seconds()
                     if watch_duration < 60:
                         await asyncio.sleep(60 - watch_duration)
                 logger.info(f"Restarting {self}")

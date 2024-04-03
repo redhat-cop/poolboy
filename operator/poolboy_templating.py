@@ -14,11 +14,11 @@ from strgen import StringGenerator
 class TimeStamp(object):
     def __init__(self, set_datetime=None):
         if not set_datetime:
-            self.datetime = datetime.utcnow()
+            self.datetime = datetime.now(timezone.utc)
         elif isinstance(set_datetime, datetime):
             self.datetime = set_datetime
         elif isinstance(set_datetime, str):
-            self.datetime = datetime.strptime(set_datetime, "%Y-%m-%dT%H:%M:%SZ")
+            self.datetime = datetime.strptime(set_datetime, "%Y-%m-%dT%H:%M:%S%z")
         else:
             self.datetime = set_datetime
 

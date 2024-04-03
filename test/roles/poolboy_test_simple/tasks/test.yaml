@@ -130,13 +130,13 @@
   assert:
     that:
     - resource.kind == 'ResourceClaimTest'
-    - resource_annotations['{{ poolboy_domain }}/resource-claim-name'] == 'test-1'
-    - resource_annotations['{{ poolboy_domain }}/resource-claim-namespace'] == poolboy_test_namespace
-    - resource_annotations['{{ poolboy_domain }}/resource-handle-name'] == handle.metadata.name
-    - resource_annotations['{{ poolboy_domain }}/resource-handle-namespace'] == handle.metadata.namespace
-    - resource_annotations['{{ poolboy_domain }}/resource-handle-uid'] == handle.metadata.uid
-    - resource_annotations['{{ poolboy_domain }}/resource-provider-name'] == 'test'
-    - resource_annotations['{{ poolboy_domain }}/resource-provider-namespace'] == poolboy_namespace
+    - resource_annotations[poolboy_domain ~ '/resource-claim-name'] == 'test-1'
+    - resource_annotations[poolboy_domain ~ '/resource-claim-namespace'] == poolboy_test_namespace
+    - resource_annotations[poolboy_domain ~ '/resource-handle-name'] == handle.metadata.name
+    - resource_annotations[poolboy_domain ~ '/resource-handle-namespace'] == handle.metadata.namespace
+    - resource_annotations[poolboy_domain ~ '/resource-handle-uid'] == handle.metadata.uid
+    - resource_annotations[poolboy_domain ~ '/resource-provider-name'] == 'test'
+    - resource_annotations[poolboy_domain ~ '/resource-provider-namespace'] == poolboy_namespace
     fail_msg: test-1 resource not found as expected
     success_msg: test-1 resource looks good
   vars:
@@ -488,6 +488,10 @@
   set_fact:
     first_pool_resource_handle_name: "{{ r_get_pool_resource_handle.resources[0].metadata.name }}"
 
+- name: Report first pool resource handle name
+  debug:
+    msg: ResourceClaim should bind {{ first_pool_resource_handle_name }}
+
 - name: Scale up resource pool
   kubernetes.core.k8s:
     api_version: "{{ poolboy_domain }}/v1"
@@ -812,7 +816,7 @@
     __test_lifespan_1.status.lifespan.start is undefined or
     __test_lifespan_1.status.lifespan.end is undefined or
     (
-      (__test_lifespan_1.status.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%SZ') - __test_lifespan_1.status.lifespan.start | to_datetime('%Y-%m-%dT%H:%M:%SZ')).total_seconds() - 40
+      (__test_lifespan_1.status.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%S%z') - __test_lifespan_1.status.lifespan.start | to_datetime('%Y-%m-%dT%H:%M:%S%z')).total_seconds() - 40
     ) | abs > 1
   until: r_get_test_lifespan_1 is success
   delay: 5
@@ -864,7 +868,7 @@
   failed_when: >-
     __test_lifespan_2.status.lifespan.start is undefined or
     __test_lifespan_2.status.lifespan.end is undefined or
-    40 != (__test_lifespan_2.status.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%SZ') - __test_lifespan_2.status.lifespan.start | to_datetime('%Y-%m-%dT%H:%M:%SZ')).total_seconds()
+    40 != (__test_lifespan_2.status.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%S%z') - __test_lifespan_2.status.lifespan.start | to_datetime('%Y-%m-%dT%H:%M:%S%z')).total_seconds()
   until: r_get_test_lifespan_2 is success
   delay: 5
   retries: 10
@@ -897,7 +901,7 @@
   failed_when: >-
     __test_lifespan_2.status.lifespan.start is undefined or
     __test_lifespan_2.status.lifespan.end is undefined or
-    50 != (__test_lifespan_2.status.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%SZ') - __test_lifespan_2.status.lifespan.start | to_datetime('%Y-%m-%dT%H:%M:%SZ')).total_seconds()
+    50 != (__test_lifespan_2.status.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%S%z') - __test_lifespan_2.status.lifespan.start | to_datetime('%Y-%m-%dT%H:%M:%S%z')).total_seconds()
   until: r_get_test_lifespan_2 is success
   delay: 5
   retries: 10
@@ -936,7 +940,7 @@
     __handle.spec.lifespan.default != '23s' or
     __handle.spec.lifespan.maximum != '2h' or
     __handle.spec.lifespan.relativeMaximum != '1h' or
-    ((__handle.spec.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%SZ') - __handle.metadata.creationTimestamp | to_datetime('%Y-%m-%dT%H:%M:%SZ')).total_seconds() - 3600) | abs > 2
+    ((__handle.spec.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%S%z') - __handle.metadata.creationTimestamp | to_datetime('%Y-%m-%dT%H:%M:%S%z')).total_seconds() - 3600) | abs > 2
   until: r_get_pool_resource_handle is success
   retries: 10
   delay: 1
@@ -974,7 +978,7 @@
   failed_when: >-
     __test_lifespan_3.status.lifespan.start is undefined or
     __test_lifespan_3.status.lifespan.end is undefined or
-    23 != (__test_lifespan_3.status.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%SZ') - __test_lifespan_3.status.lifespan.start | to_datetime('%Y-%m-%dT%H:%M:%SZ')).total_seconds()
+    23 != (__test_lifespan_3.status.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%S%z') - __test_lifespan_3.status.lifespan.start | to_datetime('%Y-%m-%dT%H:%M:%S%z')).total_seconds()
   until: r_get_test_lifespan_3 is success
   delay: 5
   retries: 10

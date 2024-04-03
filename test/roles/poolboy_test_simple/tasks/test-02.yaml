@@ -109,8 +109,8 @@
     - __state.status.lifespan.relativeMaximum == '1h'
     - >-
         30 * 60 == (
-          __state.status.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%SZ') -
-          __state.status.lifespan.start | to_datetime('%Y-%m-%dT%H:%M:%SZ')
+          __state.status.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%S%z') -
+          __state.status.lifespan.start | to_datetime('%Y-%m-%dT%H:%M:%S%z')
         ).total_seconds()
 
 - name: Verify creation of ResourceClaimTest test-02-a
@@ -145,7 +145,7 @@
         lifespan:
           end: >-
             {{ "%FT%TZ" | strftime(
-                 (__state.status.lifespan.start | to_datetime('%Y-%m-%dT%H:%M:%SZ')).strftime("%s") | int + 45 * 60
+                 (__state.status.lifespan.start | to_datetime('%Y-%m-%dT%H:%M:%S%z')).strftime("%s") | int + 45 * 60
                )
             }}
 
@@ -160,8 +160,8 @@
     __state: "{{ r_get_resource_claim.resources[0] }}"
   failed_when: >-
     45 * 60 != (
-      __state.status.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%SZ') -
-      __state.status.lifespan.start | to_datetime('%Y-%m-%dT%H:%M:%SZ')
+      __state.status.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%S%z') -
+      __state.status.lifespan.start | to_datetime('%Y-%m-%dT%H:%M:%S%z')
     ).total_seconds()
   until: r_get_resource_claim is success
   delay: 1
