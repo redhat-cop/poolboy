@@ -674,7 +674,7 @@ class ResourceClaim:
                 # Normally lifespan end is tracked by the ResourceHandle.
                 # Detached ResourceClaims have no handle.
                 if self.lifespan_end_datetime \
-                and self.lifespan_start_datetime < datetime.utcnow():
+                and self.lifespan_end_datetime < datetime.utcnow():
                     logger.info(f"Deleting detacthed {self} at end of lifespan")
                     await self.delete()
                 # No further processing for detached ResourceClaim
