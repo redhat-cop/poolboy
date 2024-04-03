@@ -105,8 +105,8 @@
     that:
     - >-
         6 * 60 * 60 == (
-          __state.spec.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%SZ') -
-          __state.metadata.creationTimestamp | to_datetime('%Y-%m-%dT%H:%M:%SZ')
+          __state.spec.lifespan.end | to_datetime('%Y-%m-%dT%H:%M:%S%z') -
+          __state.metadata.creationTimestamp | to_datetime('%Y-%m-%dT%H:%M:%S%z')
         ).total_seconds()
 
 - name: Create ResourceClaim test-pool-02

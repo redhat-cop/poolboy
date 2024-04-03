@@ -7,7 +7,7 @@ import logging
 import pytimeparse
 
 from copy import deepcopy
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, List, Mapping, Optional, TypeVar, Union
 
 import poolboy_k8s
@@ -164,7 +164,7 @@ class ResourceHandle:
                     "op": "add",
                     "path": "/spec/lifespan/end",
                     "value": (
-                        datetime.utcnow() + matched_resource_handle.get_lifespan_default_timedelta(resource_claim)
+                        datetime.now(timezone.utc) + matched_resource_handle.get_lifespan_default_timedelta(resource_claim)
                     ).strftime('%FT%TZ'),
                 })
 
@@ -262,7 +262,7 @@ class ResourceHandle:
 
 
         lifespan_end_datetime = None
-        lifespan_start_datetime = datetime.utcnow()
+        lifespan_start_datetime = datetime.now(timezone.utc)
         requested_lifespan_end_datetime = resource_claim.requested_lifespan_end_datetime
         if requested_lifespan_end_datetime:
             lifespan_end_datetime = requested_lifespan_end_datetime
@@ -350,7 +350,7 @@ class ResourceHandle:
                 definition['spec']['lifespan']['relativeMaximum'] = resource_pool.lifespan_relative_maximum
             if resource_pool.lifespan_unclaimed:
                 definition['spec']['lifespan']['end'] = (
-                    datetime.utcnow() + resource_pool.lifespan_unclaimed_timedelta
+                    datetime.now(timezone.utc) + resource_pool.lifespan_unclaimed_timedelta
                 ).strftime("%FT%TZ")
 
         definition = await Poolboy.custom_objects_api.create_namespaced_custom_object(
@@ -524,7 +524,7 @@ class ResourceHandle:
 
     @property
     def creation_datetime(self):
-        return datetime.strptime(self.creation_timestamp, "%Y-%m-%dT%H:%M:%SZ")
+        return datetime.strptime(self.creation_timestamp, "%Y-%m-%dT%H:%M:%S%z")
 
     @property
     def creation_timestamp(self) -> str:
@@ -570,13 +570,13 @@ class ResourceHandle:
         dt = self.lifespan_end_datetime
         if not dt:
             return False
-        return dt < datetime.utcnow()
+        return dt < datetime.now(timezone.utc)
 
     @property
     def lifespan_end_datetime(self) -> Any:
         timestamp = self.lifespan_end_timestamp
         if timestamp:
-            return datetime.strptime(timestamp, '%Y-%m-%dT%H:%M:%SZ')
+            return datetime.strptime(timestamp, '%Y-%m-%dT%H:%M:%S%z')
 
     @property
     def lifespan_end_timestamp(self) -> Optional[str]:
@@ -627,7 +627,7 @@ class ResourceHandle:
     def timedelta_to_lifespan_end(self) -> Any:
         dt = self.lifespan_end_datetime
         if dt:
-            return dt - datetime.utcnow()
+            return dt - datetime.now(timezone.utc)
 
     def __lifespan_value(self, name, resource_claim):
         value = self.spec.get('lifespan', {}).get(name)
@@ -679,7 +679,7 @@ class ResourceHandle:
         maximum_timedelta = self.get_lifespan_maximum_timedelta(resource_claim=resource_claim)
         maximum_end = lifespan_start_datetime + maximum_timedelta if maximum_timedelta else None
         relative_maximum_timedelta = self.get_lifespan_relative_maximum_timedelta(resource_claim=resource_claim)
-        relative_maximum_end = datetime.utcnow() + relative_maximum_timedelta if relative_maximum_timedelta else None
+        relative_maximum_end = datetime.now(timezone.utc) + relative_maximum_timedelta if relative_maximum_timedelta else None
 
         if relative_maximum_end \
         and (not maximum_end or relative_maximum_end < maximum_end):
@@ -752,7 +752,7 @@ class ResourceHandle:
             elif (
                 self.resource_states[i] and
                 self.resource_refresh_datetime[i] and
-                (datetime.utcnow() - self.resource_refresh_datetime[i]).total_seconds() > Poolboy.resource_refresh_interval
+                (datetime.now(timezone.utc) - self.resource_refresh_datetime[i]).total_seconds() > Poolboy.resource_refresh_interval
             ):
                 continue
 
@@ -771,7 +771,7 @@ class ResourceHandle:
                     name = name,
                     namespace = namespace,
                 )
-                self.resource_refresh_datetime[i] = datetime.utcnow()
+                self.resource_refresh_datetime[i] = datetime.now(timezone.utc)
             except kubernetes_asyncio.client.exceptions.ApiException as e:
                 if e.status == 404:
                     _name = f"{name} in {namespace}" if namespace else name
@@ -832,7 +832,7 @@ class ResourceHandle:
                     [None] * (1 + resource_index - len(self.resource_refresh_datetime))
                 )
             self.resource_states[resource_index] = resource_state
-            self.resource_refresh_datetime[resource_index] = datetime.utcnow()
+            self.resource_refresh_datetime[resource_index] = datetime.now(timezone.utc)
 
     async def manage(self, logger: kopf.ObjectLogger) -> None:
         async with self.lock:

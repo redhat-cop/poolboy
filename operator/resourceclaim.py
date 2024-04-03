@@ -4,7 +4,7 @@ import kopf
 import kubernetes_asyncio
 
 from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Mapping, Optional, TypeVar, Union
 
 from deep_merge import deep_merge
@@ -148,7 +148,7 @@ class ResourceClaim:
 
     @property
     def creation_datetime(self):
-        return datetime.strptime(self.creation_timestamp, "%Y-%m-%dT%H:%H:%SZ")
+        return datetime.strptime(self.creation_timestamp, "%Y-%m-%dT%H:%H:%S%z")
 
     @property
     def creation_timestamp(self) -> str:
@@ -205,7 +205,7 @@ class ResourceClaim:
         """
         timestamp = self.lifespan_end_timestamp
         if timestamp:
-            return datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%SZ")
+            return datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S%z")
 
     @property
     def lifespan_end_timestamp(self) -> Optional[str]:
@@ -232,7 +232,7 @@ class ResourceClaim:
     def lifespan_start_datetime(self) -> Optional[datetime]:
         timestamp = self.lifespan_start_timestamp
         if timestamp:
-            return datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%SZ")
+            return datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S%z")
 
     @property
     def lifespan_start_timestamp(self) -> Optional[str]:
@@ -257,7 +257,7 @@ class ResourceClaim:
     def requested_lifespan_end_datetime(self):
         timestamp = self.requested_lifespan_end_timestamp
         if timestamp:
-            return datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%SZ")
+            return datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S%z")
 
     @property
     def requested_lifespan_end_timestamp(self) -> Optional[str]:
@@ -269,7 +269,7 @@ class ResourceClaim:
     def requested_lifespan_start_datetime(self):
         timestamp = self.requested_lifespan_start_timestamp
         if timestamp:
-            return datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%SZ")
+            return datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S%z")
 
     @property
     def requested_lifespan_start_timestamp(self) -> Optional[str]:
@@ -366,7 +366,7 @@ class ResourceClaim:
         }]
 
         lifespan_value = {
-            "start": datetime.utcnow().strftime('%FT%TZ'),
+            "start": datetime.now(timezone.utc).strftime('%FT%TZ'),
             "end": resource_handle.lifespan_end_timestamp,
             "maximum": resource_handle.get_lifespan_maximum(resource_claim=self),
             "relativeMaximum": resource_handle.get_lifespan_relative_maximum(resource_claim=self),
@@ -626,7 +626,7 @@ class ResourceClaim:
         patch = {
             "metadata": {
                 "annotations": {
-                    f"{Poolboy.operator_domain}/resource-claim-init-timestamp": datetime.utcnow().strftime('%FT%TZ')
+                    f"{Poolboy.operator_domain}/resource-claim-init-timestamp": datetime.now(timezone.utc).strftime('%FT%TZ')
                 }
             },
         }
@@ -667,14 +667,14 @@ class ResourceClaim:
     async def manage(self, logger) -> None:
         async with self.lock:
             if self.lifespan_start_datetime \
-            and self.lifespan_start_datetime > datetime.utcnow():
+            and self.lifespan_start_datetime > datetime.now(timezone.utc):
                 return
 
             if self.is_detached:
                 # Normally lifespan end is tracked by the ResourceHandle.
                 # Detached ResourceClaims have no handle.
                 if self.lifespan_end_datetime \
-                and self.lifespan_end_datetime < datetime.utcnow():
+                and self.lifespan_end_datetime < datetime.now(timezone.utc):
                     logger.info(f"Deleting detacthed {self} at end of lifespan")
                     await self.delete()
                 # No further processing for detached ResourceClaim
