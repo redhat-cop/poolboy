@@ -1092,20 +1092,25 @@ class ResourceClaim:
         await self.json_patch_status(patch)
 
     async def update_resource_in_status(self, index, state):
-        patch = [{
-            "op": "add",
-            "path": f"/status/resources/{index}/state",
-            "value": state,
-        }]
+        patch = []
+        if self.status_resources[index].get('state') != state:
+            patch.append({
+                "op": "add",
+                "path": f"/status/resources/{index}/state",
+                "value": state,
+            })
 
         if self.has_resource_provider:
             resource_provider = await self.get_resource_provider()
             if resource_provider.status_summary_template:
                 self.status_resources[index]['state'] = state
-                patch.append({
-                    "op": "add",
-                    "path": "/status/summary",
-                    "value": resource_provider.make_status_summary(self),
-                })
+                status_summary = resource_provider.make_status_summary(self)
+                if status_summary != self.status.get('summary'):
+                    patch.append({
+                        "op": "add",
+                        "path": "/status/summary",
+                        "value": status_summary,
+                    })
 
-        await self.json_patch_status(patch)
+        if patch:
+            await self.json_patch_status(patch)
