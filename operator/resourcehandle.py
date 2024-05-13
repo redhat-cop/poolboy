@@ -391,7 +391,8 @@ class ResourceHandle:
             definition = await Poolboy.custom_objects_api.get_namespaced_custom_object(
                 Poolboy.operator_domain, Poolboy.operator_version, Poolboy.namespace, 'resourcehandles', name
             )
-
+            if 'deletionTimestamp' in definition['metadata']:
+                return None
             return ResourceHandle.__register_definition(definition=definition)
 
     @staticmethod
