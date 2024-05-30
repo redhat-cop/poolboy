@@ -1,0 +1,22 @@
+{{- if .Values.serviceMonitor.create }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "poolboy.name" . }}
+  namespace: {{ include "poolboy.namespaceName" . }}
+  labels:
+    {{- include "poolboy.labels" . | nindent 4 }}
+spec:
+  endpoints:
+    - interval: {{ .Values.serviceMonitor.interval }}
+      path: {{ .Values.serviceMonitor.path }}
+      port: {{ .Values.serviceMonitor.portName }}
+      scrapeTimeout: {{ .Values.serviceMonitor.scrapeTimeout }}
+  jobLabel: {{ include "poolboy.name" . }}
+  namespaceSelector:
+    matchNames:
+      - {{ include "poolboy.namespaceName" . }}
+  selector:
+    matchLabels:
+      {{- include "poolboy.selectorLabels" . | nindent 6 }}
+{{- end }}

@@ -51,15 +51,31 @@ serviceAccount:
   # If not set and create is true, a name is generated using the fullname template
   name:
 
+serviceMonitor:
+  # ServiceMonitor requires prometheus-operator installed in the cluster
+  create: true
+  # The port name of the service monitor to use.
+  portName: metrics
+  # The path to scrape metrics from
+  path: /metrics
+  # How often Prometheus should scrape
+  interval: 30s
+  # How long Prometheus should wait for a scrape to complete
+  scrapeTimeout: 15s
+
 service:
   type: ClusterIP
-  port: 8000
+  port: 8080
   ports:
+  - name: healthz
+    port: 8080
+    protocol: TCP
+    targetPort: 8080
   - name: metrics
-    port: 8000
+    port: 80
     protocol: TCP
     targetPort: 8000
-
+ 
 resources: {}
   # We usually recommend not to specify default resources and to leave this as a conscious
   # choice for the user. This also increases chances charts run on environments with little
