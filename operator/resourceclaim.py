@@ -725,6 +725,18 @@ class ResourceClaim:
                     else:
                         raise
 
+                metadata_patch = {}
+                for key, value in resource_provider.resource_claim_annotations.items():
+                    if self.annotations.get(key) != value:
+                        metadata_patch.setdefault('annotations', {})[key] = value
+                for key, value in resource_provider.resource_claim_labels.items():
+                    if self.labels.get(key) != value:
+                        metadata_patch.setdefault('labels', {})[key] = value
+                if metadata_patch:
+                    await self.merge_patch({
+                        "metadata": metadata_patch,
+                    })
+
                 if resource_provider.approval_required:
                     if not 'approval' in self.status:
                         await self.merge_patch_status({
