@@ -170,6 +170,7 @@ class ResourceHandle:
                         _content_type = 'application/json-patch+json',
                         body = patch,
                     )
+                    matched_resource_handle = ResourceHandle.__register_definition(definition=definition)
                 except kubernetes_asyncio.client.exceptions.ApiException as exception:
                     if exception.status == 404:
                         logger.warning(f"Attempt to bind deleted {matched_resource_handle} to {resource_claim}")
@@ -177,9 +178,9 @@ class ResourceHandle:
                         matched_resource_handle = None
                     else:
                         raise
-                matched_resource_handle = ResourceHandle.__register_definition(definition=definition)
-                logger.info(f"Bound {matched_resource_handle} to {resource_claim}")
-                break
+                if matched_resource_handle:
+                    logger.info(f"Bound {matched_resource_handle} to {resource_claim}")
+                    break
             else:
                 # No unbound resource handle matched
                 return None
