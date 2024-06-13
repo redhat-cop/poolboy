@@ -1,0 +1,162 @@
+---
+- name: Create ResourceProvider test-requester-01
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: "{{ poolboy_domain }}/v1"
+      kind: ResourceProvider
+      metadata:
+        name: test-requester-01
+        namespace: "{{ poolboy_namespace }}"
+        labels: >-
+          {{ {
+            poolboy_domain ~ "/test": "simple"
+          } }}
+      spec:
+        override:
+          apiVersion: "{{ poolboy_domain }}/v1"
+          kind: ResourceClaimTest
+          metadata:
+            name: test-requester-01-{% raw %}{{ guid }}{% endraw %}
+            namespace: "{{ poolboy_test_namespace }}"
+          spec:
+            requesterName: "{% raw %}{{ requester_user.metadata.name }}{% endraw %}"
+        resourceRequiresClaim: true
+        template:
+          enable: true
+
+- name: Create ResourceClaim test-requester-01-a
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: "{{ poolboy_domain }}/v1"
+      kind: ResourceClaim
+      metadata:
+        name: test-requester-01-a
+        namespace: "{{ poolboy_test_namespace }}"
+        labels: >-
+          {{ {
+            poolboy_domain ~ "/test": "simple"
+          } }}
+      spec:
+        resources:
+        - provider:
+            name: test-requester-01
+
+- name: Verify handling of ResourceClaim test-requester-01-a
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-requester-01-a
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_resource_claim
+  failed_when: >-
+    r_get_resource_claim.resources[0].status.resources[0].state is undefined
+  until: r_get_resource_claim is success
+  delay: 1
+  retries: 10
+
+- name: Confirm test-requester-01-a state
+  vars:
+    __state: "{{ r_get_resource_claim.resources[0].status.resources[0].state }}"
+  assert:
+    that:
+    - __state.spec.requesterName == 'test-user'
+
+- name: Delete ResourceClaim test-requester-01-a
+  kubernetes.core.k8s:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-requester-01-a
+    namespace: "{{ poolboy_test_namespace }}"
+    state: absent
+
+- name: Verify delete of ResourceClaim test-requester-01-a
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-requester-01-a
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_resource_claim
+  failed_when: r_get_resource_claim.resources | length != 0
+  until: r_get_resource_claim is success
+  retries: 5
+  delay: 1
+
+- name: Create ResourceHandle for test-requster-01-b
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: "{{ poolboy_domain }}/v1"
+      kind: ResourceHandle
+      metadata:
+        name: guid-0001b
+        namespace: "{{ poolboy_namespace }}"
+      spec:
+        resources:
+        - provider:
+            apiVersion: poolboy.dev.local/v1
+            kind: ResourceProvider
+            name: test-requester-01
+            namespace: poolboy-dev
+
+- name: Verify ResourceHandle is waiting for ResourceClaim
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceHandle
+    name: guid-0001b
+    namespace: "{{ poolboy_namespace }}"
+  register: r_get_resource_handle
+  failed_when: >-
+    r_get_resource_handle.resources[0].spec.resources[0].waitingFor != 'ResourceClaim'
+  until: r_get_resource_handle is success
+  delay: 1
+  retries: 10
+
+- name: Create ResourceClaim test-requester-01-b
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: "{{ poolboy_domain }}/v1"
+      kind: ResourceClaim
+      metadata:
+        name: test-requester-01-b
+        namespace: "{{ poolboy_test_namespace }}"
+        labels: >-
+          {{ {
+            poolboy_domain ~ "/test": "simple"
+          } }}
+      spec:
+        resources:
+        - provider:
+            name: test-requester-01
+
+- name: Verify handling of ResourceClaim test-requester-01-b
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-requester-01-b
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_resource_claim
+  failed_when: >-
+    r_get_resource_claim.resources[0].status.resourceHandle.name != 'guid-0001b' or
+    r_get_resource_claim.resources[0].status.resources[0].state is undefined
+  until: r_get_resource_claim is success
+  delay: 1
+  retries: 10
+
+- name: Delete ResourceClaim test-requester-01-b
+  kubernetes.core.k8s:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-requester-01-b
+    namespace: "{{ poolboy_test_namespace }}"
+    state: absent
+
+- name: Verify delete of ResourceClaim test-requester-01-b
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-requester-01-b
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_resource_claim
+  failed_when: r_get_resource_claim.resources | length != 0
+  until: r_get_resource_claim is success
+  retries: 5
+  delay: 1
