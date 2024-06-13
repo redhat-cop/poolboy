@@ -44,6 +44,10 @@
               type: integer
               default: 0
               minimum: 0
+        resourceClaimAnnotations:
+          test-annotation: test-annotation-value
+        resourceClaimLabels:
+          test-label: test-label-value
         template:
           definition:
             spec:
@@ -100,6 +104,8 @@
   assert:
     that:
     - __state.status.resources[0].state.metadata.name == resource_claim_test_parameters_01_a_resource_name
+    - __state.metadata.annotations['test-annotation'] == 'test-annotation-value'
+    - __state.metadata.labels['test-label'] == 'test-label-value'
 
 - name: Verify creation of ResourceClaimTest test-parameters-01-a
   kubernetes.core.k8s_info:

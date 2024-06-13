@@ -270,6 +270,14 @@ class ResourceProvider:
         }
 
     @property
+    def resource_claim_annotations(self) -> Mapping:
+        return self.spec.get('resourceClaimAnnotations', {})
+
+    @property
+    def resource_claim_labels(self) -> Mapping:
+        return self.spec.get('resourceClaimLabels', {})
+
+    @property
     def resource_name(self):
         return self.spec.get('resourceName', self.name)
 

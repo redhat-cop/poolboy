@@ -237,6 +237,18 @@ spec:
                             fields to specific numeric ranges.
                           type: object
                           x-kubernetes-preserve-unknown-fields: true
+              resourceClaimAnnotations:
+                description: >-
+                  Annotations to apply to ResourceClaim.
+                type: object
+                additionalProperties:
+                  type: string
+              resourceClaimLabels:
+                description: >-
+                  Labels to apply to ResourceClaim.
+                type: object
+                additionalProperties:
+                  type: string
               resourceName:
                 description: >-
                   Name to apply to resource list entry when resources list is generated.
