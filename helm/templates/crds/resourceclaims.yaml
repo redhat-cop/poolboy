@@ -263,6 +263,14 @@ spec:
                     validationError:
                       description: Error message from resource provider.
                       type: string
+                    waitingFor:
+                      description: >-
+                        Indication indicating that resource creation is blocked waiting on a condition.
+                      enum:
+                      - ResourceClaim
+                      - Linked ResourceProvider
+                      - Resource Definition
+                      type: string
               summary:
                 description: >-
                   Status summary from current resources state, generated from ResourceProvider configuration.

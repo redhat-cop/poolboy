@@ -520,6 +520,19 @@ class ResourceClaim:
                     "path": "/status/lifespan/relativeMaximum",
                 })
 
+        for index, resource in enumerate(resource_handle.spec['resources']):
+            if 'waitingFor' in resource:
+                patch.append({
+                    "op": "add",
+                    "path": f"/status/resources/{index}/waitingFor",
+                    "value": resource['waitingFor'],
+                })
+            elif 'waitingFor' in self.status_resources[index]:
+                patch.append({
+                    "op": "remove",
+                    "path": f"/status/resources/{index}/waitingFor",
+                })
+
         if patch:
             await self.json_patch_status(patch)
 

@@ -219,7 +219,9 @@ class ResourceProvider:
 
     @property
     def has_template_definition(self) -> bool:
-        return 'template' in self.spec and 'definition' in self.spec['template']
+        return 'override' in self.spec or (
+            'template' in self.spec and 'definition' in self.spec['template']
+        )
 
     @property
     def lifespan_maximum(self) -> Optional[str]:
@@ -483,7 +485,7 @@ class ResourceProvider:
     ) -> Mapping:
         resource_handle_vars = resource_handle.vars if resource_handle else {}
         return recursive_process_template_strings(
-            self.spec['template'].get('definition', {}),
+            self.spec.get('template', {}).get('definition', {}),
             variables = {
                 **self.vars,
                 **resource_handle_vars,

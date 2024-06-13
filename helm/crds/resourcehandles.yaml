@@ -180,6 +180,14 @@ spec:
                         claim's template is used to manage the handle template.
                       type: object
                       x-kubernetes-preserve-unknown-fields: true
+                    waitingFor:
+                      description: >-
+                        Indication indicating that resource creation is blocked waiting on a condition.
+                      enum:
+                      - ResourceClaim
+                      - Linked ResourceProvider
+                      - Resource Definition
+                      type: string
               vars:
                 description: >-
                   Variables to use when evaluating validation checks and templates.

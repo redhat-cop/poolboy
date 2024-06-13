@@ -841,7 +841,6 @@ class ResourceHandle:
             if self.is_bound:
                 try:
                     resource_claim = await self.get_resource_claim()
-                    await resource_claim.update_status_from_handle(logger=logger, resource_handle=self)
                 except kubernetes_asyncio.client.exceptions.ApiException as e:
                     if e.status == 404:
                         logger.info(
@@ -868,6 +867,12 @@ class ResourceHandle:
                 resource_state = resource_states[resource_index]
 
                 if resource_provider.resource_requires_claim and not resource_claim:
+                    if 'ResourceClaim' != resource.get('waitingFor'):
+                        patch.append({
+                            "op": "add",
+                            "path": f"/spec/resources/{resource_index}/waitingFor",
+                            "value": "ResourceClaim",
+                        })
                     continue
 
                 vars_ = deepcopy(self.vars)
@@ -907,6 +912,12 @@ class ResourceHandle:
                             )
 
                 if wait_for_linked_provider:
+                    if 'Linked ResourceProvider' != resource.get('waitingFor'):
+                        patch.append({
+                            "op": "add",
+                            "path": f"/spec/resources/{resource_index}/waitingFor",
+                            "value": "Linked ResourceProvider",
+                        })
                     continue
 
                 resource_definition = await resource_provider.resource_definition_from_template(
@@ -918,6 +929,12 @@ class ResourceHandle:
                     vars_ = vars_,
                 )
                 if not resource_definition:
+                    if 'Resource Definition' != resource.get('waitingFor'):
+                        patch.append({
+                            "op": "add",
+                            "path": f"/spec/resources/{resource_index}/waitingFor",
+                            "value": "Resource Definition",
+                        })
                     continue
 
                 resource_api_version = resource_definition['apiVersion']
@@ -939,6 +956,11 @@ class ResourceHandle:
                         "path": f"/spec/resources/{resource_index}/reference",
                         "value": reference,
                     })
+                    if 'waitingFor' in resource:
+                        patch.append({
+                            "op": "remove",
+                            "path": f"/spec/resources/{resource_index}/waitingFor",
+                        })
                     try:
                         resource_states[resource_index] = resource_state = await poolboy_k8s.get_object(
                             api_version = resource_api_version,
@@ -1003,6 +1025,9 @@ class ResourceHandle:
                     body = patch,
                 )
                 self.refresh_from_definition(definition)
+
+            if resource_claim:
+                await resource_claim.update_status_from_handle(logger=logger, resource_handle=self)
 
             for resource_definition in resources_to_create:
                 changes = await poolboy_k8s.create_object(resource_definition)

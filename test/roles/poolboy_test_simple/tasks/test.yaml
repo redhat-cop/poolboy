@@ -19,6 +19,7 @@
   - test-parameters-03.yaml
   - test-parameters-04.yaml
   - test-parameters-05.yaml
+  - test-requester-01.yaml
   - test-status-summary-01.yaml
   - test-auto-delete-01.yaml
   - test-auto-detach-01.yaml
