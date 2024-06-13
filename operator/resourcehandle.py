@@ -61,8 +61,8 @@ class ResourceHandle:
             if resource_handle:
                 return resource_handle
 
+            matched_resource_handles = []
             matched_resource_handle = None
-            matched_resource_handle_diff_count = None
             claim_status_resources = resource_claim.status_resources
 
             # Loop through unbound instances to find best match
@@ -119,66 +119,70 @@ class ResourceHandle:
                     # Match with (possibly empty) difference list
                     diff_count += len(diff_patch)
 
-                if not is_match:
-                    continue
-                if matched_resource_handle != None:
-                    if matched_resource_handle_diff_count < diff_count:
-                        continue
-                    if matched_resource_handle_diff_count == diff_count \
-                    and matched_resource_handle.creation_timestamp < resource_handle.creation_timestamp:
-                        continue
+                if is_match:
+                    matched_resource_handles.append((diff_count, resource_handle))
 
-                matched_resource_handle = resource_handle
-                matched_resource_handle_diff_count = diff_count
-
-            if not matched_resource_handle:
-                return None
-
-            patch = [
-                {
-                    "op": "add",
-                    "path": "/spec/resourceClaim",
-                    "value": {
-                        "apiVersion": Poolboy.operator_api_version,
-                        "kind": "ResourceClaim",
-                        "name": resource_claim.name,
-                        "namespace": resource_claim.namespace,
+            # Bind the oldest ResourceHandle with the smallest difference score
+            matched_resource_handles.sort(key=lambda item: f"{item[0]:09d} {item[1].creation_timestamp}")
+            for matched_resource_handle_item in matched_resource_handles:
+                matched_resource_handle = matched_resource_handle_item[1]
+                patch = [
+                    {
+                        "op": "add",
+                        "path": "/spec/resourceClaim",
+                        "value": {
+                            "apiVersion": Poolboy.operator_api_version,
+                            "kind": "ResourceClaim",
+                            "name": resource_claim.name,
+                            "namespace": resource_claim.namespace,
+                        }
                     }
-                }
-            ]
+                ]
 
-            # Add any additional resources to handle
-            for resource_index in range(len(matched_resource_handle.resources), len(resource_claim_resources)):
-                patch.append({
-                    "op": "add",
-                    "path": f"/spec/resources/{resource_index}",
-                    "value": {
-                        "provider": resource_claim_resources[resource_index]['provider'],
-                    },
-                })
+                # Add any additional resources to handle
+                for resource_index in range(len(matched_resource_handle.resources), len(resource_claim_resources)):
+                    patch.append({
+                        "op": "add",
+                        "path": f"/spec/resources/{resource_index}",
+                        "value": {
+                            "provider": resource_claim_resources[resource_index]['provider'],
+                        },
+                    })
 
-            # Set lifespan end from default on claim bind
-            lifespan_default = matched_resource_handle.get_lifespan_default(resource_claim)
-            if lifespan_default:
-                patch.append({
-                    "op": "add",
-                    "path": "/spec/lifespan/end",
-                    "value": (
-                        datetime.now(timezone.utc) + matched_resource_handle.get_lifespan_default_timedelta(resource_claim)
-                    ).strftime('%FT%TZ'),
-                })
+                # Set lifespan end from default on claim bind
+                lifespan_default = matched_resource_handle.get_lifespan_default(resource_claim)
+                if lifespan_default:
+                    patch.append({
+                        "op": "add",
+                        "path": "/spec/lifespan/end",
+                        "value": (
+                            datetime.now(timezone.utc) + matched_resource_handle.get_lifespan_default_timedelta(resource_claim)
+                        ).strftime('%FT%TZ'),
+                    })
 
-            definition = await Poolboy.custom_objects_api.patch_namespaced_custom_object(
-                group = Poolboy.operator_domain,
-                name = matched_resource_handle.name,
-                namespace = matched_resource_handle.namespace,
-                plural = 'resourcehandles',
-                version = Poolboy.operator_version,
-                _content_type = 'application/json-patch+json',
-                body = patch,
-            )
-            matched_resource_handle = ResourceHandle.__register_definition(definition=definition)
-            logger.info(f"Bound {matched_resource_handle} to {resource_claim}")
+                try:
+                    definition = await Poolboy.custom_objects_api.patch_namespaced_custom_object(
+                        group = Poolboy.operator_domain,
+                        name = matched_resource_handle.name,
+                        namespace = matched_resource_handle.namespace,
+                        plural = 'resourcehandles',
+                        version = Poolboy.operator_version,
+                        _content_type = 'application/json-patch+json',
+                        body = patch,
+                    )
+                except kubernetes_asyncio.client.exceptions.ApiException as exception:
+                    if exception.status == 404:
+                        logger.warning(f"Attempt to bind deleted {matched_resource_handle} to {resource_claim}")
+                        matched_resource_handle.__unregister()
+                        matched_resource_handle = None
+                    else:
+                        raise
+                matched_resource_handle = ResourceHandle.__register_definition(definition=definition)
+                logger.info(f"Bound {matched_resource_handle} to {resource_claim}")
+                break
+            else:
+                # No unbound resource handle matched
+                return None
 
         if matched_resource_handle.is_from_resource_pool:
             resource_pool = await resourcepool.ResourcePool.get(matched_resource_handle.resource_pool_name)
@@ -189,7 +193,6 @@ class ResourceHandle:
                     f"Unable to find ResourcePool {matched_resource_handle.resource_pool_name} for "
                     f"{matched_resource_handle} claimed by {resource_claim}"
                 )
-
         return matched_resource_handle
 
     @staticmethod
