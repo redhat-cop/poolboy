@@ -24,15 +24,15 @@ class ResourceClaim:
     instances = {}
     lock = asyncio.Lock()
 
-    @staticmethod
-    def __register_definition(definition: Mapping) -> ResourceClaimT:
+    @classmethod
+    def __register_definition(cls, definition: Mapping) -> ResourceClaimT:
         name = definition['metadata']['name']
         namespace = definition['metadata']['namespace']
-        resource_claim = ResourceClaim.instances.get((namespace, name))
+        resource_claim = cls.instances.get((namespace, name))
         if resource_claim:
             resource_claim.refresh_from_definition(definition=definition)
         else:
-            resource_claim = ResourceClaim(
+            resource_claim = cls(
                 annotations = definition['metadata'].get('annotations', {}),
                 labels = definition['metadata'].get('labels', {}),
                 meta = definition['metadata'],
@@ -42,22 +42,23 @@ class ResourceClaim:
                 status = definition.get('status', {}),
                 uid = definition['metadata']['uid'],
             )
-            ResourceClaim.instances[(namespace, name)] = resource_claim
+            cls.instances[(namespace, name)] = resource_claim
         return resource_claim
 
-    @staticmethod
-    async def get(name: str, namespace: str) -> ResourceClaimT:
-        async with ResourceClaim.lock:
-            resource_claim = ResourceClaim.instances.get((namespace, name))
+    @classmethod
+    async def get(cls, name: str, namespace: str) -> ResourceClaimT:
+        async with cls.lock:
+            resource_claim = cls.instances.get((namespace, name))
             if resource_claim:
                 return resource_claim
             definition = await Poolboy.custom_objects_api.get_namespaced_custom_object(
                 Poolboy.operator_domain, Poolboy.operator_version, namespace, 'resourceclaims', name
             )
-            return ResourceClaim.__register_definition(definition=definition)
+            return cls.__register_definition(definition=definition)
 
-    @staticmethod
+    @classmethod
     async def register(
+        cls,
         annotations: kopf.Annotations,
         labels: kopf.Labels,
         meta: kopf.Meta,
@@ -67,8 +68,8 @@ class ResourceClaim:
         status: kopf.Status,
         uid: str,
     ) -> ResourceClaimT:
-        async with ResourceClaim.lock:
-            resource_claim = ResourceClaim.instances.get((namespace, name))
+        async with cls.lock:
+            resource_claim = cls.instances.get((namespace, name))
             if resource_claim:
                 resource_claim.refresh(
                     annotations = annotations,
@@ -79,7 +80,7 @@ class ResourceClaim:
                     uid = uid,
                 )
             else:
-                resource_claim = ResourceClaim(
+                resource_claim = cls(
                     annotations = annotations,
                     labels = labels,
                     meta = meta,
@@ -89,20 +90,21 @@ class ResourceClaim:
                     status = status,
                     uid = uid,
                 )
-                ResourceClaim.instances[(namespace, name)] = resource_claim
+                cls.instances[(namespace, name)] = resource_claim
             return resource_claim
 
-    @staticmethod
+    @classmethod
     async def register_definition(
+        cls,
         definition: Mapping,
     ) -> ResourceClaimT:
-        async with ResourceClaim.lock:
-            return ResourceClaim.__register_definition(definition=definition)
+        async with cls.lock:
+            return cls.__register_definition(definition=definition)
 
-    @staticmethod
-    async def unregister(name: str, namespace: str) -> Optional[ResourceClaimT]:
-        async with ResourceClaim.lock:
-            return ResourceClaim.instances.pop((namespace, name), None)
+    @classmethod
+    async def unregister(cls, name: str, namespace: str) -> Optional[ResourceClaimT]:
+        async with cls.lock:
+            return cls.instances.pop((namespace, name), None)
 
     def __init__(self,
         annotations: Union[kopf.Annotations, Mapping],
@@ -927,7 +929,7 @@ class ResourceClaim:
             return self
         except kubernetes_asyncio.client.exceptions.ApiException as e:
             if e.status == 404:
-                ResourceClaim.unregister(name=self.name, namespace=self.namespace)
+                self.unregister(name=self.name, namespace=self.namespace)
                 return None
             else:
                 raise

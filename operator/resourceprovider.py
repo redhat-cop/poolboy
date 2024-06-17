@@ -118,22 +118,22 @@ class ResourceProvider:
     instances = {}
     lock = asyncio.Lock()
 
-    @staticmethod
-    def __register_definition(definition: Mapping) -> ResourceProviderT:
+    @classmethod
+    def __register_definition(cls, definition: Mapping) -> ResourceProviderT:
         name = definition['metadata']['name']
-        resource_provider = ResourceProvider.instances.get(name)
+        resource_provider = cls.instances.get(name)
         if resource_provider:
             resource_provider.definition = definition
             self.__init_resource_template_validator()
         else:
-            resource_provider = ResourceProvider(definition=definition)
-            ResourceProvider.instances[name] = resource_provider
+            resource_provider = cls(definition=definition)
+            cls.instances[name] = resource_provider
         return resource_provider
 
-    @staticmethod
-    def find_provider_by_template_match(template: Mapping) -> ResourceProviderT:
+    @classmethod
+    def find_provider_by_template_match(cls, template: Mapping) -> ResourceProviderT:
         provider_matches = []
-        for provider in ResourceProvider.instances.values():
+        for provider in cls.instances.values():
             if provider.is_match_for_template(template):
                 provider_matches.append(provider)
         if len(provider_matches) == 0:
@@ -143,20 +143,20 @@ class ResourceProvider:
         else:
             raise kopf.TemporaryError(f"Resource template matches multiple ResourceProviders", delay=600)
 
-    @staticmethod
-    async def get(name: str) -> ResourceProviderT:
-        async with ResourceProvider.lock:
-            resource_provider = ResourceProvider.instances.get(name)
+    @classmethod
+    async def get(cls, name: str) -> ResourceProviderT:
+        async with cls.lock:
+            resource_provider = cls.instances.get(name)
             if resource_provider:
                 return resource_provider
             definition = await Poolboy.custom_objects_api.get_cluster_custom_object(
                 Poolboy.operator_domain, Poolboy.operator_version, 'resourceproviders', name
             )
-            return ResourceProvider.__register_definition(definition=definition)
+            return cls.__register_definition(definition=definition)
 
-    @staticmethod
-    async def preload(logger: kopf.ObjectLogger) -> None:
-        async with ResourceProvider.lock:
+    @classmethod
+    async def preload(cls, logger: kopf.ObjectLogger) -> None:
+        async with cls.lock:
             _continue = None
             while True:
                 resource_provider_list = await Poolboy.custom_objects_api.list_namespaced_custom_object(
@@ -165,30 +165,30 @@ class ResourceProvider:
                     limit = 50,
                 )
                 for definition in resource_provider_list['items']:
-                    ResourceProvider.__register_definition(definition=definition)
+                    cls.__register_definition(definition=definition)
                 _continue = resource_provider_list['metadata'].get('continue')
                 if not _continue:
                     break
 
-    @staticmethod
-    async def register(definition: Mapping, logger: kopf.ObjectLogger) -> ResourceProviderT:
-        async with ResourceProvider.lock:
+    @classmethod
+    async def register(cls, definition: Mapping, logger: kopf.ObjectLogger) -> ResourceProviderT:
+        async with cls.lock:
             name = definition['metadata']['name']
-            resource_provider = ResourceProvider.instances.get(name)
+            resource_provider = cls.instances.get(name)
             if resource_provider:
                 resource_provider.__init__(definition=definition)
                 logger.info(f"Refreshed definition of ResourceProvider {name}")
             else:
-                resource_provider = ResourceProvider.__register_definition(definition=definition)
+                resource_provider = cls.__register_definition(definition=definition)
                 logger.info(f"Registered ResourceProvider {name}")
             return resource_provider
 
-    @staticmethod
-    async def unregister(name: str, logger: kopf.ObjectLogger) -> Optional[ResourceProviderT]:
-        async with ResourceProvider.lock:
-            if name in ResourceProvider.instances:
+    @classmethod
+    async def unregister(cls, name: str, logger: kopf.ObjectLogger) -> Optional[ResourceProviderT]:
+        async with cls.lock:
+            if name in cls.instances:
                 logger.info(f"Unregistered ResourceProvider {name}")
-                return ResourceProvider.instances.pop(name)
+                return cls.instances.pop(name)
 
     def __init__(self, definition: Mapping) -> None:
         self.meta = definition['metadata']
@@ -435,7 +435,7 @@ class ResourceProvider:
 
         resources = []
         for linked_resource_provider in self.linked_resource_providers:
-            resource_provider = await ResourceProvider.get(linked_resource_provider.name)
+            resource_provider = await self.get(linked_resource_provider.name)
             resources.extend(
                 await resource_provider.get_claim_resources(
                     resource_claim = resource_claim,

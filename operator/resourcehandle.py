@@ -29,14 +29,14 @@ class ResourceHandle:
     unbound_instances = {}
     lock = asyncio.Lock()
 
-    @staticmethod
-    def __register_definition(definition: Mapping) -> ResourceHandleT:
+    @classmethod
+    def __register_definition(cls, definition: Mapping) -> ResourceHandleT:
         name = definition['metadata']['name']
-        resource_handle = ResourceHandle.all_instances.get(name)
+        resource_handle = cls.all_instances.get(name)
         if resource_handle:
             resource_handle.refresh_from_definition(definition=definition)
         else:
-            resource_handle = ResourceHandle(
+            resource_handle = cls(
                 annotations = definition['metadata'].get('annotations', {}),
                 labels = definition['metadata'].get('labels', {}),
                 meta = definition['metadata'],
@@ -49,15 +49,16 @@ class ResourceHandle:
         resource_handle.__register()
         return resource_handle
 
-    @staticmethod
+    @classmethod
     async def bind_handle_to_claim(
+        cls,
         logger: kopf.ObjectLogger,
         resource_claim: ResourceClaimT,
         resource_claim_resources: List[Mapping],
     ) -> Optional[ResourceHandleT]:
-        async with ResourceHandle.lock:
+        async with cls.lock:
             # Check if there is already an assigned claim
-            resource_handle = ResourceHandle.bound_instances.get((resource_claim.namespace, resource_claim.name))
+            resource_handle = cls.bound_instances.get((resource_claim.namespace, resource_claim.name))
             if resource_handle:
                 return resource_handle
 
@@ -66,7 +67,7 @@ class ResourceHandle:
             claim_status_resources = resource_claim.status_resources
 
             # Loop through unbound instances to find best match
-            for resource_handle in ResourceHandle.unbound_instances.values():
+            for resource_handle in cls.unbound_instances.values():
                 # Honor explicit pool requests
                 if resource_claim.resource_pool_name \
                 and resource_claim.resource_pool_name != resource_handle.resource_pool_name:
@@ -170,7 +171,7 @@ class ResourceHandle:
                         _content_type = 'application/json-patch+json',
                         body = patch,
                     )
-                    matched_resource_handle = ResourceHandle.__register_definition(definition=definition)
+                    matched_resource_handle = cls.__register_definition(definition=definition)
                 except kubernetes_asyncio.client.exceptions.ApiException as exception:
                     if exception.status == 404:
                         logger.warning(f"Attempt to bind deleted {matched_resource_handle} to {resource_claim}")
@@ -196,8 +197,9 @@ class ResourceHandle:
                 )
         return matched_resource_handle
 
-    @staticmethod
+    @classmethod
     async def create_for_claim(
+        cls,
         logger: kopf.ObjectLogger,
         resource_claim: ResourceClaimT,
         resource_claim_resources: List[Mapping],
@@ -316,15 +318,16 @@ class ResourceHandle:
             plural = 'resourcehandles',
             version = Poolboy.operator_version,
         )
-        resource_handle = await ResourceHandle.register_definition(definition=definition)
+        resource_handle = await cls.register_definition(definition=definition)
         logger.info(
             f"Created ResourceHandle {resource_handle.name} for "
             f"ResourceClaim {resource_claim.name} in {resource_claim.namespace}"
         )
         return resource_handle
 
-    @staticmethod
+    @classmethod
     async def create_for_pool(
+        cls,
         logger: kopf.ObjectLogger,
         resource_pool: ResourcePoolT,
     ):
@@ -364,18 +367,19 @@ class ResourceHandle:
             plural = "resourcehandles",
             version = Poolboy.operator_version,
         )
-        resource_handle = await ResourceHandle.register_definition(definition=definition)
+        resource_handle = await cls.register_definition(definition=definition)
         logger.info(f"Created ResourceHandle {resource_handle.name} for ResourcePool {resource_pool.name}")
         return resource_handle
 
-    @staticmethod
+    @classmethod
     async def delete_unbound_handles_for_pool(
+        cls,
         logger: kopf.ObjectLogger,
         resource_pool: ResourcePoolT,
     ) -> List[ResourceHandleT]:
-        async with ResourceHandle.lock:
+        async with cls.lock:
             resource_handles = []
-            for resource_handle in list(ResourceHandle.unbound_instances.values()):
+            for resource_handle in list(cls.unbound_instances.values()):
                 if resource_handle.resource_pool_name == resource_pool.name \
                 and resource_handle.resource_pool_namespace == resource_pool.namespace:
                     logger.info(
@@ -386,10 +390,10 @@ class ResourceHandle:
                     await resource_handle.delete()
             return resource_handles
 
-    @staticmethod
-    async def get(name: str) -> Optional[ResourceHandleT]:
-        async with ResourceHandle.lock:
-            resource_handle = ResourceHandle.all_instances.get(name)
+    @classmethod
+    async def get(cls, name: str) -> Optional[ResourceHandleT]:
+        async with cls.lock:
+            resource_handle = cls.all_instances.get(name)
             if resource_handle:
                 return resource_handle
             definition = await Poolboy.custom_objects_api.get_namespaced_custom_object(
@@ -397,14 +401,18 @@ class ResourceHandle:
             )
             if 'deletionTimestamp' in definition['metadata']:
                 return None
-            return ResourceHandle.__register_definition(definition=definition)
+            return cls.__register_definition(definition=definition)
 
-    @staticmethod
-    def get_from_cache(name: str) -> Optional[ResourceHandleT]:
-        return ResourceHandle.all_instances.get(name)
+    @classmethod
+    def get_from_cache(cls, name: str) -> Optional[ResourceHandleT]:
+        return cls.all_instances.get(name)
 
-    @staticmethod
-    async def get_unbound_handles_for_pool(resource_pool: ResourcePoolT, logger) -> List[ResourceHandleT]:
+    @classmethod
+    async def get_unbound_handles_for_pool(
+        cls,
+        resource_pool: ResourcePoolT,
+        logger: kopf.ObjectLogger,
+    ) -> List[ResourceHandleT]:
         async with ResourceHandle.lock:
             resource_handles = []
             for resource_handle in ResourceHandle.unbound_instances.values():
@@ -413,8 +421,8 @@ class ResourceHandle:
                     resource_handles.append(resource_handle)
             return resource_handles
 
-    @staticmethod
-    async def preload(logger: kopf.ObjectLogger) -> None:
+    @classmethod
+    async def preload(cls, logger: kopf.ObjectLogger) -> None:
         async with ResourceHandle.lock:
             _continue = None
             while True:
@@ -424,13 +432,14 @@ class ResourceHandle:
                     limit = 50,
                 )
                 for definition in resource_handle_list['items']:
-                    ResourceHandle.__register_definition(definition=definition)
+                    cls.__register_definition(definition=definition)
                 _continue = resource_handle_list['metadata'].get('continue')
                 if not _continue:
                     break
 
-    @staticmethod
+    @classmethod
     async def register(
+        cls,
         annotations: kopf.Annotations,
         labels: kopf.Labels,
         meta: kopf.Meta,
@@ -440,8 +449,8 @@ class ResourceHandle:
         status: kopf.Status,
         uid: str,
     ) -> ResourceHandleT:
-        async with ResourceHandle.lock:
-            resource_handle = ResourceHandle.all_instances.get(name)
+        async with cls.lock:
+            resource_handle = cls.all_instances.get(name)
             if resource_handle:
                 resource_handle.refresh(
                     annotations = annotations,
@@ -452,7 +461,7 @@ class ResourceHandle:
                     uid = uid,
                 )
             else:
-                resource_handle = ResourceHandle(
+                resource_handle = cls(
                     annotations = annotations,
                     labels = labels,
                     meta = meta,
@@ -465,15 +474,15 @@ class ResourceHandle:
             resource_handle.__register()
             return resource_handle
 
-    @staticmethod
-    async def register_definition(definition: Mapping) -> ResourceHandleT:
-        async with ResourceHandle.lock:
-            return ResourceHandle.__register_definition(definition)
+    @classmethod
+    async def register_definition(cls, definition: Mapping) -> ResourceHandleT:
+        async with cls.lock:
+            return cls.__register_definition(definition)
 
-    @staticmethod
-    async def unregister(name: str) -> Optional[ResourceHandleT]:
-        async with ResourceHandle.lock:
-            resource_handle = ResourceHandle.all_instances.pop(name, None)
+    @classmethod
+    async def unregister(cls, name: str) -> Optional[ResourceHandleT]:
+        async with cls.lock:
+            resource_handle = cls.all_instances.pop(name, None)
             if resource_handle:
                 resource_handle.__unregister()
                 return resource_handle
@@ -508,21 +517,21 @@ class ResourceHandle:
         Add ResourceHandle to register of bound or unbound instances.
         This method must be called with the ResourceHandle.lock held.
         """
-        ResourceHandle.all_instances[self.name] = self
+        self.all_instances[self.name] = self
         if self.is_bound:
-            ResourceHandle.bound_instances[(
+            self.bound_instances[(
                 self.resource_claim_namespace,
                 self.resource_claim_name
             )] = self
-            ResourceHandle.unbound_instances.pop(self.name, None)
+            self.unbound_instances.pop(self.name, None)
         elif not self.is_deleting:
-            ResourceHandle.unbound_instances[self.name] = self
+            self.unbound_instances[self.name] = self
 
     def __unregister(self) -> None:
-        ResourceHandle.all_instances.pop(self.name, None)
-        ResourceHandle.unbound_instances.pop(self.name, None)
+        self.all_instances.pop(self.name, None)
+        self.unbound_instances.pop(self.name, None)
         if self.is_bound:
-            ResourceHandle.bound_instances.pop(
+            self.bound_instances.pop(
                 (self.resource_claim_namespace, self.resource_claim_name),
                 None,
             )
@@ -1047,7 +1056,7 @@ class ResourceHandle:
             return self
         except kubernetes_asyncio.client.exceptions.ApiException as e:
             if e.status == 404:
-                ResourceHandle.unregister(name=self.name)
+                self.unregister(name=self.name)
                 return None
             else:
                 raise

@@ -17,13 +17,14 @@ class ResourcePool:
     instances = {}
     lock = asyncio.Lock()
 
-    @staticmethod
-    async def get(name: str) -> ResourcePoolT:
-        async with ResourcePool.lock:
-            return ResourcePool.instances.get(name)
+    @classmethod
+    async def get(cls, name: str) -> ResourcePoolT:
+        async with cls.lock:
+            return cls.instances.get(name)
 
-    @staticmethod
+    @classmethod
     async def register(
+        cls,
         annotations: kopf.Annotations,
         labels: kopf.Labels,
         meta: kopf.Meta,
@@ -33,8 +34,8 @@ class ResourcePool:
         status: kopf.Status,
         uid: str,
     ) -> ResourcePoolT:
-        async with ResourcePool.lock:
-            resource_pool = ResourcePool.instances.get(name)
+        async with cls.lock:
+            resource_pool = cls.instances.get(name)
             if resource_pool:
                 resource_pool.refresh(
                     annotations = annotations,
@@ -45,7 +46,7 @@ class ResourcePool:
                     uid = uid,
                 )
             else:
-                resource_pool = ResourcePool(
+                resource_pool = cls(
                     annotations = annotations,
                     labels = labels,
                     meta = meta,
@@ -58,10 +59,10 @@ class ResourcePool:
             resource_pool.__register()
             return resource_pool
 
-    @staticmethod
-    async def unregister(name: str) -> Optional[ResourcePoolT]:
-        async with ResourcePool.lock:
-            return ResourcePool.instances.pop(name, None)
+    @classmethod
+    async def unregister(cls, name: str) -> Optional[ResourcePoolT]:
+        async with cls.lock:
+            return cls.instances.pop(name, None)
 
     def __init__(self,
         annotations: kopf.Annotations,
@@ -141,10 +142,10 @@ class ResourcePool:
         return self.spec.get('vars', {})
 
     def __register(self) -> None:
-        ResourcePool.instances[self.name] = self
+        self.instances[self.name] = self
 
     def __unregister(self) -> None:
-        ResourcePool.instances.pop(self.name, None)
+        self.instances.pop(self.name, None)
 
     def refresh(self,
         annotations: kopf.Annotations,
