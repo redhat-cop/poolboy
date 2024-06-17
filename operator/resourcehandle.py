@@ -16,6 +16,7 @@ import resourcepool
 import resourceprovider
 import resourcewatcher
 
+from kopfobject import KopfObject
 from poolboy import Poolboy
 from poolboy_templating import recursive_process_template_strings, seconds_to_interval
 
@@ -23,11 +24,16 @@ ResourceClaimT = TypeVar('ResourceClaimT', bound='ResourceClaim')
 ResourceHandleT = TypeVar('ResourceHandleT', bound='ResourceHandle')
 ResourcePoolT = TypeVar('ResourcePoolT', bound='ResourcePool')
 
-class ResourceHandle:
+class ResourceHandle(KopfObject):
+    api_group = Poolboy.operator_domain
+    api_version = Poolboy.operator_version
+    kind = "ResourceHandle"
+    plural = "resourcehandles"
+
     all_instances = {}
     bound_instances = {}
     unbound_instances = {}
-    lock = asyncio.Lock()
+    class_lock = asyncio.Lock()
 
     @classmethod
     def __register_definition(cls, definition: Mapping) -> ResourceHandleT:
@@ -56,7 +62,7 @@ class ResourceHandle:
         resource_claim: ResourceClaimT,
         resource_claim_resources: List[Mapping],
     ) -> Optional[ResourceHandleT]:
-        async with cls.lock:
+        async with cls.class_lock:
             # Check if there is already an assigned claim
             resource_handle = cls.bound_instances.get((resource_claim.namespace, resource_claim.name))
             if resource_handle:
@@ -162,16 +168,8 @@ class ResourceHandle:
                     })
 
                 try:
-                    definition = await Poolboy.custom_objects_api.patch_namespaced_custom_object(
-                        group = Poolboy.operator_domain,
-                        name = matched_resource_handle.name,
-                        namespace = matched_resource_handle.namespace,
-                        plural = 'resourcehandles',
-                        version = Poolboy.operator_version,
-                        _content_type = 'application/json-patch+json',
-                        body = patch,
-                    )
-                    matched_resource_handle = cls.__register_definition(definition=definition)
+                    await matched_resource_handle.json_patch(patch)
+                    matched_resource_handle.__register()
                 except kubernetes_asyncio.client.exceptions.ApiException as exception:
                     if exception.status == 404:
                         logger.warning(f"Attempt to bind deleted {matched_resource_handle} to {resource_claim}")
@@ -342,7 +340,7 @@ class ResourceHandle:
                 },
             },
             "spec": {
-                "resourcePool": resource_pool.ref,
+                "resourcePool": resource_pool.reference,
                 "resources": resource_pool.resources,
                 "vars": resource_pool.vars,
             }
@@ -377,7 +375,7 @@ class ResourceHandle:
         logger: kopf.ObjectLogger,
         resource_pool: ResourcePoolT,
     ) -> List[ResourceHandleT]:
-        async with cls.lock:
+        async with cls.class_lock:
             resource_handles = []
             for resource_handle in list(cls.unbound_instances.values()):
                 if resource_handle.resource_pool_name == resource_pool.name \
@@ -392,7 +390,7 @@ class ResourceHandle:
 
     @classmethod
     async def get(cls, name: str) -> Optional[ResourceHandleT]:
-        async with cls.lock:
+        async with cls.class_lock:
             resource_handle = cls.all_instances.get(name)
             if resource_handle:
                 return resource_handle
@@ -413,7 +411,7 @@ class ResourceHandle:
         resource_pool: ResourcePoolT,
         logger: kopf.ObjectLogger,
     ) -> List[ResourceHandleT]:
-        async with ResourceHandle.lock:
+        async with cls.class_lock:
             resource_handles = []
             for resource_handle in ResourceHandle.unbound_instances.values():
                 if resource_handle.resource_pool_name == resource_pool.name \
@@ -423,7 +421,7 @@ class ResourceHandle:
 
     @classmethod
     async def preload(cls, logger: kopf.ObjectLogger) -> None:
-        async with ResourceHandle.lock:
+        async with cls.class_lock:
             _continue = None
             while True:
                 resource_handle_list = await Poolboy.custom_objects_api.list_namespaced_custom_object(
@@ -449,7 +447,7 @@ class ResourceHandle:
         status: kopf.Status,
         uid: str,
     ) -> ResourceHandleT:
-        async with cls.lock:
+        async with cls.class_lock:
             resource_handle = cls.all_instances.get(name)
             if resource_handle:
                 resource_handle.refresh(
@@ -476,25 +474,25 @@ class ResourceHandle:
 
     @classmethod
     async def register_definition(cls, definition: Mapping) -> ResourceHandleT:
-        async with cls.lock:
+        async with cls.class_lock:
             return cls.__register_definition(definition)
 
     @classmethod
     async def unregister(cls, name: str) -> Optional[ResourceHandleT]:
-        async with cls.lock:
+        async with cls.class_lock:
             resource_handle = cls.all_instances.pop(name, None)
             if resource_handle:
                 resource_handle.__unregister()
                 return resource_handle
 
     def __init__(self,
-        annotations: kopf.Annotations,
-        labels: kopf.Labels,
-        meta: kopf.Meta,
+        annotations: Union[kopf.Annotations, Mapping],
+        labels: Union[kopf.Labels, Mapping],
+        meta: Union[kopf.Meta, Mapping],
         name: str,
         namespace: str,
-        spec: kopf.Spec,
-        status: kopf.Status,
+        spec: Union[kopf.Spec, Mapping],
+        status: Union[kopf.Status, Mapping],
         uid: str,
     ):
         self.annotations = annotations
@@ -535,18 +533,6 @@ class ResourceHandle:
                 (self.resource_claim_namespace, self.resource_claim_name),
                 None,
             )
-
-    @property
-    def creation_datetime(self):
-        return datetime.strptime(self.creation_timestamp, "%Y-%m-%dT%H:%M:%S%z")
-
-    @property
-    def creation_timestamp(self) -> str:
-        return self.meta['creationTimestamp']
-
-    @property
-    def deletion_timestamp(self) -> str:
-        return self.meta.get('deletionTimestamp')
 
     @property
     def guid(self) -> str:
@@ -597,19 +583,6 @@ class ResourceHandle:
         lifespan = self.spec.get('lifespan')
         if lifespan:
             return lifespan.get('end')
-
-    @property
-    def metadata(self) -> Mapping:
-        return self.meta
-
-    @property
-    def reference(self) -> Mapping:
-        return {
-            "apiVersion": Poolboy.operator_api_version,
-            "kind": "ResourceHandle",
-            "name": self.name,
-            "namespace": self.namespace,
-        }
 
     @property
     def resource_claim_name(self) -> Optional[str]:
@@ -700,42 +673,6 @@ class ResourceHandle:
             return relative_maximum_end
         else:
             return maximum_end
-
-    def refresh(self,
-        annotations: kopf.Annotations,
-        labels: kopf.Labels,
-        meta: kopf.Meta,
-        spec: kopf.Spec,
-        status: kopf.Status,
-        uid: str,
-    ) -> None:
-        self.annotations = annotations
-        self.labels = labels
-        self.meta = meta
-        self.spec = spec
-        self.status = status
-        self.uid = uid
-
-    def refresh_from_definition(self, definition: Mapping) -> None:
-        self.annotations = definition['metadata'].get('annotations', {})
-        self.labels = definition['metadata'].get('labels', {})
-        self.meta = definition['metadata']
-        self.spec = definition['spec']
-        self.status = definition.get('status', {})
-        self.uid = definition['metadata']['uid']
-
-    async def delete(self):
-        try:
-            await Poolboy.custom_objects_api.delete_namespaced_custom_object(
-                group = Poolboy.operator_domain,
-                name = self.name,
-                namespace = self.namespace,
-                plural = 'resourcehandles',
-                version = Poolboy.operator_version,
-            )
-        except kubernetes_asyncio.client.exceptions.ApiException as e:
-            if e.status != 404:
-                raise
 
     async def get_resource_claim(self) -> Optional[ResourceClaimT]:
         if not self.is_bound:
@@ -1028,16 +965,7 @@ class ResourceHandle:
                     resources_to_create.append(resource_definition)
 
             if patch:
-                definition = await Poolboy.custom_objects_api.patch_namespaced_custom_object(
-                    group = Poolboy.operator_domain,
-                    name = self.name,
-                    namespace = self.namespace,
-                    plural = 'resourcehandles',
-                    version = Poolboy.operator_version,
-                    _content_type = 'application/json-patch+json',
-                    body = patch,
-                )
-                self.refresh_from_definition(definition)
+                await self.json_patch(patch)
 
             if resource_claim:
                 await resource_claim.update_status_from_handle(logger=logger, resource_handle=self)

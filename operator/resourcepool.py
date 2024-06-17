@@ -8,18 +8,24 @@ from typing import List, Mapping, Optional, TypeVar
 
 import resourcehandle
 
+from kopfobject import KopfObject
 from poolboy import Poolboy
 
 ResourceHandleT = TypeVar('ResourceHandleT', bound='ResourceHandle')
 ResourcePoolT = TypeVar('ResourcePoolT', bound='ResourcePool')
 
-class ResourcePool:
+class ResourcePool(KopfObject):
+    api_group = Poolboy.operator_domain
+    api_version = Poolboy.operator_version
+    kind = "ResourcePool"
+    plural = "resourcepools"
+
     instances = {}
-    lock = asyncio.Lock()
+    class_lock = asyncio.Lock()
 
     @classmethod
     async def get(cls, name: str) -> ResourcePoolT:
-        async with cls.lock:
+        async with cls.class_lock:
             return cls.instances.get(name)
 
     @classmethod
@@ -34,7 +40,7 @@ class ResourcePool:
         status: kopf.Status,
         uid: str,
     ) -> ResourcePoolT:
-        async with cls.lock:
+        async with cls.class_lock:
             resource_pool = cls.instances.get(name)
             if resource_pool:
                 resource_pool.refresh(
@@ -61,28 +67,8 @@ class ResourcePool:
 
     @classmethod
     async def unregister(cls, name: str) -> Optional[ResourcePoolT]:
-        async with cls.lock:
+        async with cls.class_lock:
             return cls.instances.pop(name, None)
-
-    def __init__(self,
-        annotations: kopf.Annotations,
-        labels: kopf.Labels,
-        meta: kopf.Meta,
-        name: str,
-        namespace: str,
-        spec: kopf.Spec,
-        status: kopf.Status,
-        uid: str,
-    ):
-        self.annotations = annotations
-        self.labels = labels
-        self.lock = asyncio.Lock()
-        self.meta = meta
-        self.name = name
-        self.namespace = namespace
-        self.spec = spec
-        self.status = status
-        self.uid = uid
 
     @property
     def has_lifespan(self) -> bool:
@@ -117,21 +103,8 @@ class ResourcePool:
             return timedelta(seconds=seconds)
 
     @property
-    def metadata(self) -> Mapping:
-        return self.meta
-
-    @property
     def min_available(self) -> int:
         return self.spec.get('minAvailable', 0)
-
-    @property
-    def ref(self) -> Mapping:
-        return {
-            "apiVersion": Poolboy.operator_api_version,
-            "kind": "ResourcePool",
-            "name": self.name,
-            "namespace": self.namespace,
-        }
 
     @property
     def resources(self) -> List[Mapping]:
@@ -146,21 +119,6 @@ class ResourcePool:
 
     def __unregister(self) -> None:
         self.instances.pop(self.name, None)
-
-    def refresh(self,
-        annotations: kopf.Annotations,
-        labels: kopf.Labels,
-        meta: kopf.Meta,
-        spec: kopf.Spec,
-        status: kopf.Status,
-        uid: str,
-    ) -> None:
-        self.annotations = annotations
-        self.labels = labels
-        self.meta = meta
-        self.spec = spec
-        self.status = status
-        self.uid = uid
 
     async def handle_delete(self, logger: kopf.ObjectLogger):
         await resourcehandle.ResourceHandle.delete_unbound_handles_for_pool(logger=logger, resource_pool=self)
