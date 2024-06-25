@@ -7,12 +7,14 @@ from datetime import timedelta
 from typing import List, Mapping, Optional, TypeVar
 
 import resourcehandle
+import resourceprovider
 
 from kopfobject import KopfObject
 from poolboy import Poolboy
 
 ResourceHandleT = TypeVar('ResourceHandleT', bound='ResourceHandle')
 ResourcePoolT = TypeVar('ResourcePoolT', bound='ResourcePool')
+ResourceProviderT = TypeVar('ResourceProviderT', bound='ResourceProvider')
 
 class ResourcePool(KopfObject):
     api_group = Poolboy.operator_domain
@@ -75,6 +77,11 @@ class ResourcePool(KopfObject):
         return 'lifespan' in self.spec
 
     @property
+    def has_resource_provider(self) -> bool:
+        """Return whether ResourceHandles for this pool are managed by a ResourceProvider."""
+        return 'provider' in self.spec
+
+    @property
     def lifespan_default(self) -> int:
         return self.spec.get('lifespan', {}).get('default')
 
@@ -107,6 +114,10 @@ class ResourcePool(KopfObject):
         return self.spec.get('minAvailable', 0)
 
     @property
+    def resource_provider_name(self) -> Optional[str]:
+        return self.spec.get('provider', {}).get('name')
+
+    @property
     def resources(self) -> List[Mapping]:
         return self.spec['resources']
 
@@ -119,6 +130,10 @@ class ResourcePool(KopfObject):
 
     def __unregister(self) -> None:
         self.instances.pop(self.name, None)
+
+    async def get_resource_provider(self) -> ResourceProviderT:
+        """Return ResourceProvider configured to manage ResourceHandle."""
+        return await resourceprovider.ResourceProvider.get(self.resource_provider_name)
 
     async def handle_delete(self, logger: kopf.ObjectLogger):
         await resourcehandle.ResourceHandle.delete_unbound_handles_for_pool(logger=logger, resource_pool=self)

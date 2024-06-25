@@ -80,7 +80,7 @@
     status_patch:
       approval:
         state: approved
-  
+
 - name: Verify handling of ResourceClaim test-approval-01
   kubernetes.core.k8s_info:
     api_version: "{{ poolboy_domain }}/v1"

@@ -48,8 +48,6 @@ spec:
           spec:
             description: ResourcePool specification
             type: object
-            required:
-            - resources
             properties:
               lifespan:
                 description: >-
@@ -90,6 +88,24 @@ spec:
                   ResourcePool.
                 type: integer
                 minimum: 0
+              provider:
+                description: >-
+                  ResourceProvider specification used to generate resources rather than
+                  explicitly list spec.
+                  Mutually exclusive with resources.
+                type: object
+                required:
+                - name
+                properties:
+                  name:
+                    description: >-
+                      ResourceProvider name.
+                    type: string
+                  parameterValues:
+                    description: >-
+                      Parameter values used with the ResourceProvider to generate resources list.
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
               resources:
                 description: >-
                   Resources description to apply to ResourceHandles for the pool.

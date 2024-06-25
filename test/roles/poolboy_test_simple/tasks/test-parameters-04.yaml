@@ -58,7 +58,7 @@
           allowedOps:
           - add
           - replace
- 
+
 - name: Create ResourceClaim test-parameters-04-a
   kubernetes.core.k8s:
     definition:

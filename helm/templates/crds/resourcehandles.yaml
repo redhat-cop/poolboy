@@ -57,8 +57,6 @@ spec:
           spec:
             description: ResourceHandle specification
             type: object
-            required:
-            - resources
             properties:
               lifespan:
                 description: >-

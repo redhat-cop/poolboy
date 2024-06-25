@@ -47,8 +47,6 @@ spec:
           spec:
             description: ResourcePool specification
             type: object
-            required:
-            - resources
             properties:
               lifespan:
                 description: >-

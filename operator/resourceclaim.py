@@ -223,10 +223,6 @@ class ResourceClaim(KopfObject):
         return self.status.get('provider', {}).get('parameterValues', {})
 
     @property
-    def provider_name(self) -> Optional[str]:
-        return 
-
-    @property
     def requested_lifespan_end_datetime(self):
         timestamp = self.requested_lifespan_end_timestamp
         if timestamp:
@@ -569,7 +565,7 @@ class ResourceClaim(KopfObject):
     async def get_resources_from_provider(self, resource_handle: Optional[ResourceHandleT]=None) -> List[Mapping]:
         """Return resources for this claim as defined by ResourceProvider"""
         resource_provider = await self.get_resource_provider()
-        return await resource_provider.get_claim_resources(
+        return await resource_provider.get_resources(
             resource_claim = self,
             resource_handle = resource_handle,
         )
@@ -741,6 +737,22 @@ class ResourceClaim(KopfObject):
         resource_handle: Optional[ResourceHandleT],
     ) -> None:
         patch = []
+
+        # Ensure ResourceHandle provider matches ResourceClaim
+        if self.has_resource_provider:
+            if resource_handle.spec.get('provider') != self.spec['provider']:
+                logger.info(f"Setting provider on {resource_handle}")
+                patch.append({
+                    "op": "add",
+                    "path": "/spec/provider",
+                    "value": self.spec['provider']
+                })
+        elif resource_handle.has_resource_provider:
+            logger.info(f"Removing provider from {resource_handle}")
+            patch.append({
+                "op": "remove",
+                "path": "/spec/provider",
+            })
 
         # Add any new resources from claim to handle
         for resource_index in range(len(resource_handle.resources), len(resource_claim_resources)):
@@ -977,7 +989,7 @@ class ResourceClaim(KopfObject):
             }
 
             if 'resources' not in self.status:
-                resources = await resource_provider.get_claim_resources(
+                resources = await resource_provider.get_resources(
                     parameter_values = parameter_values,
                     resource_claim = self,
                 )
@@ -1007,7 +1019,11 @@ class ResourceClaim(KopfObject):
 
         await self.json_patch_status(patch)
 
-    async def update_resource_in_status(self, index, state):
+    async def update_resource_in_status(self,
+        index: int,
+        logger: kopf.ObjectLogger,
+        state: Mapping,
+    ):
         patch = []
         if self.status_resources[index].get('state') != state:
             patch.append({
@@ -1020,13 +1036,19 @@ class ResourceClaim(KopfObject):
             resource_provider = await self.get_resource_provider()
             if resource_provider.status_summary_template:
                 self.status_resources[index]['state'] = state
-                status_summary = resource_provider.make_status_summary(self)
-                if status_summary != self.status.get('summary'):
-                    patch.append({
-                        "op": "add",
-                        "path": "/status/summary",
-                        "value": status_summary,
-                    })
+                try:
+                    status_summary = resource_provider.make_status_summary(
+                        resource_claim=self,
+                        resources=self.status_resources,
+                    )
+                    if status_summary != self.status.get('summary'):
+                        patch.append({
+                            "op": "add",
+                            "path": "/status/summary",
+                            "value": status_summary,
+                        })
+                except Exception:
+                    logger.exception(f"Failed to generate status summary for {self}")
 
         if patch:
             await self.json_patch_status(patch)

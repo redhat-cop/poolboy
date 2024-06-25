@@ -23,6 +23,7 @@ from poolboy_templating import recursive_process_template_strings, seconds_to_in
 ResourceClaimT = TypeVar('ResourceClaimT', bound='ResourceClaim')
 ResourceHandleT = TypeVar('ResourceHandleT', bound='ResourceHandle')
 ResourcePoolT = TypeVar('ResourcePoolT', bound='ResourcePool')
+ResourceProviderT = TypeVar('ResourceProviderT', bound='ResourceProvider')
 
 class ResourceHandle(KopfObject):
     api_group = Poolboy.operator_domain
@@ -196,51 +197,11 @@ class ResourceHandle(KopfObject):
         return matched_resource_handle
 
     @classmethod
-    async def create_for_claim(
-        cls,
+    async def create_for_claim(cls,
         logger: kopf.ObjectLogger,
         resource_claim: ResourceClaimT,
         resource_claim_resources: List[Mapping],
     ):
-        resource_providers = await resource_claim.get_resource_providers(resource_claim_resources)
-        vars_ = {}
-        resources = []
-        lifespan_default_timedelta = None
-        lifespan_maximum = None
-        lifespan_maximum_timedelta = None
-        lifespan_relative_maximum = None
-        lifespan_relative_maximum_timedelta = None
-        for i, claim_resource in enumerate(resource_claim_resources):
-            provider = resource_providers[i]
-            vars_.update(provider.vars)
-
-            provider_lifespan_default_timedelta = provider.get_lifespan_default_timedelta(resource_claim)
-            if provider_lifespan_default_timedelta:
-                if not lifespan_default_timedelta \
-                or provider_lifespan_default_timedelta < lifespan_default_timedelta:
-                    lifespan_default_timedelta = provider_lifespan_default_timedelta
-
-            provider_lifespan_maximum_timedelta = provider.get_lifespan_maximum_timedelta(resource_claim)
-            if provider_lifespan_maximum_timedelta:
-                if not lifespan_maximum_timedelta \
-                or provider_lifespan_maximum_timedelta < lifespan_maximum_timedelta:
-                    lifespan_maximum = provider.lifespan_maximum
-                    lifespan_maximum_timedelta = provider_lifespan_maximum_timedelta
-
-            provider_lifespan_relative_maximum_timedelta = provider.get_lifespan_relative_maximum_timedelta(resource_claim)
-            if provider_lifespan_relative_maximum_timedelta:
-                if not lifespan_relative_maximum_timedelta \
-                or provider_lifespan_relative_maximum_timedelta < lifespan_relative_maximum_timedelta:
-                    lifespan_relative_maximum = provider.lifespan_relative_maximum
-                    lifespan_relative_maximum_timedelta = provider_lifespan_relative_maximum_timedelta
-
-            resources_item = {"provider": provider.as_reference()}
-            if 'name' in claim_resource:
-                resources_item['name'] = claim_resource['name']
-            if 'template' in claim_resource:
-                resources_item['template'] = claim_resource['template']
-            resources.append(resources_item)
-
         definition = {
             'apiVersion': Poolboy.operator_api_version,
             'kind': 'ResourceHandle',
@@ -259,11 +220,61 @@ class ResourceHandle(KopfObject):
                     'name': resource_claim.name,
                     'namespace': resource_claim.namespace
                 },
-                'resources': resources,
-                'vars': vars_,
             }
         }
 
+        resources = []
+        lifespan_default_timedelta = None
+        lifespan_maximum = None
+        lifespan_maximum_timedelta = None
+        lifespan_relative_maximum = None
+        lifespan_relative_maximum_timedelta = None
+        if resource_claim.has_resource_provider:
+            resource_provider = await resource_claim.get_resource_provider()
+            definition['spec']['resources'] = resource_claim_resources
+            definition['spec']['provider'] = resource_claim.spec['provider']
+            lifespan_default_timedelta = resource_provider.get_lifespan_default_timedelta(resource_claim)
+            lifespan_maximum = resource_provider.lifespan_maximum
+            lifespan_maximum_timedelta = resource_provider.get_lifespan_maximum_timedelta(resource_claim)
+            lifespan_relative_maximum = resource_provider.lifespan_relative_maximum
+            lifespan_relative_maximum_timedelta = resource_provider.get_lifespan_maximum_timedelta(resource_claim)
+        else:
+            vars_ = {}
+
+            resource_providers = await resource_claim.get_resource_providers(resource_claim_resources)
+            for i, claim_resource in enumerate(resource_claim_resources):
+                provider = resource_providers[i]
+                vars_.update(provider.vars)
+
+                provider_lifespan_default_timedelta = provider.get_lifespan_default_timedelta(resource_claim)
+                if provider_lifespan_default_timedelta:
+                    if not lifespan_default_timedelta \
+                    or provider_lifespan_default_timedelta < lifespan_default_timedelta:
+                        lifespan_default_timedelta = provider_lifespan_default_timedelta
+
+                provider_lifespan_maximum_timedelta = provider.get_lifespan_maximum_timedelta(resource_claim)
+                if provider_lifespan_maximum_timedelta:
+                    if not lifespan_maximum_timedelta \
+                    or provider_lifespan_maximum_timedelta < lifespan_maximum_timedelta:
+                        lifespan_maximum = provider.lifespan_maximum
+                        lifespan_maximum_timedelta = provider_lifespan_maximum_timedelta
+
+                provider_lifespan_relative_maximum_timedelta = provider.get_lifespan_relative_maximum_timedelta(resource_claim)
+                if provider_lifespan_relative_maximum_timedelta:
+                    if not lifespan_relative_maximum_timedelta \
+                    or provider_lifespan_relative_maximum_timedelta < lifespan_relative_maximum_timedelta:
+                        lifespan_relative_maximum = provider.lifespan_relative_maximum
+                        lifespan_relative_maximum_timedelta = provider_lifespan_relative_maximum_timedelta
+
+                resources_item = {"provider": provider.as_reference()}
+                if 'name' in claim_resource:
+                    resources_item['name'] = claim_resource['name']
+                if 'template' in claim_resource:
+                    resources_item['template'] = claim_resource['template']
+                resources.append(resources_item)
+
+            definition['spec']['resources'] = resources
+            definition['spec']['vars'] = vars_
 
         lifespan_end_datetime = None
         lifespan_start_datetime = datetime.now(timezone.utc)
@@ -341,10 +352,28 @@ class ResourceHandle(KopfObject):
             },
             "spec": {
                 "resourcePool": resource_pool.reference,
-                "resources": resource_pool.resources,
                 "vars": resource_pool.vars,
             }
         }
+
+        if resource_pool.has_resource_provider:
+            definition['spec']['provider'] = resource_pool.spec['provider']
+            resource_provider = await resource_pool.get_resource_provider()
+            if resource_provider.has_lifespan:
+                definition['spec']['lifespan'] = {}
+                if resource_provider.lifespan_default:
+                    definition['spec']['lifespan']['default'] = resource_provider.lifespan_default
+                if resource_provider.lifespan_maximum:
+                    definition['spec']['lifespan']['maximum'] = resource_provider.lifespan_maximum
+                if resource_provider.lifespan_relative_maximum:
+                    definition['spec']['lifespan']['maximum'] = resource_provider.lifespan_relative_maximum
+                if resource_provider.lifespan_unclaimed:
+                    definition['spec']['lifespan']['end'] = (
+                        datetime.now(timezone.utc) + resource_provider.lifespan_unclaimed_timedelta
+                    ).strftime("%FT%TZ")
+        else:
+            definition['spec']['resources'] = resource_pool.resources
+
         if resource_pool.has_lifespan:
             definition['spec']['lifespan'] = {}
             if resource_pool.lifespan_default:
@@ -504,8 +533,6 @@ class ResourceHandle(KopfObject):
         self.spec = spec
         self.status = status
         self.uid = uid
-        self.resource_states = []
-        self.resource_refresh_datetime = []
 
     def __str__(self) -> str:
         return f"ResourceHandle {self.name}"
@@ -550,6 +577,11 @@ class ResourceHandle(KopfObject):
         'end' in self.spec.get('lifespan', {})
 
     @property
+    def has_resource_provider(self) -> bool:
+        """Return whether this ResourceHandle is managed by a ResourceProvider."""
+        return 'provider' in self.spec
+
+    @property
     def ignore(self) -> bool:
         return Poolboy.ignore_label in self.labels
 
@@ -585,6 +617,10 @@ class ResourceHandle(KopfObject):
             return lifespan.get('end')
 
     @property
+    def parameter_values(self) -> Mapping:
+        return self.spec.get('provider', {}).get('parameterValues', {})
+
+    @property
     def resource_claim_name(self) -> Optional[str]:
         return self.spec.get('resourceClaim', {}).get('name')
 
@@ -601,6 +637,10 @@ class ResourceHandle(KopfObject):
     def resource_pool_namespace(self) -> Optional[str]:
         if 'resourcePool' in self.spec:
             return self.spec['resourcePool'].get('namespace', Poolboy.namespace)
+
+    @property
+    def resource_provider_name(self) -> Optional[str]:
+        return self.spec.get('provider', {}).get('name')
 
     @property
     def resources(self) -> List[Mapping]:
@@ -687,7 +727,11 @@ class ResourceHandle(KopfObject):
             return None
         return await resourcepool.ResourcePool.get(self.resource_pool_name)
 
-    async def get_resource_providers(self):
+    async def get_resource_provider(self) -> ResourceProviderT:
+        """Return ResourceProvider configured to manage ResourceHandle."""
+        return await resourceprovider.ResourceProvider.get(self.resource_provider_name)
+
+    async def get_resource_providers(self) -> List[ResourceProviderT]:
         resource_providers = []
         for resource in self.spec.get('resources', []):
             resource_providers.append(
@@ -696,41 +740,26 @@ class ResourceHandle(KopfObject):
         return resource_providers
 
     async def get_resource_states(self, logger: kopf.ObjectLogger) -> List[Mapping]:
+        resource_states = []
         for i, resource in enumerate(self.spec['resources']):
-            if i >= len(self.resource_states):
-                self.resource_states.append(None)
-                self.resource_refresh_datetime.append(None)
-            elif (
-                self.resource_states[i] and
-                self.resource_refresh_datetime[i] and
-                (datetime.now(timezone.utc) - self.resource_refresh_datetime[i]).total_seconds() > Poolboy.resource_refresh_interval
-            ):
-                continue
-
             reference = resource.get('reference')
-            if not reference:
-                continue
-
-            api_version = reference['apiVersion']
-            kind = reference['kind']
-            name = reference['name']
-            namespace = reference.get('namespace')
-            try:
-                self.resource_states[i] = await poolboy_k8s.get_object(
-                    api_version = api_version,
-                    kind = kind,
-                    name = name,
-                    namespace = namespace,
+            if reference:
+                api_version = reference['apiVersion']
+                kind = reference['kind']
+                name = reference['name']
+                namespace = reference.get('namespace')
+                resource = await resourcewatcher.ResourceWatcher.get_resource(
+                    api_version=api_version, kind=kind, name=name, namespace=namespace,
                 )
-                self.resource_refresh_datetime[i] = datetime.now(timezone.utc)
-            except kubernetes_asyncio.client.exceptions.ApiException as e:
-                if e.status == 404:
-                    _name = f"{name} in {namespace}" if namespace else name
-                    logger.warning(f"Mangaged resource {api_version} {kind} {_name} not found.")
-                else:
-                    raise
-
-        return self.resource_states
+                resource_states.append(resource)
+                if not resource:
+                    if namespace:
+                        logger.warning(f"Mangaged resource {api_version} {kind} {name} in {namespace} not found.")
+                    else:
+                        logger.warning(f"Mangaged resource {api_version} {kind} {name} not found.")
+            else:
+                resource_states.append(None)
+        return resource_states
 
     async def handle_delete(self, logger: kopf.ObjectLogger) -> None:
         for resource in self.spec.get('resources', []):
@@ -769,21 +798,10 @@ class ResourceHandle(KopfObject):
 
     async def handle_resource_event(self,
         logger: Union[logging.Logger, logging.LoggerAdapter],
-        resource_index: int,
-        resource_state: Mapping,
     ) -> None:
         async with self.lock:
-            # Extend resource_states as needed
-            if resource_index >= len(self.resource_states):
-                self.resource_states.extend(
-                    [None] * (1 + resource_index - len(self.resource_states))
-                )
-            if resource_index >= len(self.resource_refresh_datetime):
-                self.resource_refresh_datetime.extend(
-                    [None] * (1 + resource_index - len(self.resource_refresh_datetime))
-                )
-            self.resource_states[resource_index] = resource_state
-            self.resource_refresh_datetime[resource_index] = datetime.now(timezone.utc)
+            if self.has_resource_provider:
+                await self.update_status_summary(logger=logger)
 
     async def manage(self, logger: kopf.ObjectLogger) -> None:
         async with self.lock:
@@ -806,6 +824,8 @@ class ResourceHandle(KopfObject):
                 logger.info(f"Deleting {self} at end of lifespan ({self.lifespan_end_timestamp})")
                 await self.delete()
                 return
+
+            await self.update_resources(logger=logger, resource_claim=resource_claim)
 
             resource_providers = await self.get_resource_providers()
             resource_states = await self.get_resource_states(logger=logger)
@@ -912,7 +932,7 @@ class ResourceHandle(KopfObject):
                             "path": f"/spec/resources/{resource_index}/waitingFor",
                         })
                     try:
-                        resource_states[resource_index] = resource_state = await poolboy_k8s.get_object(
+                        resource_states[resource_index] = resource_state = await resourcewatcher.ResourceWatcher.get_resource(
                             api_version = resource_api_version,
                             kind = resource_kind,
                             name = resource_name,
@@ -988,3 +1008,92 @@ class ResourceHandle(KopfObject):
                 return None
             else:
                 raise
+
+    async def update_resources(self,
+        logger: kopf.ObjectLogger,
+        resource_claim: ResourceClaimT,
+    ):
+        # If no spec.provider then resources list is directly configured in the ResourceHandle
+        if 'provider' not in self.spec:
+            return
+
+        try:
+            provider = await resourceprovider.ResourceProvider.get(self.resource_provider_name)
+        except kubernetes_asyncio.client.exceptions.ApiException as exception:
+            if exception.status == 404:
+                logger.warning(f"Missing ResourceProvider {self.resource_provider_name} to get resources for {self}")
+                return
+            else:
+                raise
+
+        resources = await provider.get_resources(
+            resource_claim = resource_claim,
+            resource_handle = self,
+        )
+
+        if not 'resources' in self.spec:
+            await self.json_patch([{
+                "op": "add",
+                "path": "/spec/resources",
+                "value": resources,
+            }])
+            return
+
+        patch = []
+        for idx, resource in enumerate(resources):
+            if idx < len(self.spec['resources']):
+                current_provider = self.spec['resources'][idx]['provider']['name']
+                updated_provider = resource['provider']['name']
+                if current_provider != updated_provider:
+                    logger.warning(
+                        f"Refusing update resources in {self} as it would change "
+                        f"ResourceProvider from {current_provider} to {updated_provider}"
+                    )
+                current_template = self.spec['resources'][idx].get('template')
+                updated_template = resource.get('template')
+                if current_template != updated_template:
+                    patch.append({
+                        "op": "add",
+                        "path": f"/spec/resources/{idx}/template",
+                        "value": updated_template,
+                    })
+            else:
+                patch.append({
+                    "op": "add",
+                    "path": f"/spec/resources/{idx}",
+                    "value": resource
+                })
+
+        if patch:
+            await self.json_patch(patch)
+            logger.info(f"Updated resources for {self} from {provider}")
+
+    async def update_status_summary(self,
+        logger: kopf.ObjectLogger,
+    ) -> None:
+        resource_provider = await self.get_resource_provider()
+        if not resource_provider.status_summary_template:
+            return
+        try:
+            resources = deepcopy(self.resources)
+            resource_states = await self.get_resource_states(logger=logger)
+            for idx, state in enumerate(resource_states):
+                resources[idx]['state'] = state
+
+            status_summary = resource_provider.make_status_summary(
+                resource_handle=self,
+                resources=resources,
+            )
+            if status_summary != self.status.get('summary'):
+                if self.status:
+                    await self.json_patch_status([{
+                        "op": "add",
+                        "path": "/status/summary",
+                        "value": status_summary,
+                    }])
+                else:
+                    await self.merge_patch_status({
+                        "summary": status_summary,
+                    })
+        except Exception:
+            logger.exception(f"Failed to generate status summary for {self}")

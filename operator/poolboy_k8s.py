@@ -157,7 +157,7 @@ async def get_object(
     api_version: str,
     kind: str,
     name: str,
-    namespace: str = None,
+    namespace: Optional[str] = None,
 ) -> Optional[Mapping]:
     if '/' in api_version:
         group, version = api_version.split('/')

@@ -23,7 +23,7 @@ image::docs/diagram.png[Poolboy Diagram,500,400]
 
 . User updates an existing ResourceClaim
 . Each resource template in the ResourceClaim is checked for validity against the OpenAPIv3 schema in the ResourceProvider.
-. A JSON Patch for each resource template in the ResourceHandle is generated and then the JSON Patch is filtered according to each ResourceProvider's `spec.updateFilters`. 
+. A JSON Patch for each resource template in the ResourceHandle is generated and then the JSON Patch is filtered according to each ResourceProvider's `spec.updateFilters`.
 . Updates are applied to the ResourceHandle.
 
 === ResourceHandle Creation or Update

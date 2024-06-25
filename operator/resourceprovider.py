@@ -150,7 +150,11 @@ class ResourceProvider:
             if resource_provider:
                 return resource_provider
             definition = await Poolboy.custom_objects_api.get_cluster_custom_object(
-                Poolboy.operator_domain, Poolboy.operator_version, 'resourceproviders', name
+                group = Poolboy.operator_domain,
+                name = name,
+                namespace = Poolboy.namespace,
+                plural = 'resourceproviders',
+                version = Poolboy.operator_version,
             )
             return cls.__register_definition(definition=definition)
 
@@ -160,7 +164,10 @@ class ResourceProvider:
             _continue = None
             while True:
                 resource_provider_list = await Poolboy.custom_objects_api.list_namespaced_custom_object(
-                    Poolboy.operator_domain, Poolboy.operator_version, Poolboy.namespace, 'resourceproviders',
+                    group = Poolboy.operator_domain,
+                    namespace = Poolboy.namespace,
+                    plural = 'resourceproviders',
+                    version = Poolboy.operator_version,
                     _continue = _continue,
                     limit = 50,
                 )
@@ -218,10 +225,18 @@ class ResourceProvider:
         return self.spec.get('disableCreation', False)
 
     @property
+    def has_lifespan(self) -> bool:
+        return 'lifespan' in self.spec
+
+    @property
     def has_template_definition(self) -> bool:
         return 'override' in self.spec or (
             'template' in self.spec and 'definition' in self.spec['template']
         )
+
+    @property
+    def lifespan_default(self) -> int:
+        return self.spec.get('lifespan', {}).get('default')
 
     @property
     def lifespan_maximum(self) -> Optional[str]:
@@ -230,6 +245,22 @@ class ResourceProvider:
     @property
     def lifespan_relative_maximum(self) -> Optional[str]:
         return self.spec.get('lifespan', {}).get('relativeMaximum')
+
+    @property
+    def lifespan_unclaimed(self) -> int:
+        return self.spec.get('lifespan', {}).get('unclaimed')
+
+    @property
+    def lifespan_unclaimed_seconds(self) -> int:
+        interval = self.lifespan_unclaimed
+        if interval:
+            return pytimeparse.parse(interval)
+
+    @property
+    def lifespan_unclaimed_timedelta(self):
+        seconds = self.lifespan_unclaimed_seconds
+        if seconds:
+            return timedelta(seconds=seconds)
 
     @property
     def linked_resource_providers(self) -> List[ResourceProviderT]:
@@ -408,20 +439,21 @@ class ResourceProvider:
             _Parameter(pd) for pd in self.spec.get('parameters', [])
         ]
 
-    async def get_claim_resources(self,
-        resource_claim: ResourceClaimT,
+    async def get_resources(self,
         parameter_values: Optional[Mapping] = None,
+        resource_claim: Optional[ResourceClaimT] = None,
         resource_handle: Optional[ResourceHandleT] = None,
         resource_name: Optional[str] = None,
     ) -> List[Mapping]:
-        """Return list of resources for managed ResourceClaim"""
+        """Return list of resources for ResourceClaim and/or ResourceHandle"""
         resources = []
 
         if parameter_values == None:
-            parameter_values = {
-                **self.parameter_defaults,
-                **resource_claim.parameter_values,
-            }
+            parameter_values = {**self.parameter_defaults}
+            if resource_claim:
+                parameter_values.update(resource_claim.parameter_values)
+            elif resource_handle:
+                parameter_values.update(resource_handle.parameter_values)
 
         resource_handle_vars = resource_handle.vars if resource_handle else {}
         vars_ = {
@@ -437,7 +469,7 @@ class ResourceProvider:
         for linked_resource_provider in self.linked_resource_providers:
             resource_provider = await self.get(linked_resource_provider.name)
             resources.extend(
-                await resource_provider.get_claim_resources(
+                await resource_provider.get_resources(
                     resource_claim = resource_claim,
                     resource_handle = resource_handle,
                     resource_name = linked_resource_provider.resource_name,
@@ -473,17 +505,23 @@ class ResourceProvider:
         return template == cmp_template
 
     def make_status_summary(self,
-        resource_claim: ResourceClaimT,
+        resource_claim: Optional[ResourceClaimT] = None,
+        resource_handle: Optional[ResourceHandleT] = None,
+        resources: List[Mapping] = [],
     ) -> Mapping:
+        variables = {**self.vars}
+        if resource_claim:
+            variables.update(resource_claim.parameter_values)
+        else:
+            variables.update(resource_handle.parameter_values)
+
+        variables['resource_claim'] = resource_claim
+        variables['resource_handle'] = resource_handle
+        variables['resources'] = resources
+
         return recursive_process_template_strings(
             self.status_summary_template,
-            variables = {
-                **self.vars,
-                **resource_claim.parameter_values,
-                "resource_claim": resource_claim,
-                "resource_provider": self,
-                "resources": resource_claim.status_resources,
-            }
+            variables = variables,
         )
 
     def processed_template(self,
