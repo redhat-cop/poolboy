@@ -164,6 +164,9 @@ spec:
               diffBase:
                 description: Kopf diffbase
                 type: string
+              healthy:
+                description: Health state as determined by check from ResourceProviders of resources.
+                type: boolean
               kopf:
                 description: Kopf status
                 type: object
@@ -240,6 +243,9 @@ spec:
                 items:
                   type: object
                   properties:
+                    healthy:
+                      description: Health state as determined by check from ResourceProvider.
+                      type: boolean
                     name:
                       description: >-
                         A name used to identify the resource.
@@ -247,6 +253,26 @@ spec:
                     provider:
                       description: ResourceProvider reference for provider managing this resource
                       type: object
+                      properties:
+                        apiVersion:
+                          type: string
+                        kind:
+                          type: string
+                        name:
+                          type: string
+                        namespace:
+                          type: string
+                    ready:
+                      description: Readiness state as determined by check from ResourceProvider.
+                      type: boolean
+                    reference:
+                      description: >-
+                        Reference to managed resource.
+                      type: object
+                      required:
+                      - apiVersion
+                      - kind
+                      - name
                       properties:
                         apiVersion:
                           type: string
@@ -271,6 +297,9 @@ spec:
                       - Linked ResourceProvider
                       - Resource Definition
                       type: string
+              ready:
+                description: Readiness state as determined by check from ResourceProviders of resources.
+                type: boolean
               summary:
                 description: >-
                   Status summary from current resources state, generated from ResourceProvider configuration.

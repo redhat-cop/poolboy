@@ -175,7 +175,8 @@ spec:
                           type: string
                     reference:
                       description: >-
-                        Reference to managed resource
+                        Reference to managed resource.
+                        (Deprecated in spec in favor of status).
                       type: object
                       required:
                       - apiVersion
@@ -196,14 +197,6 @@ spec:
                         claim's template is used to manage the handle template.
                       type: object
                       x-kubernetes-preserve-unknown-fields: true
-                    waitingFor:
-                      description: >-
-                        Indication indicating that resource creation is blocked waiting on a condition.
-                      enum:
-                      - ResourceClaim
-                      - Linked ResourceProvider
-                      - Resource Definition
-                      type: string
               vars:
                 description: >-
                   Variables to use when evaluating validation checks and templates.
@@ -218,10 +211,57 @@ spec:
               diffBase:
                 description: Kopf diffbase
                 type: string
+              healthy:
+                description: Health state as determined by check from ResourceProviders of resources.
+                type: boolean
               kopf:
                 description: Kopf status
                 type: object
                 x-kubernetes-preserve-unknown-fields: true
+              ready:
+                description: Readiness state as determined by check from ResourceProviders of resources.
+                type: boolean
+              resources:
+                description: Status of resources managed by this ResourceHandle
+                type: array
+                items:
+                  type: object
+                  properties:
+                    healthy:
+                      description: Health state as determined by check from ResourceProvider.
+                      type: boolean
+                    name:
+                      description: >-
+                        A name used to identify the resource.
+                      type: string
+                    ready:
+                      description: Readiness state as determined by check from ResourceProvider.
+                      type: boolean
+                    reference:
+                      description: >-
+                        Reference to managed resource.
+                      type: object
+                      required:
+                      - apiVersion
+                      - kind
+                      - name
+                      properties:
+                        apiVersion:
+                          type: string
+                        kind:
+                          type: string
+                        name:
+                          type: string
+                        namespace:
+                          type: string
+                    waitingFor:
+                      description: >-
+                        Indication indicating that resource creation is blocked waiting on a condition.
+                      enum:
+                      - ResourceClaim
+                      - Linked ResourceProvider
+                      - Resource Definition
+                      type: string
               summary:
                 description: >-
                   Status summary from current resources state, generated from ResourceProvider configuration.

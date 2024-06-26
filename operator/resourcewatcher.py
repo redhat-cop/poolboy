@@ -294,7 +294,10 @@ class ResourceWatcher:
                 )
             elif event_type == 'DELETED':
                 if prev_state:
-                    await resource_claim.remove_resource_from_status(resource_index)
+                    await resource_claim.remove_resource_from_status(
+                        index=resource_index,
+                        logger=logger,
+                    )
                 else:
                     logger.info(
                         f"Ignoring resource delete for {resource_claim_description} due to resource "

@@ -647,6 +647,10 @@ class ResourceHandle(KopfObject):
         return self.spec.get('resources', [])
 
     @property
+    def status_resources(self) -> List[Mapping]:
+        return self.status.get('resources', [])
+
+    @property
     def vars(self) -> Mapping:
         return self.spec.get('vars', {})
 
@@ -741,24 +745,27 @@ class ResourceHandle(KopfObject):
 
     async def get_resource_states(self, logger: kopf.ObjectLogger) -> List[Mapping]:
         resource_states = []
-        for i, resource in enumerate(self.spec['resources']):
-            reference = resource.get('reference')
-            if reference:
-                api_version = reference['apiVersion']
-                kind = reference['kind']
-                name = reference['name']
-                namespace = reference.get('namespace')
-                resource = await resourcewatcher.ResourceWatcher.get_resource(
-                    api_version=api_version, kind=kind, name=name, namespace=namespace,
-                )
-                resource_states.append(resource)
-                if not resource:
-                    if namespace:
-                        logger.warning(f"Mangaged resource {api_version} {kind} {name} in {namespace} not found.")
-                    else:
-                        logger.warning(f"Mangaged resource {api_version} {kind} {name} not found.")
-            else:
+        for resource_index, resource in enumerate(self.resources):
+            if resource_index >= len(self.status_resources):
                 resource_states.append(None)
+                continue
+            reference = self.status_resources[resource_index].get('reference')
+            if not reference:
+                resource_states.append(None)
+                continue
+            api_version = reference['apiVersion']
+            kind = reference['kind']
+            name = reference['name']
+            namespace = reference.get('namespace')
+            resource = await resourcewatcher.ResourceWatcher.get_resource(
+                api_version=api_version, kind=kind, name=name, namespace=namespace,
+            )
+            resource_states.append(resource)
+            if not resource:
+                if namespace:
+                    logger.warning(f"Mangaged resource {api_version} {kind} {name} in {namespace} not found.")
+                else:
+                    logger.warning(f"Mangaged resource {api_version} {kind} {name} not found.")
         return resource_states
 
     async def handle_delete(self, logger: kopf.ObjectLogger) -> None:
@@ -801,7 +808,7 @@ class ResourceHandle(KopfObject):
     ) -> None:
         async with self.lock:
             if self.has_resource_provider:
-                await self.update_status_summary(logger=logger)
+                await self.update_status(logger=logger)
 
     async def manage(self, logger: kopf.ObjectLogger) -> None:
         async with self.lock:
@@ -829,18 +836,50 @@ class ResourceHandle(KopfObject):
 
             resource_providers = await self.get_resource_providers()
             resource_states = await self.get_resource_states(logger=logger)
+            status_resources = self.status_resources
             patch = []
+            status_patch = []
             resources_to_create = []
+
+            if not self.status:
+                status_patch.append({
+                    "op": "add",
+                    "path": "/status",
+                    "value": {},
+                })
+            if 'resources' not in self.status:
+                status_patch.append({
+                    "op": "add",
+                    "path": "/status/resources",
+                    "value": [],
+                })
 
             for resource_index, resource in enumerate(self.spec['resources']):
                 resource_provider = resource_providers[resource_index]
                 resource_state = resource_states[resource_index]
 
+                if len(status_resources) <= resource_index:
+                    status_resources.append({})
+                    status_patch.append({
+                        "op": "add",
+                        "path": f"/status/resources/{resource_index}",
+                        "value": {},
+                    })
+                status_resource = status_resources[resource_index]
+
+                if 'name' in resource and resource['name'] != status_resource.get('name'):
+                    status_resource['name'] = resource['name']
+                    status_patch.append({
+                        "op": "add",
+                        "path": f"/status/resources/{resource_index}/name",
+                        "value": resource['name'],
+                    })
+
                 if resource_provider.resource_requires_claim and not resource_claim:
-                    if 'ResourceClaim' != resource.get('waitingFor'):
-                        patch.append({
+                    if 'ResourceClaim' != status_resource.get('waitingFor'):
+                        status_patch.append({
                             "op": "add",
-                            "path": f"/spec/resources/{resource_index}/waitingFor",
+                            "path": f"/status/resources/{resource_index}/waitingFor",
                             "value": "ResourceClaim",
                         })
                     continue
@@ -882,10 +921,10 @@ class ResourceHandle(KopfObject):
                             )
 
                 if wait_for_linked_provider:
-                    if 'Linked ResourceProvider' != resource.get('waitingFor'):
-                        patch.append({
+                    if 'Linked ResourceProvider' != status_resource.get('waitingFor'):
+                        status_patch.append({
                             "op": "add",
-                            "path": f"/spec/resources/{resource_index}/waitingFor",
+                            "path": f"/status/resources/{resource_index}/waitingFor",
                             "value": "Linked ResourceProvider",
                         })
                     continue
@@ -899,10 +938,10 @@ class ResourceHandle(KopfObject):
                     vars_ = vars_,
                 )
                 if not resource_definition:
-                    if 'Resource Definition' != resource.get('waitingFor'):
-                        patch.append({
+                    if 'Resource Definition' != status_resource.get('waitingFor'):
+                        status_patch.append({
                             "op": "add",
-                            "path": f"/spec/resources/{resource_index}/waitingFor",
+                            "path": f"/status/resources/{resource_index}/waitingFor",
                             "value": "Resource Definition",
                         })
                     continue
@@ -920,18 +959,28 @@ class ResourceHandle(KopfObject):
                 if resource_namespace:
                     reference['namespace'] = resource_namespace
 
-                if 'reference' not in resource:
+                if 'reference' not in status_resource:
+                    # Add reference to status resources
+                    status_resource['reference'] = reference
+                    status_patch.append({
+                        "op": "add",
+                        "path": f"/status/resources/{resource_index}/reference",
+                        "value": reference,
+                    })
+                    # Retain reference in spec for compatibility
                     patch.append({
                         "op": "add",
                         "path": f"/spec/resources/{resource_index}/reference",
                         "value": reference,
                     })
-                    if 'waitingFor' in resource:
-                        patch.append({
+                    # Remove waitingFor from status if present as we are preceeding to resource creation
+                    if 'waitingFor' in status_resource:
+                        status_patch.append({
                             "op": "remove",
-                            "path": f"/spec/resources/{resource_index}/waitingFor",
+                            "path": f"/status/resources/{resource_index}/waitingFor",
                         })
                     try:
+                        # Get resource state as it would not have been fetched above.
                         resource_states[resource_index] = resource_state = await resourcewatcher.ResourceWatcher.get_resource(
                             api_version = resource_api_version,
                             kind = resource_kind,
@@ -941,25 +990,25 @@ class ResourceHandle(KopfObject):
                     except kubernetes_asyncio.client.exceptions.ApiException as e:
                         if e.status != 404:
                             raise
-                elif resource_api_version != resource['reference']['apiVersion']:
+                elif resource_api_version != status_resource['reference']['apiVersion']:
                     raise kopf.TemporaryError(
                         f"ResourceHandle {self.name} would change from apiVersion "
-                        f"{resource['reference']['apiVersion']} to {resource_api_version}!",
+                        f"{status_resource['reference']['apiVersion']} to {resource_api_version}!",
                         delay=600
                     )
-                elif resource_kind != resource['reference']['kind']:
+                elif resource_kind != status_resource['reference']['kind']:
                     raise kopf.TemporaryError(
                         f"ResourceHandle {self.name} would change from kind "
-                        f"{resource['reference']['kind']} to {resource_kind}!",
+                        f"{status_resource['reference']['kind']} to {resource_kind}!",
                         delay=600
                     )
                 else:
                     # Maintain name and namespace
-                    if resource_name != resource['reference']['name']:
-                        resource_name = resource['reference']['name']
+                    if resource_name != status_resource['reference']['name']:
+                        resource_name = status_resource['reference']['name']
                         resource_definition['metadata']['name'] = resource_name
-                    if resource_namespace != resource['reference']['namespace']:
-                        resource_namespace = resource['reference']['namespace']
+                    if resource_namespace != status_resource['reference'].get('namespace'):
+                        resource_namespace = status_resource['reference']['namespace']
                         resource_definition['metadata']['namespace'] = resource_namespace
 
                 resource_description = f"{resource_api_version} {resource_kind} {resource_name}"
@@ -986,6 +1035,8 @@ class ResourceHandle(KopfObject):
 
             if patch:
                 await self.json_patch(patch)
+            if status_patch:
+                await self.json_patch_status(status_patch)
 
             if resource_claim:
                 await resource_claim.update_status_from_handle(logger=logger, resource_handle=self)
@@ -1068,32 +1119,44 @@ class ResourceHandle(KopfObject):
             await self.json_patch(patch)
             logger.info(f"Updated resources for {self} from {provider}")
 
-    async def update_status_summary(self,
+    async def update_status(self,
         logger: kopf.ObjectLogger,
     ) -> None:
-        resource_provider = await self.get_resource_provider()
-        if not resource_provider.status_summary_template:
-            return
-        try:
-            resources = deepcopy(self.resources)
-            resource_states = await self.get_resource_states(logger=logger)
-            for idx, state in enumerate(resource_states):
-                resources[idx]['state'] = state
+        patch = []
+        if not self.status:
+            patch.append({
+                "op": "add",
+                "path": "/status",
+                "value": {},
+            })
 
-            status_summary = resource_provider.make_status_summary(
-                resource_handle=self,
-                resources=resources,
-            )
-            if status_summary != self.status.get('summary'):
-                if self.status:
-                    await self.json_patch_status([{
+        resources = deepcopy(self.resources)
+        resource_states = await self.get_resource_states(logger=logger)
+        for idx, state in enumerate(resource_states):
+            resources[idx]['state'] = state
+
+        #for resource in resources:
+        #    if 
+        #        await resourceprovider.ResourceProvider.get(resource['provider']['name'])
+
+        # FIXME - add healthy
+        # FIXME - add ready
+
+        resource_provider = await self.get_resource_provider()
+        if resource_provider.status_summary_template:
+            try:
+                status_summary = resource_provider.make_status_summary(
+                    resource_handle=self,
+                    resources=resources,
+                )
+                if status_summary != self.status.get('summary'):
+                    patch.append({
                         "op": "add",
                         "path": "/status/summary",
                         "value": status_summary,
-                    }])
-                else:
-                    await self.merge_patch_status({
-                        "summary": status_summary,
                     })
-        except Exception:
-            logger.exception(f"Failed to generate status summary for {self}")
+            except Exception:
+                logger.exception(f"Failed to generate status summary for {self}")
+
+        if patch:
+            await self.json_patch_status(patch)

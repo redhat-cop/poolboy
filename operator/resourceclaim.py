@@ -466,17 +466,20 @@ class ResourceClaim(KopfObject):
                     "path": "/status/lifespan/relativeMaximum",
                 })
 
-        for index, resource in enumerate(resource_handle.spec['resources']):
-            if 'waitingFor' in resource:
+        for resource_index, status_resource in enumerate(resource_handle.status_resources):
+            if (
+                'waitingFor' in status_resource and
+                status_resource['waitingFor'] != self.status_resources[resource_index].get('waitingFor')
+            ):
                 patch.append({
                     "op": "add",
-                    "path": f"/status/resources/{index}/waitingFor",
-                    "value": resource['waitingFor'],
+                    "path": f"/status/resources/{resource_index}/waitingFor",
+                    "value": status_resource['waitingFor'],
                 })
-            elif 'waitingFor' in self.status_resources[index]:
+            elif 'waitingFor' in self.status_resources[resource_index]:
                 patch.append({
                     "op": "remove",
-                    "path": f"/status/resources/{index}/waitingFor",
+                    "path": f"/status/resources/{resource_index}/waitingFor",
                 })
 
         if patch:
@@ -1001,23 +1004,21 @@ class ResourceClaim(KopfObject):
                 ]
             await self.merge_patch_status(patch)
 
-    async def remove_resource_from_status(self, index):
-        patch = [{
-            "op": "remove",
-            "path": f"/status/resources/{index}/state",
-        }]
-
-        if self.has_resource_provider:
-            resource_provider = await self.get_resource_provider()
-            if resource_provider.status_summary_template:
-                del self.status_resources[index]['state']
-                patch.append({
-                    "op": "add",
-                    "path": "/status/summary",
-                    "value": resource_provider.make_status_summary(self),
-                })
-
-        await self.json_patch_status(patch)
+    async def remove_resource_from_status(self,
+        index: int,
+        logger: kopf.ObjectLogger,
+    ):
+        patch = []
+        if 'state' in self_status_resources[index]:
+            del self.status_resources[index]['state']
+            patch.append({
+                "op": "remove",
+                "path": f"/status/resources/{index}/state",
+            })
+        await self.__update_status(
+            logger=logger,
+            patch=patch,
+        )
 
     async def update_resource_in_status(self,
         index: int,
@@ -1026,16 +1027,27 @@ class ResourceClaim(KopfObject):
     ):
         patch = []
         if self.status_resources[index].get('state') != state:
+            self.status_resources[index]['state'] = state
             patch.append({
                 "op": "add",
                 "path": f"/status/resources/{index}/state",
                 "value": state,
             })
+        await self.__update_status(
+            logger=logger,
+            patch=patch,
+        )
+
+    async def __update_status(self,
+        logger: kopf.ObjectLogger,
+        patch: List[Mapping]=[],
+    ):
+        # FIXME - add healthy
+        # FIXME - add ready
 
         if self.has_resource_provider:
             resource_provider = await self.get_resource_provider()
             if resource_provider.status_summary_template:
-                self.status_resources[index]['state'] = state
                 try:
                     status_summary = resource_provider.make_status_summary(
                         resource_claim=self,
@@ -1049,6 +1061,5 @@ class ResourceClaim(KopfObject):
                         })
                 except Exception:
                     logger.exception(f"Failed to generate status summary for {self}")
-
         if patch:
             await self.json_patch_status(patch)

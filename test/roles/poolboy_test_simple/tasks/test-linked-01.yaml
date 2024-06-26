@@ -179,7 +179,7 @@
     __state: "{{ r_get_resource_handle.resources[0] }}"
   assert:
     that:
-    - __state.spec.resources[1].waitingFor == 'Linked ResourceProvider'
+    - __state.status.resources[1].waitingFor == 'Linked ResourceProvider'
 
 - name: Verify creation of ResourceClaimTest test-linked-01-a-base
   kubernetes.core.k8s_info:
