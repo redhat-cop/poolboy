@@ -238,7 +238,7 @@ spec:
                   namespace:
                     type: string
               resources:
-                description: Status of resources managed for this claim
+                description: Status of resources managed for this ResourceClaim
                 type: array
                 items:
                   type: object

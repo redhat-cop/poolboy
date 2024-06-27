@@ -222,14 +222,14 @@ spec:
                 description: Kopf diffbase
                 type: string
               healthy:
-                description: Health state as determined by check from ResourceProvider.
+                description: Health state as determined by check from ResourceProviders of resources.
                 type: boolean
               kopf:
                 description: Kopf status
                 type: object
                 x-kubernetes-preserve-unknown-fields: true
               ready:
-                description: Readiness state as determined by check from ResourceProvider.
+                description: Readiness state as determined by check from ResourceProviders of resources.
                 type: boolean
               resources:
                 description: Status of resources managed by this ResourceHandle
