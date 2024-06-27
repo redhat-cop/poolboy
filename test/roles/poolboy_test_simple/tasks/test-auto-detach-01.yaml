@@ -33,7 +33,7 @@
         - pathMatch: /spec/.*
           allowedOps:
           - replace
- 
+
 - name: Create ResourceClaim test-auto-detach-01-a
   kubernetes.core.k8s:
     definition:

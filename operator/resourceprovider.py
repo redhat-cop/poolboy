@@ -16,7 +16,7 @@ import poolboy_k8s
 from deep_merge import deep_merge
 from jsonpatch_from_diff import jsonpatch_from_diff
 from poolboy import Poolboy
-from poolboy_templating import recursive_process_template_strings
+from poolboy_templating import check_condition, recursive_process_template_strings
 
 ResourceClaimT = TypeVar('ResourceClaimT', bound='ResourceClaim')
 ResourceHandleT = TypeVar('ResourceHandleT', bound='ResourceHandle')
@@ -118,22 +118,22 @@ class ResourceProvider:
     instances = {}
     lock = asyncio.Lock()
 
-    @staticmethod
-    def __register_definition(definition: Mapping) -> ResourceProviderT:
+    @classmethod
+    def __register_definition(cls, definition: Mapping) -> ResourceProviderT:
         name = definition['metadata']['name']
-        resource_provider = ResourceProvider.instances.get(name)
+        resource_provider = cls.instances.get(name)
         if resource_provider:
             resource_provider.definition = definition
             self.__init_resource_template_validator()
         else:
-            resource_provider = ResourceProvider(definition=definition)
-            ResourceProvider.instances[name] = resource_provider
+            resource_provider = cls(definition=definition)
+            cls.instances[name] = resource_provider
         return resource_provider
 
-    @staticmethod
-    def find_provider_by_template_match(template: Mapping) -> ResourceProviderT:
+    @classmethod
+    def find_provider_by_template_match(cls, template: Mapping) -> ResourceProviderT:
         provider_matches = []
-        for provider in ResourceProvider.instances.values():
+        for provider in cls.instances.values():
             if provider.is_match_for_template(template):
                 provider_matches.append(provider)
         if len(provider_matches) == 0:
@@ -143,52 +143,59 @@ class ResourceProvider:
         else:
             raise kopf.TemporaryError(f"Resource template matches multiple ResourceProviders", delay=600)
 
-    @staticmethod
-    async def get(name: str) -> ResourceProviderT:
-        async with ResourceProvider.lock:
-            resource_provider = ResourceProvider.instances.get(name)
+    @classmethod
+    async def get(cls, name: str) -> ResourceProviderT:
+        async with cls.lock:
+            resource_provider = cls.instances.get(name)
             if resource_provider:
                 return resource_provider
             definition = await Poolboy.custom_objects_api.get_cluster_custom_object(
-                Poolboy.operator_domain, Poolboy.operator_version, 'resourceproviders', name
+                group = Poolboy.operator_domain,
+                name = name,
+                namespace = Poolboy.namespace,
+                plural = 'resourceproviders',
+                version = Poolboy.operator_version,
             )
-            return ResourceProvider.__register_definition(definition=definition)
+            return cls.__register_definition(definition=definition)
 
-    @staticmethod
-    async def preload(logger: kopf.ObjectLogger) -> None:
-        async with ResourceProvider.lock:
+    @classmethod
+    async def preload(cls, logger: kopf.ObjectLogger) -> None:
+        async with cls.lock:
             _continue = None
             while True:
                 resource_provider_list = await Poolboy.custom_objects_api.list_namespaced_custom_object(
-                    Poolboy.operator_domain, Poolboy.operator_version, Poolboy.namespace, 'resourceproviders',
+                    group = Poolboy.operator_domain,
+                    namespace = Poolboy.namespace,
+                    plural = 'resourceproviders',
+                    version = Poolboy.operator_version,
                     _continue = _continue,
                     limit = 50,
                 )
                 for definition in resource_provider_list['items']:
-                    ResourceProvider.__register_definition(definition=definition)
+                    cls.__register_definition(definition=definition)
                 _continue = resource_provider_list['metadata'].get('continue')
                 if not _continue:
                     break
 
-    @staticmethod
-    async def register(definition: Mapping, logger: kopf.ObjectLogger) -> ResourceProviderT:
-        async with ResourceProvider.lock:
+    @classmethod
+    async def register(cls, definition: Mapping, logger: kopf.ObjectLogger) -> ResourceProviderT:
+        async with cls.lock:
             name = definition['metadata']['name']
-            resource_provider = ResourceProvider.instances.get(name)
+            resource_provider = cls.instances.get(name)
             if resource_provider:
                 resource_provider.__init__(definition=definition)
                 logger.info(f"Refreshed definition of ResourceProvider {name}")
             else:
-                resource_provider = ResourceProvider.__register_definition(definition=definition)
+                resource_provider = cls.__register_definition(definition=definition)
                 logger.info(f"Registered ResourceProvider {name}")
             return resource_provider
 
-    @staticmethod
-    async def unregister(name: str, logger: kopf.ObjectLogger) -> Optional[ResourceProviderT]:
-        async with ResourceProvider.lock:
-            if name in ResourceProvider.instances:
+    @classmethod
+    async def unregister(cls, name: str, logger: kopf.ObjectLogger) -> Optional[ResourceProviderT]:
+        async with cls.lock:
+            if name in cls.instances:
                 logger.info(f"Unregistered ResourceProvider {name}")
-                return ResourceProvider.instances.pop(name)
+                return cls.instances.pop(name)
 
     def __init__(self, definition: Mapping) -> None:
         self.meta = definition['metadata']
@@ -218,10 +225,18 @@ class ResourceProvider:
         return self.spec.get('disableCreation', False)
 
     @property
+    def has_lifespan(self) -> bool:
+        return 'lifespan' in self.spec
+
+    @property
     def has_template_definition(self) -> bool:
         return 'override' in self.spec or (
             'template' in self.spec and 'definition' in self.spec['template']
         )
+
+    @property
+    def lifespan_default(self) -> int:
+        return self.spec.get('lifespan', {}).get('default')
 
     @property
     def lifespan_maximum(self) -> Optional[str]:
@@ -230,6 +245,22 @@ class ResourceProvider:
     @property
     def lifespan_relative_maximum(self) -> Optional[str]:
         return self.spec.get('lifespan', {}).get('relativeMaximum')
+
+    @property
+    def lifespan_unclaimed(self) -> int:
+        return self.spec.get('lifespan', {}).get('unclaimed')
+
+    @property
+    def lifespan_unclaimed_seconds(self) -> int:
+        interval = self.lifespan_unclaimed
+        if interval:
+            return pytimeparse.parse(interval)
+
+    @property
+    def lifespan_unclaimed_timedelta(self):
+        seconds = self.lifespan_unclaimed_seconds
+        if seconds:
+            return timedelta(seconds=seconds)
 
     @property
     def linked_resource_providers(self) -> List[ResourceProviderT]:
@@ -370,6 +401,44 @@ class ResourceProvider:
             namespace = self.namespace,
         )
 
+    def check_health(self,
+        logger: kopf.ObjectLogger,
+        resource_handle: ResourceHandleT,
+        resource_state: Mapping,
+    ) -> Optional[bool]:
+        if 'healthCheck' not in self.spec:
+            return None
+        try:
+            return check_condition(
+                condition = self.spec['healthCheck'],
+                variables = {
+                    **resource_state,
+                    "resource_handle": resource_handle,
+                },
+            )
+        except Exception:
+            logger.exception("Failed health check on {resource_handle} with {self}")
+            return None
+
+    def check_readiness(self,
+        logger: kopf.ObjectLogger,
+        resource_handle: ResourceHandleT,
+        resource_state: Mapping,
+    ) -> Optional[bool]:
+        if 'readinessCheck' not in self.spec:
+            return None
+        try:
+            return check_condition(
+                condition = self.spec['readinessCheck'],
+                variables = {
+                    **resource_state,
+                    "resource_handle": resource_handle,
+                },
+            )
+        except Exception:
+            logger.exception("Failed readiness check on {resource_handle} with {self}")
+            return None
+
     def check_template_match(self,
         claim_resource_template: Mapping,
         handle_resource_template: Mapping,
@@ -408,20 +477,21 @@ class ResourceProvider:
             _Parameter(pd) for pd in self.spec.get('parameters', [])
         ]
 
-    async def get_claim_resources(self,
-        resource_claim: ResourceClaimT,
+    async def get_resources(self,
         parameter_values: Optional[Mapping] = None,
+        resource_claim: Optional[ResourceClaimT] = None,
         resource_handle: Optional[ResourceHandleT] = None,
         resource_name: Optional[str] = None,
     ) -> List[Mapping]:
-        """Return list of resources for managed ResourceClaim"""
+        """Return list of resources for ResourceClaim and/or ResourceHandle"""
         resources = []
 
         if parameter_values == None:
-            parameter_values = {
-                **self.parameter_defaults,
-                **resource_claim.parameter_values,
-            }
+            parameter_values = {**self.parameter_defaults}
+            if resource_claim:
+                parameter_values.update(resource_claim.parameter_values)
+            elif resource_handle:
+                parameter_values.update(resource_handle.parameter_values)
 
         resource_handle_vars = resource_handle.vars if resource_handle else {}
         vars_ = {
@@ -435,9 +505,9 @@ class ResourceProvider:
 
         resources = []
         for linked_resource_provider in self.linked_resource_providers:
-            resource_provider = await ResourceProvider.get(linked_resource_provider.name)
+            resource_provider = await self.get(linked_resource_provider.name)
             resources.extend(
-                await resource_provider.get_claim_resources(
+                await resource_provider.get_resources(
                     resource_claim = resource_claim,
                     resource_handle = resource_handle,
                     resource_name = linked_resource_provider.resource_name,
@@ -473,17 +543,23 @@ class ResourceProvider:
         return template == cmp_template
 
     def make_status_summary(self,
-        resource_claim: ResourceClaimT,
+        resource_claim: Optional[ResourceClaimT] = None,
+        resource_handle: Optional[ResourceHandleT] = None,
+        resources: List[Mapping] = [],
     ) -> Mapping:
+        variables = {**self.vars}
+        if resource_claim:
+            variables.update(resource_claim.parameter_values)
+        else:
+            variables.update(resource_handle.parameter_values)
+
+        variables['resource_claim'] = resource_claim
+        variables['resource_handle'] = resource_handle
+        variables['resources'] = resources
+
         return recursive_process_template_strings(
             self.status_summary_template,
-            variables = {
-                **self.vars,
-                **resource_claim.parameter_values,
-                "resource_claim": resource_claim,
-                "resource_provider": self,
-                "resources": resource_claim.status_resources,
-            }
+            variables = variables,
         )
 
     def processed_template(self,

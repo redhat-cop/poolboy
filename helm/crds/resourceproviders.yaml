@@ -76,6 +76,12 @@ spec:
                   If set to true, then ResourceHandle creation is disabled for any ResourceClaim using
                   this ResourceProvider.
                 type: boolean
+              healthCheck:
+                description: >-
+                  Check to determine if provisioned resources are healthy.
+                  Any pooled ResourceHandle that fails its health check will not be assigned to a ResourceClaim.
+                  Syntax is a template that should return a boolean.
+                type: string
               lifespan:
                 description: >-
                   Used to generate lifespan configuration for ResourceHandles using the ResourceProvider.
@@ -102,6 +108,13 @@ spec:
                       Ex: "3d" for 3 days.
                       This value may be a template string.
                     type: string
+                  unclaimed:
+                    description: >-
+                      Lifespan applied to ResourceHandles in the pool to allow for replacement of unused resources.
+                      Configured as a whole number followed by units "s", "m", "h", or "d" for seconds, minutes, hours, or days.
+                      Ex: "3d" for 3 days.
+                    type: string
+                    pattern: ^[0-9]+[smhd]$
               linkedResourceProviders:
                 description: >-
                   List of ResourceProviders this one depends upon.
@@ -236,6 +249,11 @@ spec:
                             fields to specific numeric ranges.
                           type: object
                           x-kubernetes-preserve-unknown-fields: true
+              readinessCheck:
+                description: >-
+                  Check to determine when provisioned resources are ready.
+                  Syntax is a template that should return a boolean.
+                type: string
               resourceClaimAnnotations:
                 description: >-
                   Annotations to apply to ResourceClaim.

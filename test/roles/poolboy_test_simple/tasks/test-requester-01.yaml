@@ -105,7 +105,7 @@
     namespace: "{{ poolboy_namespace }}"
   register: r_get_resource_handle
   failed_when: >-
-    r_get_resource_handle.resources[0].spec.resources[0].waitingFor != 'ResourceClaim'
+    r_get_resource_handle.resources[0].status.resources[0].waitingFor != 'ResourceClaim'
   until: r_get_resource_handle is success
   delay: 1
   retries: 10

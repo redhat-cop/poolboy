@@ -166,7 +166,7 @@
               name: test-vars-02-a
             spec:
               count: 10
-  
+
 - name: Verify template validation success for ResourceClaim
   kubernetes.core.k8s_info:
     api_version: "{{ poolboy_domain }}/v1"

@@ -9,6 +9,7 @@ from typing import List, Mapping, Optional, TypeVar, Union
 
 from deep_merge import deep_merge
 from jsonpatch_from_diff import jsonpatch_from_diff
+from kopfobject import KopfObject
 from poolboy import Poolboy
 from poolboy_templating import recursive_process_template_strings
 
@@ -20,19 +21,24 @@ ResourceClaimT = TypeVar('ResourceClaimT', bound='ResourceClaim')
 ResourceHandleT = TypeVar('ResourceHandleT', bound='ResourceHandle')
 ResourceProviderT = TypeVar('ResourceProviderT', bound='ResourceProvider')
 
-class ResourceClaim:
-    instances = {}
-    lock = asyncio.Lock()
+class ResourceClaim(KopfObject):
+    api_group = Poolboy.operator_domain
+    api_version = Poolboy.operator_version
+    kind = "ResourceClaim"
+    plural = "resourceclaims"
 
-    @staticmethod
-    def __register_definition(definition: Mapping) -> ResourceClaimT:
+    instances = {}
+    class_lock = asyncio.Lock()
+
+    @classmethod
+    def __register_definition(cls, definition: Mapping) -> ResourceClaimT:
         name = definition['metadata']['name']
         namespace = definition['metadata']['namespace']
-        resource_claim = ResourceClaim.instances.get((namespace, name))
+        resource_claim = cls.instances.get((namespace, name))
         if resource_claim:
             resource_claim.refresh_from_definition(definition=definition)
         else:
-            resource_claim = ResourceClaim(
+            resource_claim = cls(
                 annotations = definition['metadata'].get('annotations', {}),
                 labels = definition['metadata'].get('labels', {}),
                 meta = definition['metadata'],
@@ -42,22 +48,23 @@ class ResourceClaim:
                 status = definition.get('status', {}),
                 uid = definition['metadata']['uid'],
             )
-            ResourceClaim.instances[(namespace, name)] = resource_claim
+            cls.instances[(namespace, name)] = resource_claim
         return resource_claim
 
-    @staticmethod
-    async def get(name: str, namespace: str) -> ResourceClaimT:
-        async with ResourceClaim.lock:
-            resource_claim = ResourceClaim.instances.get((namespace, name))
+    @classmethod
+    async def get(cls, name: str, namespace: str) -> ResourceClaimT:
+        async with cls.class_lock:
+            resource_claim = cls.instances.get((namespace, name))
             if resource_claim:
                 return resource_claim
             definition = await Poolboy.custom_objects_api.get_namespaced_custom_object(
                 Poolboy.operator_domain, Poolboy.operator_version, namespace, 'resourceclaims', name
             )
-            return ResourceClaim.__register_definition(definition=definition)
+            return cls.__register_definition(definition=definition)
 
-    @staticmethod
+    @classmethod
     async def register(
+        cls,
         annotations: kopf.Annotations,
         labels: kopf.Labels,
         meta: kopf.Meta,
@@ -67,8 +74,8 @@ class ResourceClaim:
         status: kopf.Status,
         uid: str,
     ) -> ResourceClaimT:
-        async with ResourceClaim.lock:
-            resource_claim = ResourceClaim.instances.get((namespace, name))
+        async with cls.class_lock:
+            resource_claim = cls.instances.get((namespace, name))
             if resource_claim:
                 resource_claim.refresh(
                     annotations = annotations,
@@ -79,7 +86,7 @@ class ResourceClaim:
                     uid = uid,
                 )
             else:
-                resource_claim = ResourceClaim(
+                resource_claim = cls(
                     annotations = annotations,
                     labels = labels,
                     meta = meta,
@@ -89,43 +96,21 @@ class ResourceClaim:
                     status = status,
                     uid = uid,
                 )
-                ResourceClaim.instances[(namespace, name)] = resource_claim
+                cls.instances[(namespace, name)] = resource_claim
             return resource_claim
 
-    @staticmethod
+    @classmethod
     async def register_definition(
+        cls,
         definition: Mapping,
     ) -> ResourceClaimT:
-        async with ResourceClaim.lock:
-            return ResourceClaim.__register_definition(definition=definition)
+        async with cls.class_lock:
+            return cls.__register_definition(definition=definition)
 
-    @staticmethod
-    async def unregister(name: str, namespace: str) -> Optional[ResourceClaimT]:
-        async with ResourceClaim.lock:
-            return ResourceClaim.instances.pop((namespace, name), None)
-
-    def __init__(self,
-        annotations: Union[kopf.Annotations, Mapping],
-        labels: Union[kopf.Labels, Mapping],
-        meta: Union[kopf.Meta, Mapping],
-        name: str,
-        namespace: str,
-        spec: Union[kopf.Spec, Mapping],
-        status: Union[kopf.Status, Mapping],
-        uid: str,
-    ):
-        self.annotations = annotations
-        self.labels = labels
-        self.lock = asyncio.Lock()
-        self.meta = meta
-        self.name = name
-        self.namespace = namespace
-        self.spec = spec
-        self.status = status
-        self.uid = uid
-
-    def __str__(self) -> str:
-        return f"ResourceClaim {self.name} in {self.namespace}"
+    @classmethod
+    async def unregister(cls, name: str, namespace: str) -> Optional[ResourceClaimT]:
+        async with cls.class_lock:
+            return cls.instances.pop((namespace, name), None)
 
     @property
     def approval_state(self) -> Optional[str]:
@@ -145,14 +130,6 @@ class ResourceClaim:
     @property
     def claim_is_initialized(self) -> bool:
         return f"{Poolboy.operator_domain}/resource-claim-init-timestamp" in self.annotations
-
-    @property
-    def creation_datetime(self):
-        return datetime.strptime(self.creation_timestamp, "%Y-%m-%dT%H:%H:%S%z")
-
-    @property
-    def creation_timestamp(self) -> str:
-        return self.meta['creationTimestamp']
 
     @property
     def has_resource_handle(self) -> bool:
@@ -242,16 +219,8 @@ class ResourceClaim:
         return self.creation_timestamp
 
     @property
-    def metadata(self) -> Mapping:
-        return self.meta
-
-    @property
     def parameter_values(self) -> Mapping:
         return self.status.get('provider', {}).get('parameterValues', {})
-
-    @property
-    def provider_name(self) -> Optional[str]:
-        return 
 
     @property
     def requested_lifespan_end_datetime(self):
@@ -436,29 +405,6 @@ class ResourceClaim:
             return None
         return self.status['resources'][resource_number].get('state')
 
-    def refresh(self,
-        annotations: kopf.Annotations,
-        labels: kopf.Labels,
-        meta: kopf.Meta,
-        spec: kopf.Spec,
-        status: kopf.Status,
-        uid: str,
-    ) -> None:
-        self.annotations = annotations
-        self.labels = labels
-        self.meta = meta
-        self.spec = spec
-        self.status = status
-        self.uid = uid
-
-    def refresh_from_definition(self, definition: Mapping) -> None:
-        self.annotations = definition['metadata'].get('annotations', {})
-        self.labels = definition['metadata'].get('labels', {})
-        self.meta = definition['metadata']
-        self.spec = definition['spec']
-        self.status = definition.get('status', {})
-        self.uid = definition['metadata']['uid']
-
     async def update_status_from_handle(self,
         logger: kopf.ObjectLogger,
         resource_handle: ResourceHandleT
@@ -520,17 +466,20 @@ class ResourceClaim:
                     "path": "/status/lifespan/relativeMaximum",
                 })
 
-        for index, resource in enumerate(resource_handle.spec['resources']):
-            if 'waitingFor' in resource:
+        for resource_index, status_resource in enumerate(resource_handle.status_resources):
+            if (
+                'waitingFor' in status_resource and
+                status_resource['waitingFor'] != self.status_resources[resource_index].get('waitingFor')
+            ):
                 patch.append({
                     "op": "add",
-                    "path": f"/status/resources/{index}/waitingFor",
-                    "value": resource['waitingFor'],
+                    "path": f"/status/resources/{resource_index}/waitingFor",
+                    "value": status_resource['waitingFor'],
                 })
-            elif 'waitingFor' in self.status_resources[index]:
+            elif 'waitingFor' in self.status_resources[resource_index]:
                 patch.append({
                     "op": "remove",
-                    "path": f"/status/resources/{index}/waitingFor",
+                    "path": f"/status/resources/{resource_index}/waitingFor",
                 })
 
         if patch:
@@ -590,15 +539,6 @@ class ResourceClaim:
             f"to ResourceClaim {self.name} in {self.namespace}"
         )
 
-    async def delete(self):
-        await Poolboy.custom_objects_api.delete_namespaced_custom_object(
-            group = Poolboy.operator_domain,
-            name = self.name,
-            namespace = self.namespace,
-            plural = 'resourceclaims',
-            version = Poolboy.operator_version,
-        )
-
     async def detach(self, resource_handle):
         await self.merge_patch_status({
             "resourceHandle": {
@@ -628,7 +568,7 @@ class ResourceClaim:
     async def get_resources_from_provider(self, resource_handle: Optional[ResourceHandleT]=None) -> List[Mapping]:
         """Return resources for this claim as defined by ResourceProvider"""
         resource_provider = await self.get_resource_provider()
-        return await resource_provider.get_claim_resources(
+        return await resource_provider.get_resources(
             resource_claim = self,
             resource_handle = resource_handle,
         )
@@ -663,19 +603,6 @@ class ResourceClaim:
 
         await self.merge_patch(patch)
         logger.info(f"ResourceClaim {self.name} in {self.namespace} initialized")
-
-    async def json_patch_status(self, patch: List[Mapping]) -> None:
-        """Apply json patch to object status and update definition."""
-        definition = await Poolboy.custom_objects_api.patch_namespaced_custom_object_status(
-            group = Poolboy.operator_domain,
-            name = self.name,
-            namespace = self.namespace,
-            plural = 'resourceclaims',
-            version = Poolboy.operator_version,
-            body = patch,
-            _content_type = 'application/json-patch+json',
-        )
-        self.refresh_from_definition(definition)
 
     async def manage(self, logger) -> None:
         async with self.lock:
@@ -814,6 +741,22 @@ class ResourceClaim:
     ) -> None:
         patch = []
 
+        # Ensure ResourceHandle provider matches ResourceClaim
+        if self.has_resource_provider:
+            if resource_handle.spec.get('provider') != self.spec['provider']:
+                logger.info(f"Setting provider on {resource_handle}")
+                patch.append({
+                    "op": "add",
+                    "path": "/spec/provider",
+                    "value": self.spec['provider']
+                })
+        elif resource_handle.has_resource_provider:
+            logger.info(f"Removing provider from {resource_handle}")
+            patch.append({
+                "op": "remove",
+                "path": "/spec/provider",
+            })
+
         # Add any new resources from claim to handle
         for resource_index in range(len(resource_handle.resources), len(resource_claim_resources)):
             resource = resource_claim_resources[resource_index]
@@ -879,44 +822,7 @@ class ResourceClaim:
                 })
 
         if patch:
-            definition = await Poolboy.custom_objects_api.patch_namespaced_custom_object(
-                body = patch,
-                group = Poolboy.operator_domain,
-                name = resource_handle.name,
-                namespace = resource_handle.namespace,
-                plural = 'resourcehandles',
-                version = Poolboy.operator_version,
-                _content_type = 'application/json-patch+json',
-            )
-            resource_handle.refresh_from_definition(definition)
-
-    async def merge_patch(self, patch: Mapping) -> None:
-        """Apply merge patch to object status and update definition."""
-        definition = await Poolboy.custom_objects_api.patch_namespaced_custom_object(
-            group = Poolboy.operator_domain,
-            name = self.name,
-            namespace = self.namespace,
-            plural = 'resourceclaims',
-            version = Poolboy.operator_version,
-            body = patch,
-            _content_type = 'application/merge-patch+json'
-        )
-        self.refresh_from_definition(definition)
-
-    async def merge_patch_status(self, patch: Mapping) -> None:
-        """Apply merge patch to object status and update definition."""
-        definition = await Poolboy.custom_objects_api.patch_namespaced_custom_object_status(
-            group = Poolboy.operator_domain,
-            name = self.name,
-            namespace = self.namespace,
-            plural = 'resourceclaims',
-            version = Poolboy.operator_version,
-            body = {
-                "status": patch
-            },
-            _content_type = 'application/merge-patch+json'
-        )
-        self.refresh_from_definition(definition)
+            await resource_handle.json_patch(patch)
 
     async def refetch(self) -> Optional[ResourceClaimT]:
         try:
@@ -927,7 +833,7 @@ class ResourceClaim:
             return self
         except kubernetes_asyncio.client.exceptions.ApiException as e:
             if e.status == 404:
-                ResourceClaim.unregister(name=self.name, namespace=self.namespace)
+                self.unregister(name=self.name, namespace=self.namespace)
                 return None
             else:
                 raise
@@ -1086,7 +992,7 @@ class ResourceClaim:
             }
 
             if 'resources' not in self.status:
-                resources = await resource_provider.get_claim_resources(
+                resources = await resource_provider.get_resources(
                     parameter_values = parameter_values,
                     resource_claim = self,
                 )
@@ -1098,44 +1004,62 @@ class ResourceClaim:
                 ]
             await self.merge_patch_status(patch)
 
-    async def remove_resource_from_status(self, index):
-        patch = [{
-            "op": "remove",
-            "path": f"/status/resources/{index}/state",
-        }]
+    async def remove_resource_from_status(self,
+        index: int,
+        logger: kopf.ObjectLogger,
+    ):
+        patch = []
+        if 'state' in self_status_resources[index]:
+            del self.status_resources[index]['state']
+            patch.append({
+                "op": "remove",
+                "path": f"/status/resources/{index}/state",
+            })
+        await self.__update_status(
+            logger=logger,
+            patch=patch,
+        )
 
-        if self.has_resource_provider:
-            resource_provider = await self.get_resource_provider()
-            if resource_provider.status_summary_template:
-                del self.status_resources[index]['state']
-                patch.append({
-                    "op": "add",
-                    "path": "/status/summary",
-                    "value": resource_provider.make_status_summary(self),
-                })
-
-        await self.json_patch_status(patch)
-
-    async def update_resource_in_status(self, index, state):
+    async def update_resource_in_status(self,
+        index: int,
+        logger: kopf.ObjectLogger,
+        state: Mapping,
+    ):
         patch = []
         if self.status_resources[index].get('state') != state:
+            self.status_resources[index]['state'] = state
             patch.append({
                 "op": "add",
                 "path": f"/status/resources/{index}/state",
                 "value": state,
             })
+        await self.__update_status(
+            logger=logger,
+            patch=patch,
+        )
+
+    async def __update_status(self,
+        logger: kopf.ObjectLogger,
+        patch: List[Mapping]=[],
+    ):
+        # FIXME - add healthy
+        # FIXME - add ready
 
         if self.has_resource_provider:
             resource_provider = await self.get_resource_provider()
             if resource_provider.status_summary_template:
-                self.status_resources[index]['state'] = state
-                status_summary = resource_provider.make_status_summary(self)
-                if status_summary != self.status.get('summary'):
-                    patch.append({
-                        "op": "add",
-                        "path": "/status/summary",
-                        "value": status_summary,
-                    })
-
+                try:
+                    status_summary = resource_provider.make_status_summary(
+                        resource_claim=self,
+                        resources=self.status_resources,
+                    )
+                    if status_summary != self.status.get('summary'):
+                        patch.append({
+                            "op": "add",
+                            "path": "/status/summary",
+                            "value": status_summary,
+                        })
+                except Exception:
+                    logger.exception(f"Failed to generate status summary for {self}")
         if patch:
             await self.json_patch_status(patch)

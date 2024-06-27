@@ -223,7 +223,7 @@
       apiVersion: "{{ poolboy_domain }}/v1"
       kind: ResourceClaim
       metadata:
-        annotations: 
+        annotations:
           poolboy.dev.local/resource-claim-init-timestamp: "1970-01-01T00:00:00Z"
         finalizers:
         - "{{ poolboy_domain }}"
@@ -417,7 +417,7 @@
       spec:
         stringvalue: one
         ts: "1970-01-01T00:00:00Z"
-  
+
 - name: Clear ignore label on ResourceHandle for test-ignore-01-a
   kubernetes.core.k8s:
     api_version: "{{ poolboy_domain }}/v1"

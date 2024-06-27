@@ -16,27 +16,34 @@ import resourcepool
 import resourceprovider
 import resourcewatcher
 
+from kopfobject import KopfObject
 from poolboy import Poolboy
 from poolboy_templating import recursive_process_template_strings, seconds_to_interval
 
 ResourceClaimT = TypeVar('ResourceClaimT', bound='ResourceClaim')
 ResourceHandleT = TypeVar('ResourceHandleT', bound='ResourceHandle')
 ResourcePoolT = TypeVar('ResourcePoolT', bound='ResourcePool')
+ResourceProviderT = TypeVar('ResourceProviderT', bound='ResourceProvider')
 
-class ResourceHandle:
+class ResourceHandle(KopfObject):
+    api_group = Poolboy.operator_domain
+    api_version = Poolboy.operator_version
+    kind = "ResourceHandle"
+    plural = "resourcehandles"
+
     all_instances = {}
     bound_instances = {}
     unbound_instances = {}
-    lock = asyncio.Lock()
+    class_lock = asyncio.Lock()
 
-    @staticmethod
-    def __register_definition(definition: Mapping) -> ResourceHandleT:
+    @classmethod
+    def __register_definition(cls, definition: Mapping) -> ResourceHandleT:
         name = definition['metadata']['name']
-        resource_handle = ResourceHandle.all_instances.get(name)
+        resource_handle = cls.all_instances.get(name)
         if resource_handle:
             resource_handle.refresh_from_definition(definition=definition)
         else:
-            resource_handle = ResourceHandle(
+            resource_handle = cls(
                 annotations = definition['metadata'].get('annotations', {}),
                 labels = definition['metadata'].get('labels', {}),
                 meta = definition['metadata'],
@@ -49,15 +56,16 @@ class ResourceHandle:
         resource_handle.__register()
         return resource_handle
 
-    @staticmethod
+    @classmethod
     async def bind_handle_to_claim(
+        cls,
         logger: kopf.ObjectLogger,
         resource_claim: ResourceClaimT,
         resource_claim_resources: List[Mapping],
     ) -> Optional[ResourceHandleT]:
-        async with ResourceHandle.lock:
+        async with cls.class_lock:
             # Check if there is already an assigned claim
-            resource_handle = ResourceHandle.bound_instances.get((resource_claim.namespace, resource_claim.name))
+            resource_handle = cls.bound_instances.get((resource_claim.namespace, resource_claim.name))
             if resource_handle:
                 return resource_handle
 
@@ -66,7 +74,11 @@ class ResourceHandle:
             claim_status_resources = resource_claim.status_resources
 
             # Loop through unbound instances to find best match
-            for resource_handle in ResourceHandle.unbound_instances.values():
+            for resource_handle in cls.unbound_instances.values():
+                # Skip unhealthy
+                if resource_handle.is_healthy == False:
+                    continue
+
                 # Honor explicit pool requests
                 if resource_claim.resource_pool_name \
                 and resource_claim.resource_pool_name != resource_handle.resource_pool_name:
@@ -78,6 +90,16 @@ class ResourceHandle:
                     continue
 
                 diff_count = 0
+
+                # Prefer handles with known healthy status
+                if resource_handle.is_healthy == None:
+                    diff_count += 0.1
+                # Prefer handles that are ready
+                if resource_handle.is_ready == False:
+                    diff_count += 0.01
+                elif resource_handle.is_ready == None:
+                    diff_count += 0.001
+
                 is_match = True
                 handle_resources = resource_handle.resources
                 if len(resource_claim_resources) < len(handle_resources):
@@ -123,7 +145,7 @@ class ResourceHandle:
                     matched_resource_handles.append((diff_count, resource_handle))
 
             # Bind the oldest ResourceHandle with the smallest difference score
-            matched_resource_handles.sort(key=lambda item: f"{item[0]:09d} {item[1].creation_timestamp}")
+            matched_resource_handles.sort(key=lambda item: f"{item[0]:012.3f} {item[1].creation_timestamp}")
             for matched_resource_handle_item in matched_resource_handles:
                 matched_resource_handle = matched_resource_handle_item[1]
                 patch = [
@@ -161,16 +183,8 @@ class ResourceHandle:
                     })
 
                 try:
-                    definition = await Poolboy.custom_objects_api.patch_namespaced_custom_object(
-                        group = Poolboy.operator_domain,
-                        name = matched_resource_handle.name,
-                        namespace = matched_resource_handle.namespace,
-                        plural = 'resourcehandles',
-                        version = Poolboy.operator_version,
-                        _content_type = 'application/json-patch+json',
-                        body = patch,
-                    )
-                    matched_resource_handle = ResourceHandle.__register_definition(definition=definition)
+                    await matched_resource_handle.json_patch(patch)
+                    matched_resource_handle.__register()
                 except kubernetes_asyncio.client.exceptions.ApiException as exception:
                     if exception.status == 404:
                         logger.warning(f"Attempt to bind deleted {matched_resource_handle} to {resource_claim}")
@@ -196,51 +210,12 @@ class ResourceHandle:
                 )
         return matched_resource_handle
 
-    @staticmethod
-    async def create_for_claim(
+    @classmethod
+    async def create_for_claim(cls,
         logger: kopf.ObjectLogger,
         resource_claim: ResourceClaimT,
         resource_claim_resources: List[Mapping],
     ):
-        resource_providers = await resource_claim.get_resource_providers(resource_claim_resources)
-        vars_ = {}
-        resources = []
-        lifespan_default_timedelta = None
-        lifespan_maximum = None
-        lifespan_maximum_timedelta = None
-        lifespan_relative_maximum = None
-        lifespan_relative_maximum_timedelta = None
-        for i, claim_resource in enumerate(resource_claim_resources):
-            provider = resource_providers[i]
-            vars_.update(provider.vars)
-
-            provider_lifespan_default_timedelta = provider.get_lifespan_default_timedelta(resource_claim)
-            if provider_lifespan_default_timedelta:
-                if not lifespan_default_timedelta \
-                or provider_lifespan_default_timedelta < lifespan_default_timedelta:
-                    lifespan_default_timedelta = provider_lifespan_default_timedelta
-
-            provider_lifespan_maximum_timedelta = provider.get_lifespan_maximum_timedelta(resource_claim)
-            if provider_lifespan_maximum_timedelta:
-                if not lifespan_maximum_timedelta \
-                or provider_lifespan_maximum_timedelta < lifespan_maximum_timedelta:
-                    lifespan_maximum = provider.lifespan_maximum
-                    lifespan_maximum_timedelta = provider_lifespan_maximum_timedelta
-
-            provider_lifespan_relative_maximum_timedelta = provider.get_lifespan_relative_maximum_timedelta(resource_claim)
-            if provider_lifespan_relative_maximum_timedelta:
-                if not lifespan_relative_maximum_timedelta \
-                or provider_lifespan_relative_maximum_timedelta < lifespan_relative_maximum_timedelta:
-                    lifespan_relative_maximum = provider.lifespan_relative_maximum
-                    lifespan_relative_maximum_timedelta = provider_lifespan_relative_maximum_timedelta
-
-            resources_item = {"provider": provider.as_reference()}
-            if 'name' in claim_resource:
-                resources_item['name'] = claim_resource['name']
-            if 'template' in claim_resource:
-                resources_item['template'] = claim_resource['template']
-            resources.append(resources_item)
-
         definition = {
             'apiVersion': Poolboy.operator_api_version,
             'kind': 'ResourceHandle',
@@ -259,11 +234,61 @@ class ResourceHandle:
                     'name': resource_claim.name,
                     'namespace': resource_claim.namespace
                 },
-                'resources': resources,
-                'vars': vars_,
             }
         }
 
+        resources = []
+        lifespan_default_timedelta = None
+        lifespan_maximum = None
+        lifespan_maximum_timedelta = None
+        lifespan_relative_maximum = None
+        lifespan_relative_maximum_timedelta = None
+        if resource_claim.has_resource_provider:
+            resource_provider = await resource_claim.get_resource_provider()
+            definition['spec']['resources'] = resource_claim_resources
+            definition['spec']['provider'] = resource_claim.spec['provider']
+            lifespan_default_timedelta = resource_provider.get_lifespan_default_timedelta(resource_claim)
+            lifespan_maximum = resource_provider.lifespan_maximum
+            lifespan_maximum_timedelta = resource_provider.get_lifespan_maximum_timedelta(resource_claim)
+            lifespan_relative_maximum = resource_provider.lifespan_relative_maximum
+            lifespan_relative_maximum_timedelta = resource_provider.get_lifespan_maximum_timedelta(resource_claim)
+        else:
+            vars_ = {}
+
+            resource_providers = await resource_claim.get_resource_providers(resource_claim_resources)
+            for i, claim_resource in enumerate(resource_claim_resources):
+                provider = resource_providers[i]
+                vars_.update(provider.vars)
+
+                provider_lifespan_default_timedelta = provider.get_lifespan_default_timedelta(resource_claim)
+                if provider_lifespan_default_timedelta:
+                    if not lifespan_default_timedelta \
+                    or provider_lifespan_default_timedelta < lifespan_default_timedelta:
+                        lifespan_default_timedelta = provider_lifespan_default_timedelta
+
+                provider_lifespan_maximum_timedelta = provider.get_lifespan_maximum_timedelta(resource_claim)
+                if provider_lifespan_maximum_timedelta:
+                    if not lifespan_maximum_timedelta \
+                    or provider_lifespan_maximum_timedelta < lifespan_maximum_timedelta:
+                        lifespan_maximum = provider.lifespan_maximum
+                        lifespan_maximum_timedelta = provider_lifespan_maximum_timedelta
+
+                provider_lifespan_relative_maximum_timedelta = provider.get_lifespan_relative_maximum_timedelta(resource_claim)
+                if provider_lifespan_relative_maximum_timedelta:
+                    if not lifespan_relative_maximum_timedelta \
+                    or provider_lifespan_relative_maximum_timedelta < lifespan_relative_maximum_timedelta:
+                        lifespan_relative_maximum = provider.lifespan_relative_maximum
+                        lifespan_relative_maximum_timedelta = provider_lifespan_relative_maximum_timedelta
+
+                resources_item = {"provider": provider.as_reference()}
+                if 'name' in claim_resource:
+                    resources_item['name'] = claim_resource['name']
+                if 'template' in claim_resource:
+                    resources_item['template'] = claim_resource['template']
+                resources.append(resources_item)
+
+            definition['spec']['resources'] = resources
+            definition['spec']['vars'] = vars_
 
         lifespan_end_datetime = None
         lifespan_start_datetime = datetime.now(timezone.utc)
@@ -316,15 +341,16 @@ class ResourceHandle:
             plural = 'resourcehandles',
             version = Poolboy.operator_version,
         )
-        resource_handle = await ResourceHandle.register_definition(definition=definition)
+        resource_handle = await cls.register_definition(definition=definition)
         logger.info(
             f"Created ResourceHandle {resource_handle.name} for "
             f"ResourceClaim {resource_claim.name} in {resource_claim.namespace}"
         )
         return resource_handle
 
-    @staticmethod
+    @classmethod
     async def create_for_pool(
+        cls,
         logger: kopf.ObjectLogger,
         resource_pool: ResourcePoolT,
     ):
@@ -339,11 +365,29 @@ class ResourceHandle:
                 },
             },
             "spec": {
-                "resourcePool": resource_pool.ref,
-                "resources": resource_pool.resources,
+                "resourcePool": resource_pool.reference,
                 "vars": resource_pool.vars,
             }
         }
+
+        if resource_pool.has_resource_provider:
+            definition['spec']['provider'] = resource_pool.spec['provider']
+            resource_provider = await resource_pool.get_resource_provider()
+            if resource_provider.has_lifespan:
+                definition['spec']['lifespan'] = {}
+                if resource_provider.lifespan_default:
+                    definition['spec']['lifespan']['default'] = resource_provider.lifespan_default
+                if resource_provider.lifespan_maximum:
+                    definition['spec']['lifespan']['maximum'] = resource_provider.lifespan_maximum
+                if resource_provider.lifespan_relative_maximum:
+                    definition['spec']['lifespan']['maximum'] = resource_provider.lifespan_relative_maximum
+                if resource_provider.lifespan_unclaimed:
+                    definition['spec']['lifespan']['end'] = (
+                        datetime.now(timezone.utc) + resource_provider.lifespan_unclaimed_timedelta
+                    ).strftime("%FT%TZ")
+        else:
+            definition['spec']['resources'] = resource_pool.resources
+
         if resource_pool.has_lifespan:
             definition['spec']['lifespan'] = {}
             if resource_pool.lifespan_default:
@@ -364,18 +408,19 @@ class ResourceHandle:
             plural = "resourcehandles",
             version = Poolboy.operator_version,
         )
-        resource_handle = await ResourceHandle.register_definition(definition=definition)
+        resource_handle = await cls.register_definition(definition=definition)
         logger.info(f"Created ResourceHandle {resource_handle.name} for ResourcePool {resource_pool.name}")
         return resource_handle
 
-    @staticmethod
+    @classmethod
     async def delete_unbound_handles_for_pool(
+        cls,
         logger: kopf.ObjectLogger,
         resource_pool: ResourcePoolT,
     ) -> List[ResourceHandleT]:
-        async with ResourceHandle.lock:
+        async with cls.class_lock:
             resource_handles = []
-            for resource_handle in list(ResourceHandle.unbound_instances.values()):
+            for resource_handle in list(cls.unbound_instances.values()):
                 if resource_handle.resource_pool_name == resource_pool.name \
                 and resource_handle.resource_pool_namespace == resource_pool.namespace:
                     logger.info(
@@ -386,10 +431,10 @@ class ResourceHandle:
                     await resource_handle.delete()
             return resource_handles
 
-    @staticmethod
-    async def get(name: str) -> Optional[ResourceHandleT]:
-        async with ResourceHandle.lock:
-            resource_handle = ResourceHandle.all_instances.get(name)
+    @classmethod
+    async def get(cls, name: str) -> Optional[ResourceHandleT]:
+        async with cls.class_lock:
+            resource_handle = cls.all_instances.get(name)
             if resource_handle:
                 return resource_handle
             definition = await Poolboy.custom_objects_api.get_namespaced_custom_object(
@@ -397,15 +442,19 @@ class ResourceHandle:
             )
             if 'deletionTimestamp' in definition['metadata']:
                 return None
-            return ResourceHandle.__register_definition(definition=definition)
+            return cls.__register_definition(definition=definition)
 
-    @staticmethod
-    def get_from_cache(name: str) -> Optional[ResourceHandleT]:
-        return ResourceHandle.all_instances.get(name)
+    @classmethod
+    def get_from_cache(cls, name: str) -> Optional[ResourceHandleT]:
+        return cls.all_instances.get(name)
 
-    @staticmethod
-    async def get_unbound_handles_for_pool(resource_pool: ResourcePoolT, logger) -> List[ResourceHandleT]:
-        async with ResourceHandle.lock:
+    @classmethod
+    async def get_unbound_handles_for_pool(
+        cls,
+        resource_pool: ResourcePoolT,
+        logger: kopf.ObjectLogger,
+    ) -> List[ResourceHandleT]:
+        async with cls.class_lock:
             resource_handles = []
             for resource_handle in ResourceHandle.unbound_instances.values():
                 if resource_handle.resource_pool_name == resource_pool.name \
@@ -413,9 +462,9 @@ class ResourceHandle:
                     resource_handles.append(resource_handle)
             return resource_handles
 
-    @staticmethod
-    async def preload(logger: kopf.ObjectLogger) -> None:
-        async with ResourceHandle.lock:
+    @classmethod
+    async def preload(cls, logger: kopf.ObjectLogger) -> None:
+        async with cls.class_lock:
             _continue = None
             while True:
                 resource_handle_list = await Poolboy.custom_objects_api.list_namespaced_custom_object(
@@ -424,13 +473,14 @@ class ResourceHandle:
                     limit = 50,
                 )
                 for definition in resource_handle_list['items']:
-                    ResourceHandle.__register_definition(definition=definition)
+                    cls.__register_definition(definition=definition)
                 _continue = resource_handle_list['metadata'].get('continue')
                 if not _continue:
                     break
 
-    @staticmethod
+    @classmethod
     async def register(
+        cls,
         annotations: kopf.Annotations,
         labels: kopf.Labels,
         meta: kopf.Meta,
@@ -440,8 +490,8 @@ class ResourceHandle:
         status: kopf.Status,
         uid: str,
     ) -> ResourceHandleT:
-        async with ResourceHandle.lock:
-            resource_handle = ResourceHandle.all_instances.get(name)
+        async with cls.class_lock:
+            resource_handle = cls.all_instances.get(name)
             if resource_handle:
                 resource_handle.refresh(
                     annotations = annotations,
@@ -452,7 +502,7 @@ class ResourceHandle:
                     uid = uid,
                 )
             else:
-                resource_handle = ResourceHandle(
+                resource_handle = cls(
                     annotations = annotations,
                     labels = labels,
                     meta = meta,
@@ -465,27 +515,27 @@ class ResourceHandle:
             resource_handle.__register()
             return resource_handle
 
-    @staticmethod
-    async def register_definition(definition: Mapping) -> ResourceHandleT:
-        async with ResourceHandle.lock:
-            return ResourceHandle.__register_definition(definition)
+    @classmethod
+    async def register_definition(cls, definition: Mapping) -> ResourceHandleT:
+        async with cls.class_lock:
+            return cls.__register_definition(definition)
 
-    @staticmethod
-    async def unregister(name: str) -> Optional[ResourceHandleT]:
-        async with ResourceHandle.lock:
-            resource_handle = ResourceHandle.all_instances.pop(name, None)
+    @classmethod
+    async def unregister(cls, name: str) -> Optional[ResourceHandleT]:
+        async with cls.class_lock:
+            resource_handle = cls.all_instances.pop(name, None)
             if resource_handle:
                 resource_handle.__unregister()
                 return resource_handle
 
     def __init__(self,
-        annotations: kopf.Annotations,
-        labels: kopf.Labels,
-        meta: kopf.Meta,
+        annotations: Union[kopf.Annotations, Mapping],
+        labels: Union[kopf.Labels, Mapping],
+        meta: Union[kopf.Meta, Mapping],
         name: str,
         namespace: str,
-        spec: kopf.Spec,
-        status: kopf.Status,
+        spec: Union[kopf.Spec, Mapping],
+        status: Union[kopf.Status, Mapping],
         uid: str,
     ):
         self.annotations = annotations
@@ -497,8 +547,6 @@ class ResourceHandle:
         self.spec = spec
         self.status = status
         self.uid = uid
-        self.resource_states = []
-        self.resource_refresh_datetime = []
 
     def __str__(self) -> str:
         return f"ResourceHandle {self.name}"
@@ -508,36 +556,24 @@ class ResourceHandle:
         Add ResourceHandle to register of bound or unbound instances.
         This method must be called with the ResourceHandle.lock held.
         """
-        ResourceHandle.all_instances[self.name] = self
+        self.all_instances[self.name] = self
         if self.is_bound:
-            ResourceHandle.bound_instances[(
+            self.bound_instances[(
                 self.resource_claim_namespace,
                 self.resource_claim_name
             )] = self
-            ResourceHandle.unbound_instances.pop(self.name, None)
+            self.unbound_instances.pop(self.name, None)
         elif not self.is_deleting:
-            ResourceHandle.unbound_instances[self.name] = self
+            self.unbound_instances[self.name] = self
 
     def __unregister(self) -> None:
-        ResourceHandle.all_instances.pop(self.name, None)
-        ResourceHandle.unbound_instances.pop(self.name, None)
+        self.all_instances.pop(self.name, None)
+        self.unbound_instances.pop(self.name, None)
         if self.is_bound:
-            ResourceHandle.bound_instances.pop(
+            self.bound_instances.pop(
                 (self.resource_claim_namespace, self.resource_claim_name),
                 None,
             )
-
-    @property
-    def creation_datetime(self):
-        return datetime.strptime(self.creation_timestamp, "%Y-%m-%dT%H:%M:%S%z")
-
-    @property
-    def creation_timestamp(self) -> str:
-        return self.meta['creationTimestamp']
-
-    @property
-    def deletion_timestamp(self) -> str:
-        return self.meta.get('deletionTimestamp')
 
     @property
     def guid(self) -> str:
@@ -553,6 +589,11 @@ class ResourceHandle:
     @property
     def has_lifespan_end(self) -> bool:
         'end' in self.spec.get('lifespan', {})
+
+    @property
+    def has_resource_provider(self) -> bool:
+        """Return whether this ResourceHandle is managed by a ResourceProvider."""
+        return 'provider' in self.spec
 
     @property
     def ignore(self) -> bool:
@@ -571,11 +612,19 @@ class ResourceHandle:
         return 'resourcePool' in self.spec
 
     @property
+    def is_healthy(self) -> Optional[bool]:
+        return self.status.get('healthy')
+
+    @property
     def is_past_lifespan_end(self) -> bool:
         dt = self.lifespan_end_datetime
         if not dt:
             return False
         return dt < datetime.now(timezone.utc)
+
+    @property
+    def is_ready(self) -> Optional[bool]:
+        return self.status.get('ready')
 
     @property
     def lifespan_end_datetime(self) -> Any:
@@ -590,17 +639,8 @@ class ResourceHandle:
             return lifespan.get('end')
 
     @property
-    def metadata(self) -> Mapping:
-        return self.meta
-
-    @property
-    def reference(self) -> Mapping:
-        return {
-            "apiVersion": Poolboy.operator_api_version,
-            "kind": "ResourceHandle",
-            "name": self.name,
-            "namespace": self.namespace,
-        }
+    def parameter_values(self) -> Mapping:
+        return self.spec.get('provider', {}).get('parameterValues', {})
 
     @property
     def resource_claim_name(self) -> Optional[str]:
@@ -621,8 +661,16 @@ class ResourceHandle:
             return self.spec['resourcePool'].get('namespace', Poolboy.namespace)
 
     @property
+    def resource_provider_name(self) -> Optional[str]:
+        return self.spec.get('provider', {}).get('name')
+
+    @property
     def resources(self) -> List[Mapping]:
         return self.spec.get('resources', [])
+
+    @property
+    def status_resources(self) -> List[Mapping]:
+        return self.status.get('resources', [])
 
     @property
     def vars(self) -> Mapping:
@@ -692,42 +740,6 @@ class ResourceHandle:
         else:
             return maximum_end
 
-    def refresh(self,
-        annotations: kopf.Annotations,
-        labels: kopf.Labels,
-        meta: kopf.Meta,
-        spec: kopf.Spec,
-        status: kopf.Status,
-        uid: str,
-    ) -> None:
-        self.annotations = annotations
-        self.labels = labels
-        self.meta = meta
-        self.spec = spec
-        self.status = status
-        self.uid = uid
-
-    def refresh_from_definition(self, definition: Mapping) -> None:
-        self.annotations = definition['metadata'].get('annotations', {})
-        self.labels = definition['metadata'].get('labels', {})
-        self.meta = definition['metadata']
-        self.spec = definition['spec']
-        self.status = definition.get('status', {})
-        self.uid = definition['metadata']['uid']
-
-    async def delete(self):
-        try:
-            await Poolboy.custom_objects_api.delete_namespaced_custom_object(
-                group = Poolboy.operator_domain,
-                name = self.name,
-                namespace = self.namespace,
-                plural = 'resourcehandles',
-                version = Poolboy.operator_version,
-            )
-        except kubernetes_asyncio.client.exceptions.ApiException as e:
-            if e.status != 404:
-                raise
-
     async def get_resource_claim(self) -> Optional[ResourceClaimT]:
         if not self.is_bound:
             return None
@@ -741,7 +753,11 @@ class ResourceHandle:
             return None
         return await resourcepool.ResourcePool.get(self.resource_pool_name)
 
-    async def get_resource_providers(self):
+    async def get_resource_provider(self) -> ResourceProviderT:
+        """Return ResourceProvider configured to manage ResourceHandle."""
+        return await resourceprovider.ResourceProvider.get(self.resource_provider_name)
+
+    async def get_resource_providers(self) -> List[ResourceProviderT]:
         resource_providers = []
         for resource in self.spec.get('resources', []):
             resource_providers.append(
@@ -750,41 +766,29 @@ class ResourceHandle:
         return resource_providers
 
     async def get_resource_states(self, logger: kopf.ObjectLogger) -> List[Mapping]:
-        for i, resource in enumerate(self.spec['resources']):
-            if i >= len(self.resource_states):
-                self.resource_states.append(None)
-                self.resource_refresh_datetime.append(None)
-            elif (
-                self.resource_states[i] and
-                self.resource_refresh_datetime[i] and
-                (datetime.now(timezone.utc) - self.resource_refresh_datetime[i]).total_seconds() > Poolboy.resource_refresh_interval
-            ):
+        resource_states = []
+        for resource_index, resource in enumerate(self.resources):
+            if resource_index >= len(self.status_resources):
+                resource_states.append(None)
                 continue
-
-            reference = resource.get('reference')
+            reference = self.status_resources[resource_index].get('reference')
             if not reference:
+                resource_states.append(None)
                 continue
-
             api_version = reference['apiVersion']
             kind = reference['kind']
             name = reference['name']
             namespace = reference.get('namespace')
-            try:
-                self.resource_states[i] = await poolboy_k8s.get_object(
-                    api_version = api_version,
-                    kind = kind,
-                    name = name,
-                    namespace = namespace,
-                )
-                self.resource_refresh_datetime[i] = datetime.now(timezone.utc)
-            except kubernetes_asyncio.client.exceptions.ApiException as e:
-                if e.status == 404:
-                    _name = f"{name} in {namespace}" if namespace else name
-                    logger.warning(f"Mangaged resource {api_version} {kind} {_name} not found.")
+            resource = await resourcewatcher.ResourceWatcher.get_resource(
+                api_version=api_version, kind=kind, name=name, namespace=namespace,
+            )
+            resource_states.append(resource)
+            if not resource:
+                if namespace:
+                    logger.warning(f"Mangaged resource {api_version} {kind} {name} in {namespace} not found.")
                 else:
-                    raise
-
-        return self.resource_states
+                    logger.warning(f"Mangaged resource {api_version} {kind} {name} not found.")
+        return resource_states
 
     async def handle_delete(self, logger: kopf.ObjectLogger) -> None:
         for resource in self.spec.get('resources', []):
@@ -823,21 +827,10 @@ class ResourceHandle:
 
     async def handle_resource_event(self,
         logger: Union[logging.Logger, logging.LoggerAdapter],
-        resource_index: int,
-        resource_state: Mapping,
     ) -> None:
         async with self.lock:
-            # Extend resource_states as needed
-            if resource_index >= len(self.resource_states):
-                self.resource_states.extend(
-                    [None] * (1 + resource_index - len(self.resource_states))
-                )
-            if resource_index >= len(self.resource_refresh_datetime):
-                self.resource_refresh_datetime.extend(
-                    [None] * (1 + resource_index - len(self.resource_refresh_datetime))
-                )
-            self.resource_states[resource_index] = resource_state
-            self.resource_refresh_datetime[resource_index] = datetime.now(timezone.utc)
+            if self.has_resource_provider:
+                await self.update_status(logger=logger)
 
     async def manage(self, logger: kopf.ObjectLogger) -> None:
         async with self.lock:
@@ -861,20 +854,54 @@ class ResourceHandle:
                 await self.delete()
                 return
 
+            await self.update_resources(logger=logger, resource_claim=resource_claim)
+
             resource_providers = await self.get_resource_providers()
             resource_states = await self.get_resource_states(logger=logger)
+            status_resources = self.status_resources
             patch = []
+            status_patch = []
             resources_to_create = []
+
+            if not self.status:
+                status_patch.append({
+                    "op": "add",
+                    "path": "/status",
+                    "value": {},
+                })
+            if 'resources' not in self.status:
+                status_patch.append({
+                    "op": "add",
+                    "path": "/status/resources",
+                    "value": [],
+                })
 
             for resource_index, resource in enumerate(self.spec['resources']):
                 resource_provider = resource_providers[resource_index]
                 resource_state = resource_states[resource_index]
 
+                if len(status_resources) <= resource_index:
+                    status_resources.append({})
+                    status_patch.append({
+                        "op": "add",
+                        "path": f"/status/resources/{resource_index}",
+                        "value": {},
+                    })
+                status_resource = status_resources[resource_index]
+
+                if 'name' in resource and resource['name'] != status_resource.get('name'):
+                    status_resource['name'] = resource['name']
+                    status_patch.append({
+                        "op": "add",
+                        "path": f"/status/resources/{resource_index}/name",
+                        "value": resource['name'],
+                    })
+
                 if resource_provider.resource_requires_claim and not resource_claim:
-                    if 'ResourceClaim' != resource.get('waitingFor'):
-                        patch.append({
+                    if 'ResourceClaim' != status_resource.get('waitingFor'):
+                        status_patch.append({
                             "op": "add",
-                            "path": f"/spec/resources/{resource_index}/waitingFor",
+                            "path": f"/status/resources/{resource_index}/waitingFor",
                             "value": "ResourceClaim",
                         })
                     continue
@@ -916,10 +943,10 @@ class ResourceHandle:
                             )
 
                 if wait_for_linked_provider:
-                    if 'Linked ResourceProvider' != resource.get('waitingFor'):
-                        patch.append({
+                    if 'Linked ResourceProvider' != status_resource.get('waitingFor'):
+                        status_patch.append({
                             "op": "add",
-                            "path": f"/spec/resources/{resource_index}/waitingFor",
+                            "path": f"/status/resources/{resource_index}/waitingFor",
                             "value": "Linked ResourceProvider",
                         })
                     continue
@@ -933,10 +960,10 @@ class ResourceHandle:
                     vars_ = vars_,
                 )
                 if not resource_definition:
-                    if 'Resource Definition' != resource.get('waitingFor'):
-                        patch.append({
+                    if 'Resource Definition' != status_resource.get('waitingFor'):
+                        status_patch.append({
                             "op": "add",
-                            "path": f"/spec/resources/{resource_index}/waitingFor",
+                            "path": f"/status/resources/{resource_index}/waitingFor",
                             "value": "Resource Definition",
                         })
                     continue
@@ -954,19 +981,29 @@ class ResourceHandle:
                 if resource_namespace:
                     reference['namespace'] = resource_namespace
 
-                if 'reference' not in resource:
+                if 'reference' not in status_resource:
+                    # Add reference to status resources
+                    status_resource['reference'] = reference
+                    status_patch.append({
+                        "op": "add",
+                        "path": f"/status/resources/{resource_index}/reference",
+                        "value": reference,
+                    })
+                    # Retain reference in spec for compatibility
                     patch.append({
                         "op": "add",
                         "path": f"/spec/resources/{resource_index}/reference",
                         "value": reference,
                     })
-                    if 'waitingFor' in resource:
-                        patch.append({
+                    # Remove waitingFor from status if present as we are preceeding to resource creation
+                    if 'waitingFor' in status_resource:
+                        status_patch.append({
                             "op": "remove",
-                            "path": f"/spec/resources/{resource_index}/waitingFor",
+                            "path": f"/status/resources/{resource_index}/waitingFor",
                         })
                     try:
-                        resource_states[resource_index] = resource_state = await poolboy_k8s.get_object(
+                        # Get resource state as it would not have been fetched above.
+                        resource_states[resource_index] = resource_state = await resourcewatcher.ResourceWatcher.get_resource(
                             api_version = resource_api_version,
                             kind = resource_kind,
                             name = resource_name,
@@ -975,25 +1012,25 @@ class ResourceHandle:
                     except kubernetes_asyncio.client.exceptions.ApiException as e:
                         if e.status != 404:
                             raise
-                elif resource_api_version != resource['reference']['apiVersion']:
+                elif resource_api_version != status_resource['reference']['apiVersion']:
                     raise kopf.TemporaryError(
                         f"ResourceHandle {self.name} would change from apiVersion "
-                        f"{resource['reference']['apiVersion']} to {resource_api_version}!",
+                        f"{status_resource['reference']['apiVersion']} to {resource_api_version}!",
                         delay=600
                     )
-                elif resource_kind != resource['reference']['kind']:
+                elif resource_kind != status_resource['reference']['kind']:
                     raise kopf.TemporaryError(
                         f"ResourceHandle {self.name} would change from kind "
-                        f"{resource['reference']['kind']} to {resource_kind}!",
+                        f"{status_resource['reference']['kind']} to {resource_kind}!",
                         delay=600
                     )
                 else:
                     # Maintain name and namespace
-                    if resource_name != resource['reference']['name']:
-                        resource_name = resource['reference']['name']
+                    if resource_name != status_resource['reference']['name']:
+                        resource_name = status_resource['reference']['name']
                         resource_definition['metadata']['name'] = resource_name
-                    if resource_namespace != resource['reference']['namespace']:
-                        resource_namespace = resource['reference']['namespace']
+                    if resource_namespace != status_resource['reference'].get('namespace'):
+                        resource_namespace = status_resource['reference']['namespace']
                         resource_definition['metadata']['namespace'] = resource_namespace
 
                 resource_description = f"{resource_api_version} {resource_kind} {resource_name}"
@@ -1019,16 +1056,9 @@ class ResourceHandle:
                     resources_to_create.append(resource_definition)
 
             if patch:
-                definition = await Poolboy.custom_objects_api.patch_namespaced_custom_object(
-                    group = Poolboy.operator_domain,
-                    name = self.name,
-                    namespace = self.namespace,
-                    plural = 'resourcehandles',
-                    version = Poolboy.operator_version,
-                    _content_type = 'application/json-patch+json',
-                    body = patch,
-                )
-                self.refresh_from_definition(definition)
+                await self.json_patch(patch)
+            if status_patch:
+                await self.json_patch_status(status_patch)
 
             if resource_claim:
                 await resource_claim.update_status_from_handle(logger=logger, resource_handle=self)
@@ -1047,7 +1077,215 @@ class ResourceHandle:
             return self
         except kubernetes_asyncio.client.exceptions.ApiException as e:
             if e.status == 404:
-                ResourceHandle.unregister(name=self.name)
+                self.unregister(name=self.name)
                 return None
             else:
                 raise
+
+    async def update_resources(self,
+        logger: kopf.ObjectLogger,
+        resource_claim: ResourceClaimT,
+    ):
+        # If no spec.provider then resources list is directly configured in the ResourceHandle
+        if 'provider' not in self.spec:
+            return
+
+        try:
+            provider = await resourceprovider.ResourceProvider.get(self.resource_provider_name)
+        except kubernetes_asyncio.client.exceptions.ApiException as exception:
+            if exception.status == 404:
+                logger.warning(f"Missing ResourceProvider {self.resource_provider_name} to get resources for {self}")
+                return
+            else:
+                raise
+
+        resources = await provider.get_resources(
+            resource_claim = resource_claim,
+            resource_handle = self,
+        )
+
+        if not 'resources' in self.spec:
+            await self.json_patch([{
+                "op": "add",
+                "path": "/spec/resources",
+                "value": resources,
+            }])
+            return
+
+        patch = []
+        for idx, resource in enumerate(resources):
+            if idx < len(self.spec['resources']):
+                current_provider = self.spec['resources'][idx]['provider']['name']
+                updated_provider = resource['provider']['name']
+                if current_provider != updated_provider:
+                    logger.warning(
+                        f"Refusing update resources in {self} as it would change "
+                        f"ResourceProvider from {current_provider} to {updated_provider}"
+                    )
+                current_template = self.spec['resources'][idx].get('template')
+                updated_template = resource.get('template')
+                if current_template != updated_template:
+                    patch.append({
+                        "op": "add",
+                        "path": f"/spec/resources/{idx}/template",
+                        "value": updated_template,
+                    })
+            else:
+                patch.append({
+                    "op": "add",
+                    "path": f"/spec/resources/{idx}",
+                    "value": resource
+                })
+
+        if patch:
+            await self.json_patch(patch)
+            logger.info(f"Updated resources for {self} from {provider}")
+
+    async def update_status(self,
+        logger: kopf.ObjectLogger,
+    ) -> None:
+        patch = []
+        if not self.status:
+            patch.append({
+                "op": "add",
+                "path": "/status",
+                "value": {},
+            })
+        if not 'resources' in self.status:
+            patch.append({
+                "op": "add",
+                "path": "/status/resources",
+                "value": [],
+            })
+
+        resources = deepcopy(self.resources)
+        resource_states = await self.get_resource_states(logger=logger)
+        for idx, state in enumerate(resource_states):
+            resources[idx]['state'] = state
+            if len(self.status_resources) < idx:
+                patch.append({
+                    "op": "add",
+                    "path": f"/status/resources/{idx}",
+                    "value": {},
+                })
+
+        overall_ready = True
+        overall_healthy = True
+
+        for idx, resource in enumerate(resources):
+            if resource['state']:
+                resource_provider = await resourceprovider.ResourceProvider.get(resource['provider']['name'])
+                resource_healthy = resource_provider.check_health(
+                    logger = logger,
+                    resource_handle = self,
+                    resource_state = resource['state'],
+                )
+                if resource_healthy:
+                    resource_ready = resource_provider.check_readiness(
+                        logger = logger,
+                        resource_handle = self,
+                        resource_state = resource['state'],
+                    )
+                else:
+                    resource_ready = False
+            else:
+                resource_healthy = None
+                resource_ready = False
+
+            # If the resource is not healthy then it is overall unhealthy.
+            # If the resource health is unknown then he overall health is unknown unless it is unhealthy.
+            if resource_healthy == False:
+                overall_healthy = False
+            elif resource_healthy == None:
+                if overall_healthy:
+                    overall_healthy = None
+
+            if resource_ready == False:
+                overall_ready = False
+            elif resource_ready == None:
+                if overall_ready:
+                    overall_ready = None
+
+            if len(self.status_resources) <= idx:
+                if resource_healthy != None:
+                    patch.append({
+                        "op": "add",
+                        "path": f"/status/resources/{idx}/healthy",
+                        "value": resource_healthy,
+                    })
+                if resource_ready != None:
+                    patch.append({
+                        "op": "add",
+                        "path": f"/status/resources/{idx}/ready",
+                        "value": resource_ready,
+                    })
+            else:
+                if resource_healthy == None:
+                    if 'healthy' in self.status_resources[idx]:
+                        patch.append({
+                            "op": "remove",
+                            "path": f"/status/resources/{idx}/healthy",
+                        })
+                elif resource_healthy != self.status_resources[idx].get('healthy'):
+                    patch.append({
+                        "op": "add",
+                        "path": f"/status/resources/{idx}/healthy",
+                        "value": resource_healthy,
+                    })
+                if resource_ready == None:
+                    if 'ready' in self.status_resources[idx]:
+                        patch.append({
+                            "op": "remove",
+                            "path": f"/status/resources/{idx}/ready",
+                        })
+                elif resource_ready != self.status_resources[idx].get('ready'):
+                    patch.append({
+                        "op": "add",
+                        "path": f"/status/resources/{idx}/ready",
+                        "value": resource_ready,
+                    })
+
+        if overall_healthy == None:
+            if 'healthy' in self.status:
+                patch.append({
+                    "op": "remove",
+                    "path": f"/status/healthy",
+                })
+        elif overall_healthy != self.status.get('healthy'):
+            patch.append({
+                "op": "add",
+                "path": f"/status/healthy",
+                "value": overall_healthy,
+            })
+
+        if overall_ready == None:
+            if 'ready' in self.status:
+                patch.append({
+                    "op": "remove",
+                    "path": f"/status/ready",
+                })
+        elif overall_ready != self.status.get('ready'):
+            patch.append({
+                "op": "add",
+                "path": f"/status/ready",
+                "value": overall_ready,
+            })
+
+        resource_provider = await self.get_resource_provider()
+        if resource_provider.status_summary_template:
+            try:
+                status_summary = resource_provider.make_status_summary(
+                    resource_handle=self,
+                    resources=resources,
+                )
+                if status_summary != self.status.get('summary'):
+                    patch.append({
+                        "op": "add",
+                        "path": "/status/summary",
+                        "value": status_summary,
+                    })
+            except Exception:
+                logger.exception(f"Failed to generate status summary for {self}")
+
+        if patch:
+            await self.json_patch_status(patch)

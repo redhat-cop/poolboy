@@ -4,7 +4,7 @@ import kubernetes_asyncio
 import logging
 
 from datetime import datetime, timezone
-from typing import Mapping, Optional
+from typing import Mapping, Optional, TypeVar
 
 import poolboy_k8s
 import resourceclaim
@@ -25,32 +25,77 @@ class ResourceWatchFailedError(Exception):
 class ResourceWatchRestartError(Exception):
     pass
 
+ResourceWatcherT = TypeVar('ResourceWatcherT', bound='ResourceWatcher')
+
 class ResourceWatcher:
     instances = {}
-    lock = asyncio.Lock()
+    class_lock = asyncio.Lock()
 
-    async def start_resource_watch(
+    class CacheEntry:
+        def __init__(self, resource):
+            self.resource = resource
+            self.cache_datetime = datetime.now(timezone.utc)
+
+        @property
+        def is_expired(self):
+            return (datetime.now(timezone.utc) - self.cache_datetime).total_seconds() > Poolboy.resource_refresh_interval
+
+    @classmethod
+    def get_watcher(cls,
+        api_version: str,
+        kind: str,
+        namespace: Optional[str] = None,
+    ) -> Optional[ResourceWatcherT]:
+        key = (api_version, kind, namespace) if namespace else (api_version, kind)
+        return ResourceWatcher.instances.get(key)
+
+    @classmethod
+    async def get_resource(cls,
+        api_version: str,
+        kind: str,
+        name: str,
+        namespace: Optional[str] = None,
+    ) -> Optional[Mapping]:
+        watcher = cls.get_watcher(api_version=api_version, kind=kind, namespace=namespace)
+        if watcher:
+            cache_entry = watcher.cache.get(name)
+            if cache_entry and not cache_entry.is_expired:
+                return cache_entry.resource
+        try:
+            resource = await poolboy_k8s.get_object(api_version=api_version, kind=kind, name=name, namespace=namespace)
+            if resource and watcher:
+                watcher.cache[name] = ResourceWatcher.CacheEntry(resource)
+            return resource
+        except kubernetes_asyncio.client.exceptions.ApiException as exception:
+            if exception.status == 404:
+                return None
+            else:
+                raise
+
+    @classmethod
+    async def start_resource_watch(cls,
         api_version: str,
         kind: str,
         namespace: str,
     ) -> None:
         key = (api_version, kind, namespace) if namespace else (api_version, kind)
-        async with ResourceWatcher.lock:
-            resource_watcher = ResourceWatcher.instances.get(key)
+        async with cls.class_lock:
+            resource_watcher = cls.instances.get(key)
             if resource_watcher:
                 return
-            resource_watcher = ResourceWatcher(
+            resource_watcher = cls(
                 api_version = api_version,
                 kind = kind,
                 namespace = namespace,
             )
-            ResourceWatcher.instances[key] = resource_watcher
+            cls.instances[key] = resource_watcher
             resource_watcher.start()
 
-    async def stop_all():
-        async with ResourceWatcher.lock:
+    @classmethod
+    async def stop_all(cls):
+        async with cls.class_lock:
             tasks = []
-            for resource_watcher in ResourceWatcher.instances.values():
+            for resource_watcher in cls.instances.values():
                 resource_watcher.cancel()
                 tasks.append(resource_watcher.task)
             await asyncio.gather(*tasks)
@@ -133,6 +178,7 @@ class ResourceWatcher:
 
     async def __watch(self, method, **kwargs):
         watch = None
+        self.cache.clear()
         try:
             _continue = None
             while True:
@@ -163,9 +209,15 @@ class ResourceWatcher:
                     else:
                         raise ResourceWatchFailedError(f"UNKNOWN EVENT: {event}")
 
+                name = event_obj['metadata']['name']
+                if event_type == 'DELETED':
+                    self.cache.pop(name, None)
+                else:
+                    self.cache[name] = self.CacheEntry(event_obj)
+
                 await self.__watch_event(event_type=event_type, event_obj=event_obj)
-        except kubernetes_asyncio.client.exceptions.ApiException as e:
-            if e.status == 410:
+        except kubernetes_asyncio.client.exceptions.ApiException as exception:
+            if exception.status == 410:
                 raise ResourceWatchRestartError("Received 410 expired response.")
             else:
                 raise
@@ -195,11 +247,7 @@ class ResourceWatcher:
         resource_handle = resourcehandle.ResourceHandle.get_from_cache(name=resource_handle_name)
 
         if resource_handle:
-            await resource_handle.handle_resource_event(
-                logger = logger,
-                resource_index = resource_index,
-                resource_state = event_obj,
-            )
+            await resource_handle.handle_resource_event(logger=logger)
         else:
             logger.debug(
                 f"Received event for ResourceHandle {resource_handle_name} "
@@ -246,7 +294,10 @@ class ResourceWatcher:
                 )
             elif event_type == 'DELETED':
                 if prev_state:
-                    await resource_claim.remove_resource_from_status(resource_index)
+                    await resource_claim.remove_resource_from_status(
+                        index=resource_index,
+                        logger=logger,
+                    )
                 else:
                     logger.info(
                         f"Ignoring resource delete for {resource_claim_description} due to resource "
@@ -254,15 +305,19 @@ class ResourceWatcher:
                     )
             else:
                 logger.debug(f"Updating {resource_description} in {resource_claim_description}")
-                await resource_claim.update_resource_in_status(resource_index, event_obj)
-        except kubernetes_asyncio.client.exceptions.ApiException as e:
-            if e.status != 404:
-                logger.warning(
-                    f"Received {e.status} response when attempting to patch resource state for "
-                    f"{event_type.lower()} {resource_description} for {resource_claim_description}: "
-                    f"{e}"
+                await resource_claim.update_resource_in_status(
+                    index=resource_index,
+                    logger=logger,
+                    state=event_obj,
                 )
-        except Exception as e:
+        except kubernetes_asyncio.client.exceptions.ApiException as exception:
+            if exception.status != 404:
+                logger.warning(
+                    f"Received {exception.status} response when attempting to patch resource state for "
+                    f"{event_type.lower()} {resource_description} for {resource_claim_description}: "
+                    f"{exception}"
+                )
+        except Exception:
             logger.exception(
                 f"Exception when attempting to patch resource state for {event_type.lower()} resource "
                 f"for {resource_claim_description}"

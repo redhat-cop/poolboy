@@ -49,7 +49,7 @@
           allowedOps:
           - add
           - replace
- 
+
 - name: Create ResourceClaim test-parameters-03-a
   kubernetes.core.k8s:
     definition:

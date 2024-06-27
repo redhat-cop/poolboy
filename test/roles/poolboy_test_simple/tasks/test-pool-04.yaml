@@ -1,0 +1,218 @@
+---
+- name: Create ResourceProvider test-pool-04
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: "{{ poolboy_domain }}/v1"
+      kind: ResourceProvider
+      metadata:
+        name: test-pool-04
+        namespace: "{{ poolboy_namespace }}"
+        labels: >-
+          {{ {
+            poolboy_domain ~ "/test": "simple"
+          } }}
+      spec:
+        healthCheck: >-
+          spec.numbervalue > 0
+        override:
+          apiVersion: "{{ poolboy_domain }}/v1"
+          kind: ResourceClaimTest
+          metadata:
+            name: "test-pool-04-{% raw %}{{ guid }}{% endraw %}"
+            namespace: "{{ poolboy_test_namespace }}"
+        parameters:
+        - name: numbervar
+          allowUpdate: true
+          validation:
+            openAPIV3Schema:
+              type: integer
+              default: 0
+              minimum: 0
+        readinessCheck: >-
+          spec.numbervalue > 1
+        template:
+          definition:
+            spec:
+              numbervalue: "{% raw %}{{ numbervar | int }}{% endraw %}"
+          enable: true
+        updateFilters:
+        - pathMatch: /spec/.*
+          allowedOps:
+          - replace
+
+- name: Create ResourcePool test-pool-04
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: "{{ poolboy_domain }}/v1"
+      kind: ResourcePool
+      metadata:
+        name: test-pool-04
+        namespace: "{{ poolboy_namespace }}"
+        labels: >-
+          {{ {
+            poolboy_domain ~ "/test": "simple"
+          } }}
+      spec:
+        minAvailable: 1
+        provider:
+          name: test-pool-04
+          parameterValues:
+            numbervar: 0
+
+- name: Verify ResourceHandle for test-pool-04
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceHandle
+    namespace: "{{ poolboy_namespace }}"
+    label_selectors:
+    - "{{ poolboy_domain }}/resource-pool-name = test-pool-04"
+  register: r_get_resource_handles
+  vars:
+    __unbound_handles: >-
+      {{ r_get_resource_handles.resources | json_query('[?spec.resourceClaim==null]') }}
+  failed_when: >-
+    __unbound_handles | length != 1 or
+    __unbound_handles[0].spec.resources is undefined or
+    __unbound_handles[0].spec.resources[0].reference is undefined or
+    __unbound_handles[0].status.ready != false or
+    __unbound_handles[0].status.healthy != false or
+    __unbound_handles[0].status.resources[0].ready != false or
+    __unbound_handles[0].status.resources[0].healthy != false
+  until: r_get_resource_handles is success
+  delay: 1
+  retries: 10
+
+- name: Set facts from for ResourcePool test-pool-04 ResourceHandles
+  vars:
+    __state: >-
+      {{ r_get_resource_handles.resources[0] }}
+  set_fact:
+    failed_resource_handle_name: "{{ __state.metadata.name }}"
+    resource_claim_test_name: "{{ __state.spec.resources[0].reference.name }}"
+
+- name: Create ResourceClaim test-pool-04
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: "{{ poolboy_domain }}/v1"
+      kind: ResourceClaim
+      metadata:
+        name: test-pool-04
+        namespace: "{{ poolboy_test_namespace }}"
+        labels: >-
+          {{ {
+            poolboy_domain ~ "/test": "simple"
+          } }}
+      spec:
+        provider:
+          name: test-pool-04
+          parameterValues:
+            numbervar: 0
+
+- name: Verify handling of ResourceClaim test-pool-04 does not bind to unhealthy ResourceHandle
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-pool-04
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_resource_claim
+  failed_when: >-
+    r_get_resource_claim.resources[0].status.resources[0].state is undefined or
+    r_get_resource_claim.resources[0].status.resourceHandle is undefined or
+    r_get_resource_claim.resources[0].status.resourceHandle.name == failed_resource_handle_name
+  until: r_get_resource_claim is success
+  delay: 1
+  retries: 10
+
+- name: Update ResourcePool test-pool-04 to create healthy but unready ResourceHandles
+  kubernetes.core.k8s:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourcePool
+    name: test-pool-04
+    namespace: "{{ poolboy_namespace }}"
+    definition:
+      spec:
+        deleteUnhealthyResourceHandles: true
+        provider:
+          parameterValues:
+            numbervar: 1
+
+- name: Verify that failed ResourceHandle is deleted
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceHandle
+    name: "{{ failed_resource_handle_name }}"
+    namespace: "{{ poolboy_namespace }}"
+  register: r_get_resource_handle
+  failed_when: r_get_resource_handle.resources | length != 0
+  until: r_get_resource_handle is success
+  delay: 1
+  retries: 10
+
+- name: Verify new ResourceHandle for test-pool-04 is created
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceHandle
+    namespace: "{{ poolboy_namespace }}"
+    label_selectors:
+    - "{{ poolboy_domain }}/resource-pool-name = test-pool-04"
+  register: r_get_resource_handles
+  vars:
+    __unbound_handles: >-
+      {{ r_get_resource_handles.resources | json_query('[?spec.resourceClaim==null]') }}
+  failed_when: >-
+    __unbound_handles | length != 1 or
+    __unbound_handles[0].spec.resources is undefined or
+    __unbound_handles[0].spec.resources[0].reference is undefined or
+    __unbound_handles[0].status.ready != false or
+    __unbound_handles[0].status.healthy != true or
+    __unbound_handles[0].status.resources[0].ready != false or
+    __unbound_handles[0].status.resources[0].healthy != true
+  until: r_get_resource_handles is success
+  delay: 1
+  retries: 10
+
+- name: Delete ResourcePool test-pool-04
+  kubernetes.core.k8s:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourcePool
+    name: test-pool-04
+    namespace: "{{ poolboy_namespace }}"
+    state: absent
+
+- name: Verify cleanup of ResourceHandles for test-pool-04 after delete
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceHandle
+    namespace: "{{ poolboy_namespace }}"
+    label_selectors:
+    - "{{ poolboy_domain }}/resource-pool-name = test-pool-04"
+  register: r_get_resource_handles
+  vars:
+    __unbound_handles: >-
+      {{ r_get_resource_handles.resources | json_query('[?spec.resourceClaim==null]') }}
+  failed_when: >-
+    __unbound_handles | length != 0
+  until: r_get_resource_handles is successful
+  retries: 5
+  delay: 2
+
+- name: Delete ResourceClaim test-pool-04
+  kubernetes.core.k8s:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-pool-04
+    namespace: "{{ poolboy_test_namespace }}"
+    state: absent
+
+- name: Verify delete of ResourceClaim test-pool-04
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-pool-04
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_resource_claim
+  failed_when: r_get_resource_claim.resources | length != 0
+  until: r_get_resource_claim is success
+  retries: 5
+  delay: 1
+...
