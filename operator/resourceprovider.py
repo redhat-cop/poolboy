@@ -16,7 +16,7 @@ import poolboy_k8s
 from deep_merge import deep_merge
 from jsonpatch_from_diff import jsonpatch_from_diff
 from poolboy import Poolboy
-from poolboy_templating import recursive_process_template_strings
+from poolboy_templating import check_condition, recursive_process_template_strings
 
 ResourceClaimT = TypeVar('ResourceClaimT', bound='ResourceClaim')
 ResourceHandleT = TypeVar('ResourceHandleT', bound='ResourceHandle')
@@ -400,6 +400,44 @@ class ResourceProvider:
             name = self.name,
             namespace = self.namespace,
         )
+
+    def check_health(self,
+        logger: kopf.ObjectLogger,
+        resource_handle: ResourceHandleT,
+        resource_state: Mapping,
+    ) -> Optional[bool]:
+        if 'healthCheck' not in self.spec:
+            return None
+        try:
+            return check_condition(
+                condition = self.spec['healthCheck'],
+                variables = {
+                    **resource_state,
+                    "resource_handle": resource_handle,
+                },
+            )
+        except Exception:
+            logger.exception("Failed health check on {resource_handle} with {self}")
+            return None
+
+    def check_readiness(self,
+        logger: kopf.ObjectLogger,
+        resource_handle: ResourceHandleT,
+        resource_state: Mapping,
+    ) -> Optional[bool]:
+        if 'readinessCheck' not in self.spec:
+            return None
+        try:
+            return check_condition(
+                condition = self.spec['readinessCheck'],
+                variables = {
+                    **resource_state,
+                    "resource_handle": resource_handle,
+                },
+            )
+        except Exception:
+            logger.exception("Failed readiness check on {resource_handle} with {self}")
+            return None
 
     def check_template_match(self,
         claim_resource_template: Mapping,

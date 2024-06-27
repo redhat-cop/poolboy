@@ -16,9 +16,18 @@ spec:
     subresources:
       status: {}
     additionalPrinterColumns:
+    - name: Provider
+      type: string
+      jsonPath: .spec.provider.name
     - name: Pool
       type: string
       jsonPath: .spec.resourcePool.name
+    - name: Healthy
+      type: boolean
+      jsonPath: .status.healthy
+    - name: Ready
+      type: boolean
+      jsonPath: .status.ready
     - name: Claim Namespace
       type: string
       jsonPath: .spec.resourceClaim.namespace

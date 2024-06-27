@@ -75,6 +75,10 @@ class ResourceHandle(KopfObject):
 
             # Loop through unbound instances to find best match
             for resource_handle in cls.unbound_instances.values():
+                # Skip unhealthy
+                if resource_handle.is_healthy == False:
+                    continue
+
                 # Honor explicit pool requests
                 if resource_claim.resource_pool_name \
                 and resource_claim.resource_pool_name != resource_handle.resource_pool_name:
@@ -86,6 +90,16 @@ class ResourceHandle(KopfObject):
                     continue
 
                 diff_count = 0
+
+                # Prefer handles with known healthy status
+                if resource_handle.is_healthy == None:
+                    diff_count += 0.1
+                # Prefer handles that are ready
+                if resource_handle.is_ready == False:
+                    diff_count += 0.01
+                elif resource_handle.is_ready == None:
+                    diff_count += 0.001
+
                 is_match = True
                 handle_resources = resource_handle.resources
                 if len(resource_claim_resources) < len(handle_resources):
@@ -131,7 +145,7 @@ class ResourceHandle(KopfObject):
                     matched_resource_handles.append((diff_count, resource_handle))
 
             # Bind the oldest ResourceHandle with the smallest difference score
-            matched_resource_handles.sort(key=lambda item: f"{item[0]:09d} {item[1].creation_timestamp}")
+            matched_resource_handles.sort(key=lambda item: f"{item[0]:012.3f} {item[1].creation_timestamp}")
             for matched_resource_handle_item in matched_resource_handles:
                 matched_resource_handle = matched_resource_handle_item[1]
                 patch = [
@@ -598,11 +612,19 @@ class ResourceHandle(KopfObject):
         return 'resourcePool' in self.spec
 
     @property
+    def is_healthy(self) -> Optional[bool]:
+        return self.status.get('healthy')
+
+    @property
     def is_past_lifespan_end(self) -> bool:
         dt = self.lifespan_end_datetime
         if not dt:
             return False
         return dt < datetime.now(timezone.utc)
+
+    @property
+    def is_ready(self) -> Optional[bool]:
+        return self.status.get('ready')
 
     @property
     def lifespan_end_datetime(self) -> Any:
@@ -1129,18 +1151,125 @@ class ResourceHandle(KopfObject):
                 "path": "/status",
                 "value": {},
             })
+        if not 'resources' in self.status:
+            patch.append({
+                "op": "add",
+                "path": "/status/resources",
+                "value": [],
+            })
 
         resources = deepcopy(self.resources)
         resource_states = await self.get_resource_states(logger=logger)
         for idx, state in enumerate(resource_states):
             resources[idx]['state'] = state
+            if len(self.status_resources) < idx:
+                patch.append({
+                    "op": "add",
+                    "path": f"/status/resources/{idx}",
+                    "value": {},
+                })
 
-        #for resource in resources:
-        #    if 
-        #        await resourceprovider.ResourceProvider.get(resource['provider']['name'])
+        overall_ready = True
+        overall_healthy = True
 
-        # FIXME - add healthy
-        # FIXME - add ready
+        for idx, resource in enumerate(resources):
+            if resource['state']:
+                resource_provider = await resourceprovider.ResourceProvider.get(resource['provider']['name'])
+                resource_healthy = resource_provider.check_health(
+                    logger = logger,
+                    resource_handle = self,
+                    resource_state = resource['state'],
+                )
+                if resource_healthy:
+                    resource_ready = resource_provider.check_readiness(
+                        logger = logger,
+                        resource_handle = self,
+                        resource_state = resource['state'],
+                    )
+                else:
+                    resource_ready = False
+            else:
+                resource_healthy = None
+                resource_ready = False
+
+            # If the resource is not healthy then it is overall unhealthy.
+            # If the resource health is unknown then he overall health is unknown unless it is unhealthy.
+            if resource_healthy == False:
+                overall_healthy = False
+            elif resource_healthy == None:
+                if overall_healthy:
+                    overall_healthy = None
+
+            if resource_ready == False:
+                overall_ready = False
+            elif resource_ready == None:
+                if overall_ready:
+                    overall_ready = None
+
+            if len(self.status_resources) <= idx:
+                if resource_healthy != None:
+                    patch.append({
+                        "op": "add",
+                        "path": f"/status/resources/{idx}/healthy",
+                        "value": resource_healthy,
+                    })
+                if resource_ready != None:
+                    patch.append({
+                        "op": "add",
+                        "path": f"/status/resources/{idx}/ready",
+                        "value": resource_ready,
+                    })
+            else:
+                if resource_healthy == None:
+                    if 'healthy' in self.status_resources[idx]:
+                        patch.append({
+                            "op": "remove",
+                            "path": f"/status/resources/{idx}/healthy",
+                        })
+                elif resource_healthy != self.status_resources[idx].get('healthy'):
+                    patch.append({
+                        "op": "add",
+                        "path": f"/status/resources/{idx}/healthy",
+                        "value": resource_healthy,
+                    })
+                if resource_ready == None:
+                    if 'ready' in self.status_resources[idx]:
+                        patch.append({
+                            "op": "remove",
+                            "path": f"/status/resources/{idx}/ready",
+                        })
+                elif resource_ready != self.status_resources[idx].get('ready'):
+                    patch.append({
+                        "op": "add",
+                        "path": f"/status/resources/{idx}/ready",
+                        "value": resource_ready,
+                    })
+
+        if overall_healthy == None:
+            if 'healthy' in self.status:
+                patch.append({
+                    "op": "remove",
+                    "path": f"/status/healthy",
+                })
+        elif overall_healthy != self.status.get('healthy'):
+            patch.append({
+                "op": "add",
+                "path": f"/status/healthy",
+                "value": overall_healthy,
+            })
+
+        if overall_ready == None:
+            if 'ready' in self.status:
+                patch.append({
+                    "op": "remove",
+                    "path": f"/status/ready",
+                })
+        elif overall_ready != self.status.get('ready'):
+            patch.append({
+                "op": "add",
+                "path": f"/status/ready",
+                "value": overall_ready,
+            })
 
         resource_provider = await self.get_resource_provider()
         if resource_provider.status_summary_template:

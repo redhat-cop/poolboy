@@ -73,6 +73,10 @@ class ResourcePool(KopfObject):
             return cls.instances.pop(name, None)
 
     @property
+    def delete_unhealthy_resource_handles(self) -> bool:
+        return self.spec.get('deleteUnhealthyResourceHandles', False)
+
+    @property
     def has_lifespan(self) -> bool:
         return 'lifespan' in self.spec
 
@@ -110,6 +114,10 @@ class ResourcePool(KopfObject):
             return timedelta(seconds=seconds)
 
     @property
+    def max_unready(self) -> Optional[int]:
+        return self.spec.get('maxUnready')
+
+    @property
     def min_available(self) -> int:
         return self.spec.get('minAvailable', 0)
 
@@ -141,11 +149,65 @@ class ResourcePool(KopfObject):
     async def manage(self, logger: kopf.ObjectLogger):
         async with self.lock:
             resource_handles = await resourcehandle.ResourceHandle.get_unbound_handles_for_pool(resource_pool=self, logger=logger)
-            resource_handle_deficit = self.min_available - len(resource_handles)
-            if resource_handle_deficit <= 0:
-                return
-            for i in range(resource_handle_deficit):
-                resource_handle = await resourcehandle.ResourceHandle.create_for_pool(
-                    logger=logger,
-                    resource_pool=self
-                )
+            available_resource_handles = []
+            ready_resource_handles = []
+            resource_handles_for_status = []
+            for resource_handle in resource_handles:
+                if self.delete_unhealthy_resource_handles and resource_handle.is_healthy == False:
+                    logger.info(f"Deleting {resource_handle} in {self} due to failed health check")
+                    await resource_handle.delete()
+                    continue
+                available_resource_handles.append(resource_handle)
+                if resource_handle.is_ready:
+                    ready_resource_handles.append(resource_handle)
+                resource_handles_for_status.append({
+                    "healthy": resource_handle.is_healthy,
+                    "name": resource_handle.name,
+                    "ready": resource_handle.is_ready,
+                })
+
+            resource_handle_deficit = self.min_available - len(available_resource_handles)
+
+            if self.max_unready != None:
+                unready_count = len(available_resource_handles) - len(ready_resource_handles)
+                if resource_handle_deficit > self.max_unready - unready_count:
+                    resource_handle_deficit = self.max_unready - unready_count
+
+            if resource_handle_deficit > 0:
+                for i in range(resource_handle_deficit):
+                    resource_handle = await resourcehandle.ResourceHandle.create_for_pool(
+                        logger=logger,
+                        resource_pool=self
+                    )
+                    resource_handles_for_status.append({
+                        "name": resource_handle.name,
+                    })
+
+            patch = []
+            if not self.status:
+                patch.append({
+                    "op": "add",
+                    "path": "/status",
+                    "value": {},
+                })
+
+            if self.status.get('resourceHandles') != resource_handles_for_status:
+                patch.append({
+                    "op": "add",
+                    "path": "/status/resourceHandles",
+                    "value": resource_handles_for_status,
+                })
+
+            resource_handle_count = {
+                "available": len(available_resource_handles),
+                "ready": len(ready_resource_handles),
+            }
+            if self.status.get('resourceHandleCount') != resource_handle_count:
+                patch.append({
+                    "op": "add",
+                    "path": "/status/resourceHandleCount",
+                    "value": resource_handle_count,
+                })
+
+            if patch:
+                await self.json_patch_status(patch)

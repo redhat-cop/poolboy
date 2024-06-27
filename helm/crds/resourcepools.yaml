@@ -16,9 +16,18 @@ spec:
     subresources:
       status: {}
     additionalPrinterColumns:
+    - name: ResourceProvider
+      jsonPath: .spec.provider.name
+      type: string
     - name: Min
       type: integer
       jsonPath: .spec.minAvailable
+    - name: Available
+      type: integer
+      jsonPath: .status.resourceHandleCount.available
+    - name: Ready
+      type: integer
+      jsonPath: .status.resourceHandleCount.ready
     - name: Age
       type: date
       jsonPath: .metadata.creationTimestamp
@@ -48,6 +57,10 @@ spec:
             description: ResourcePool specification
             type: object
             properties:
+              deleteUnhealthyResourceHandles:
+                description: >-
+                  If set then any unbound ResourceHandle that fails health check will be automatically deleted.
+                type: boolean
               lifespan:
                 description: >-
                   Lifespan configuration for ResourceHandle provisioned by the ResourcePool.
@@ -81,6 +94,11 @@ spec:
                       Ex: "3d" for 3 days.
                     type: string
                     pattern: ^[0-9]+[smhd]$
+              maxUnready:
+                description: >-
+                  Maximum number of resource handles that do not pass readiness check.
+                type: integer
+                minimum: 0
               minAvailable:
                 description: >-
                   Minimum number of unclaimed resource handles to maintain for the
@@ -175,3 +193,21 @@ spec:
                 description: Kopf status
                 type: object
                 x-kubernetes-preserve-unknown-fields: true
+              resourceHandleCount:
+                type: object
+                properties:
+                  available:
+                    type: integer
+                  ready:
+                    type: integer
+              resourceHandles:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    healthy:
+                      type: boolean
+                    name:
+                      type: string
+                    ready:
+                      type: boolean

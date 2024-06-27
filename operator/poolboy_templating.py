@@ -126,6 +126,13 @@ jinja2envs['jinja2'].filters['to_json'] = lambda x: json.dumps(x)
 #       name: alice
 type_filter_match_re = re.compile(r'^{{(?!.*{{).*\| *(bool|float|int|object) *}}$')
 
+def check_condition(condition, template_style='jinja2', variables={}):
+    return jinja2process(
+        template="{{ " + condition + " | bool}}",
+        template_style=template_style,
+        variables=variables
+    )
+
 def j2now(utc=False, fmt=None):
     dt = datetime.now(timezone.utc if utc else None)
     return dt.strftime(fmt) if fmt else dt
