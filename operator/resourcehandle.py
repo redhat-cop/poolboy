@@ -1186,7 +1186,7 @@ class ResourceHandle(KopfObject):
                         resource_handle = self,
                         resource_state = resource['state'],
                     )
-                else:
+                elif resource_healthy == False:
                     resource_ready = False
             else:
                 resource_healthy = None
