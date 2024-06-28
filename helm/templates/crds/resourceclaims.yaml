@@ -20,6 +20,15 @@ spec:
     - name: Handle
       type: string
       jsonPath: .status.resourceHandle.name
+    - name: Provider
+      type: string
+      jsonPath: .spec.provider.name
+    - name: Healthy
+      type: boolean
+      jsonPath: .status.healthy
+    - name: Ready
+      type: boolean
+      jsonPath: .status.ready
     - name: Age
       type: date
       jsonPath: .metadata.creationTimestamp
