@@ -398,92 +398,118 @@ class ResourceClaim(KopfObject):
             logger.warning(f"Auto detach check failed for {self}: {exception}")
         return False
 
-    def get_resource_state_from_status(self, resource_number):
+    def get_resource_state_from_status(self, resource_index):
         if not self.status \
         or not 'resources' in self.status \
-        or resource_number >= len(self.status['resources']):
+        or resource_index >= len(self.status['resources']):
             return None
-        return self.status['resources'][resource_number].get('state')
+        return self.status['resources'][resource_index].get('state')
 
     async def update_status_from_handle(self,
         logger: kopf.ObjectLogger,
         resource_handle: ResourceHandleT
     ) -> None:
-        patch = []
+        async with self.lock:
+            patch = []
 
-        lifespan_maximum = resource_handle.get_lifespan_maximum(resource_claim=self)
-        lifespan_relative_maximum = resource_handle.get_lifespan_relative_maximum(resource_claim=self)
-        if 'lifespan' in resource_handle.spec \
-        and 'lifespan' not in self.status:
-            lifespan_value = {
-                "end": resource_handle.lifespan_end_timestamp,
-                "maximum": lifespan_maximum,
-                "relativeMaximum": lifespan_relative_maximum,
-            }
-            patch.append({
-                "op": "add",
-                "path": "/status/lifespan",
-                "value": { k: v for k, v in lifespan_value.items() if v }
-            })
-        else:
-            if self.lifespan_end_timestamp \
-            and not resource_handle.lifespan_end_timestamp:
-                patch.append({
-                    "op": "remove",
-                    "path": "/status/lifespan/end",
-                })
-            elif resource_handle.lifespan_end_timestamp \
-            and self.lifespan_end_timestamp != resource_handle.lifespan_end_timestamp:
+            lifespan_maximum = resource_handle.get_lifespan_maximum(resource_claim=self)
+            lifespan_relative_maximum = resource_handle.get_lifespan_relative_maximum(resource_claim=self)
+            if 'lifespan' in resource_handle.spec \
+            and 'lifespan' not in self.status:
+                lifespan_value = {
+                    "end": resource_handle.lifespan_end_timestamp,
+                    "maximum": lifespan_maximum,
+                    "relativeMaximum": lifespan_relative_maximum,
+                }
                 patch.append({
                     "op": "add",
-                    "path": "/status/lifespan/end",
-                    "value": resource_handle.lifespan_end_timestamp,
+                    "path": "/status/lifespan",
+                    "value": { k: v for k, v in lifespan_value.items() if v }
                 })
-
-            if lifespan_maximum:
-                if lifespan_maximum != self.lifespan_maximum:
+            else:
+                if self.lifespan_end_timestamp \
+                and not resource_handle.lifespan_end_timestamp:
+                    patch.append({
+                        "op": "remove",
+                        "path": "/status/lifespan/end",
+                    })
+                elif resource_handle.lifespan_end_timestamp \
+                and self.lifespan_end_timestamp != resource_handle.lifespan_end_timestamp:
                     patch.append({
                         "op": "add",
+                        "path": "/status/lifespan/end",
+                        "value": resource_handle.lifespan_end_timestamp,
+                    })
+
+                if lifespan_maximum:
+                    if lifespan_maximum != self.lifespan_maximum:
+                        patch.append({
+                            "op": "add",
+                            "path": "/status/lifespan/maximum",
+                            "value": lifespan_maximum,
+                        })
+                elif self.lifespan_maximum:
+                    patch.append({
+                        "op": "remove",
                         "path": "/status/lifespan/maximum",
-                        "value": lifespan_maximum,
                     })
-            elif self.lifespan_maximum:
-                patch.append({
-                    "op": "remove",
-                    "path": "/status/lifespan/maximum",
-                })
 
-            if lifespan_relative_maximum:
-                if lifespan_relative_maximum != self.lifespan_relative_maximum:
+                if lifespan_relative_maximum:
+                    if lifespan_relative_maximum != self.lifespan_relative_maximum:
+                        patch.append({
+                            "op": "add",
+                            "path": "/status/lifespan/relativeMaximum",
+                            "value": lifespan_relative_maximum,
+                        })
+                elif self.lifespan_relative_maximum:
                     patch.append({
-                        "op": "add",
+                        "op": "remove",
                         "path": "/status/lifespan/relativeMaximum",
-                        "value": lifespan_relative_maximum,
                     })
-            elif self.lifespan_relative_maximum:
-                patch.append({
-                    "op": "remove",
-                    "path": "/status/lifespan/relativeMaximum",
-                })
 
-        for resource_index, status_resource in enumerate(resource_handle.status_resources):
-            if (
-                'waitingFor' in status_resource and
-                status_resource['waitingFor'] != self.status_resources[resource_index].get('waitingFor')
-            ):
-                patch.append({
-                    "op": "add",
-                    "path": f"/status/resources/{resource_index}/waitingFor",
-                    "value": status_resource['waitingFor'],
-                })
-            elif 'waitingFor' in self.status_resources[resource_index]:
-                patch.append({
-                    "op": "remove",
-                    "path": f"/status/resources/{resource_index}/waitingFor",
-                })
+            resource_states = await resource_handle.get_resource_states(logger=logger)
+            for resource_index, status_resource in enumerate(resource_handle.status_resources):
+                resource_entry = {
+                    "provider": resource_handle.resources[resource_index]['provider'],
+                    **status_resource,
+                }
+                if 'validationError' in self.status['resources'][resource_index]:
+                    resource_entry['validationError'] = self.status['resources'][resource_index]['validationError']
+                if resource_states[resource_index]:
+                    resource_entry['state'] = resource_states[resource_index]
+                if resource_entry != self.status['resources'][resource_index]:
+                    patch.append({
+                        "op": "replace",
+                        "path": f"/status/resources/{resource_index}",
+                        "value": resource_entry,
+                    })
 
-        if patch:
-            await self.json_patch_status(patch)
+            for field in ('healthy', 'ready', 'summary'):
+                if field in resource_handle.status:
+                    if resource_handle.status[field] != self.status.get(field):
+                        patch.append({
+                            "op": "add",
+                            "path": f"/status/{field}",
+                            "value": resource_handle.status[field],
+                        })
+                elif field in self.status:
+                    patch.append({
+                        "op": "remove",
+                        "path": f"/status/{field}",
+                    })
+
+            if not patch:
+                return
+
+            try:
+                await self.json_patch_status(patch)
+            except kubernetes_asyncio.client.exceptions.ApiException as exception:
+                if exception.status == 404:
+                    logger.info(
+                        f"Attempt to update status from {resource_handle} on deleted {self}"
+                    )
+                else:
+                    raise
 
     async def handle_delete(self, logger: kopf.ObjectLogger):
         if self.has_resource_handle:
@@ -499,8 +525,8 @@ class ResourceClaim(KopfObject):
                     f"Propagated delete of ResourceClaim {self.name} in {self.namespace} "
                     f"to ResourceHandle {self.resource_handle_name}"
                 )
-            except kubernetes_asyncio.client.exceptions.ApiException as e:
-                if e.status != 404:
+            except kubernetes_asyncio.client.exceptions.ApiException as exception:
+                if exception.status != 404:
                     raise
 
     async def assign_resource_providers(self, logger) -> None:
@@ -523,15 +549,15 @@ class ResourceClaim(KopfObject):
 
         await self.merge_patch_status({
             "resources": [{
-                "name": resources[i].get('name'),
+                "name": resources[idx].get('name'),
                 "provider": {
                     "apiVersion": Poolboy.operator_api_version,
                     "kind": "ResourceProvider",
                     "name": provider.name,
                     "namespace": provider.namespace,
                 },
-                "state": self.get_resource_state_from_status(resource_number=i),
-            } for i, provider in enumerate(providers)]
+                "state": self.get_resource_state_from_status(resource_index=idx),
+            } for idx, provider in enumerate(providers)]
         })
 
         logger.info(
@@ -1003,63 +1029,3 @@ class ResourceClaim(KopfObject):
                     } for resource in resources
                 ]
             await self.merge_patch_status(patch)
-
-    async def remove_resource_from_status(self,
-        index: int,
-        logger: kopf.ObjectLogger,
-    ):
-        patch = []
-        if 'state' in self_status_resources[index]:
-            del self.status_resources[index]['state']
-            patch.append({
-                "op": "remove",
-                "path": f"/status/resources/{index}/state",
-            })
-        await self.__update_status(
-            logger=logger,
-            patch=patch,
-        )
-
-    async def update_resource_in_status(self,
-        index: int,
-        logger: kopf.ObjectLogger,
-        state: Mapping,
-    ):
-        patch = []
-        if self.status_resources[index].get('state') != state:
-            self.status_resources[index]['state'] = state
-            patch.append({
-                "op": "add",
-                "path": f"/status/resources/{index}/state",
-                "value": state,
-            })
-        await self.__update_status(
-            logger=logger,
-            patch=patch,
-        )
-
-    async def __update_status(self,
-        logger: kopf.ObjectLogger,
-        patch: List[Mapping]=[],
-    ):
-        # FIXME - add healthy
-        # FIXME - add ready
-
-        if self.has_resource_provider:
-            resource_provider = await self.get_resource_provider()
-            if resource_provider.status_summary_template:
-                try:
-                    status_summary = resource_provider.make_status_summary(
-                        resource_claim=self,
-                        resources=self.status_resources,
-                    )
-                    if status_summary != self.status.get('summary'):
-                        patch.append({
-                            "op": "add",
-                            "path": "/status/summary",
-                            "value": status_summary,
-                        })
-                except Exception:
-                    logger.exception(f"Failed to generate status summary for {self}")
-        if patch:
-            await self.json_patch_status(patch)

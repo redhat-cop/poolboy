@@ -643,6 +643,12 @@ class ResourceHandle(KopfObject):
         return self.spec.get('provider', {}).get('parameterValues', {})
 
     @property
+    def resource_claim_description(self) -> Optional[str]:
+        if not 'resourceClaim' not in self.spec:
+            return None
+        return f"ResourceClaim {self.resource_claim_name} in {self.resource_claim_namespace}"
+
+    @property
     def resource_claim_name(self) -> Optional[str]:
         return self.spec.get('resourceClaim', {}).get('name')
 
@@ -829,8 +835,7 @@ class ResourceHandle(KopfObject):
         logger: Union[logging.Logger, logging.LoggerAdapter],
     ) -> None:
         async with self.lock:
-            if self.has_resource_provider:
-                await self.update_status(logger=logger)
+            await self.update_status(logger=logger)
 
     async def manage(self, logger: kopf.ObjectLogger) -> None:
         async with self.lock:
@@ -1061,7 +1066,10 @@ class ResourceHandle(KopfObject):
                 await self.json_patch_status(status_patch)
 
             if resource_claim:
-                await resource_claim.update_status_from_handle(logger=logger, resource_handle=self)
+                await resource_claim.update_status_from_handle(
+                    logger=logger,
+                    resource_handle=self,
+                )
 
             for resource_definition in resources_to_create:
                 changes = await poolboy_k8s.create_object(resource_definition)
@@ -1180,14 +1188,14 @@ class ResourceHandle(KopfObject):
                     resource_handle = self,
                     resource_state = resource['state'],
                 )
-                if resource_healthy:
+                if resource_healthy == False:
+                    resource_ready = False
+                else:
                     resource_ready = resource_provider.check_readiness(
                         logger = logger,
                         resource_handle = self,
                         resource_state = resource['state'],
                     )
-                elif resource_healthy == False:
-                    resource_ready = False
             else:
                 resource_healthy = None
                 resource_ready = False
@@ -1271,21 +1279,22 @@ class ResourceHandle(KopfObject):
                 "value": overall_ready,
             })
 
-        resource_provider = await self.get_resource_provider()
-        if resource_provider.status_summary_template:
-            try:
-                status_summary = resource_provider.make_status_summary(
-                    resource_handle=self,
-                    resources=resources,
-                )
-                if status_summary != self.status.get('summary'):
-                    patch.append({
-                        "op": "add",
-                        "path": "/status/summary",
-                        "value": status_summary,
-                    })
-            except Exception:
-                logger.exception(f"Failed to generate status summary for {self}")
+        if self.has_resource_provider:
+            resource_provider = await self.get_resource_provider()
+            if resource_provider.status_summary_template:
+                try:
+                    status_summary = resource_provider.make_status_summary(
+                        resource_handle=self,
+                        resources=resources,
+                    )
+                    if status_summary != self.status.get('summary'):
+                        patch.append({
+                            "op": "add",
+                            "path": "/status/summary",
+                            "value": status_summary,
+                        })
+                except Exception:
+                    logger.exception(f"Failed to generate status summary for {self}")
 
         if patch:
             await self.json_patch_status(patch)

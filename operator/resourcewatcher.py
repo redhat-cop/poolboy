@@ -244,81 +244,52 @@ class ResourceWatcher:
         if not resource_handle_name or not resource_handle_namespace:
             return
 
-        resource_handle = resourcehandle.ResourceHandle.get_from_cache(name=resource_handle_name)
+        resource_handle = await resourcehandle.ResourceHandle.get(name=resource_handle_name)
 
-        if resource_handle:
-            await resource_handle.handle_resource_event(logger=logger)
-        else:
+        if not resource_handle:
             logger.debug(
                 f"Received event for ResourceHandle {resource_handle_name} "
                 f"which seems to have been deleted."
             )
             return
-
-        resource_claim_name = event_obj_annotations.get(resource_claim_name_annotation)
-        resource_claim_namespace = event_obj_annotations.get(resource_claim_namespace_annotation)
-
-        if not resource_claim_name or not resource_claim_namespace:
+        if resource_handle.ignore:
+            logger.debug(
+                f"Received event for ResourceHandle {resource_handle_name} "
+                f"but it is marked to be ignored."
+            )
             return
 
-        resource_claim_description = f"ResourceClaim {resource_claim_name} in {resource_claim_namespace}"
+        await resource_handle.handle_resource_event(logger=logger)
+
         try:
-            resource_claim = await resourceclaim.ResourceClaim.get(
-                name = resource_claim_name,
-                namespace = resource_claim_namespace,
-            )
-
-            # Do not manage status for detached ResourceClaim
-            if resource_claim.is_detached:
-                logger.debug(
-                    f"Not handling event for {resource_description} for detached {resource_claim_description}",
-                )
-                return
-
-            prev_state = resource_claim.status_resources[resource_index].get('state')
-            prev_description = (
-                f"{prev_state['apiVersion']} {prev_state['kind']} {resource_name} in {resource_namespace}"
-                if resource_namespace else
-                f"{prev_state['apiVersion']} {prev_state['kind']} {resource_name}"
-            ) if prev_state else None
-            if resource_claim.resource_handle_name != resource_handle_name:
-                logger.info(
-                    f"Ignoring resource update on {resource_description} for "
-                    f"{resource_claim_description} due to ResourceHandle "
-                    f"name mismatch, {resource_claim.resource_handle_name} != {resource_handle_name}"
-                )
-            elif prev_state and prev_description != resource_description:
-                logger.info(
-                    f"Ignoring resource update for {resource_claim_description} due to resource "
-                    f"mismatch, {resource_description} != {prev_description}"
-                )
-            elif event_type == 'DELETED':
-                if prev_state:
-                    await resource_claim.remove_resource_from_status(
-                        index=resource_index,
-                        logger=logger,
-                    )
-                else:
-                    logger.info(
-                        f"Ignoring resource delete for {resource_claim_description} due to resource "
-                        f"state not present for {resource_description}"
-                    )
-            else:
-                logger.debug(f"Updating {resource_description} in {resource_claim_description}")
-                await resource_claim.update_resource_in_status(
-                    index=resource_index,
-                    logger=logger,
-                    state=event_obj,
-                )
+            resource_claim = await resource_handle.get_resource_claim()
         except kubernetes_asyncio.client.exceptions.ApiException as exception:
-            if exception.status != 404:
-                logger.warning(
-                    f"Received {exception.status} response when attempting to patch resource state for "
-                    f"{event_type.lower()} {resource_description} for {resource_claim_description}: "
-                    f"{exception}"
+            if exception.status == 404:
+                logger.debug(
+                    f"{self} references deleted {resource_handle.resource_claim_description}"
                 )
-        except Exception:
-            logger.exception(
-                f"Exception when attempting to patch resource state for {event_type.lower()} resource "
-                f"for {resource_claim_description}"
+            else:
+                raise
+
+        if not resource_claim:
+            return
+
+        if resource_claim.ignore:
+            logger.debug(
+                f"Received event for {resource_handle.resource_claim_description} "
+                f"but it is marked to be ignored."
             )
+            return
+
+        # Do not manage status for detached ResourceClaim
+        if resource_claim.is_detached:
+            logger.debug(
+                f"Not handling event for {resource_description} "
+                f"for detached {resource_handle.resource_claim_description}",
+            )
+            return
+
+        await resource_claim.update_status_from_handle(
+            logger=logger,
+            resource_handle=resource_handle,
+        )

@@ -76,6 +76,7 @@
     __state: "{{ r_get_resource_claim.resources[0] }}"
   assert:
     that:
+    - __state.status.resources | length == 1
     - __state.status.resources[0].state.metadata.name == 'test-01-a'
 
 - name: Verify creation of ResourceClaimTest test-01-a
