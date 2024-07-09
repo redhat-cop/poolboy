@@ -128,7 +128,7 @@ type_filter_match_re = re.compile(r'^{{(?!.*{{).*\| *(bool|float|int|object) *}}
 
 def check_condition(condition, template_style='jinja2', variables={}):
     return jinja2process(
-        template="{{ " + condition + " | bool}}",
+        template="{{ (" + condition + ") | bool}}",
         template_style=template_style,
         variables=variables
     )
