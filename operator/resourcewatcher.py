@@ -244,17 +244,31 @@ class ResourceWatcher:
         if not resource_handle_name or not resource_handle_namespace:
             return
 
-        resource_handle = await resourcehandle.ResourceHandle.get(name=resource_handle_name)
+        try:
+            resource_handle = await resourcehandle.ResourceHandle.get(
+                ignore_deleting=False,
+                name=resource_handle_name,
+            )
+        except kubernetes_asyncio.client.exceptions.ApiException as exception:
+            if exception.status == 404:
+                if 'deletionTimestamp' not in event_obj['metadata']:
+                    logger.warning(
+                        f"Received event on {resource_description} for deleted ResourceHandle {resource_handle_name}"
+                    )
+                return
+            else:
+                raise
 
-        if not resource_handle:
+        if resource_handle.is_deleting:
             logger.debug(
-                f"Received event for ResourceHandle {resource_handle_name} "
-                f"which seems to have been deleted."
+                f"Received event on {resource_description} for ResourceHandle {resource_handle_name} "
+                f"but it is deleting."
             )
             return
+
         if resource_handle.ignore:
             logger.debug(
-                f"Received event for ResourceHandle {resource_handle_name} "
+                f"Received event on {resource_description} for ResourceHandle {resource_handle_name} "
                 f"but it is marked to be ignored."
             )
             return

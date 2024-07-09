@@ -432,7 +432,7 @@ class ResourceHandle(KopfObject):
             return resource_handles
 
     @classmethod
-    async def get(cls, name: str) -> Optional[ResourceHandleT]:
+    async def get(cls, name: str, ignore_deleting=True) -> Optional[ResourceHandleT]:
         async with cls.class_lock:
             resource_handle = cls.all_instances.get(name)
             if resource_handle:
@@ -440,7 +440,7 @@ class ResourceHandle(KopfObject):
             definition = await Poolboy.custom_objects_api.get_namespaced_custom_object(
                 Poolboy.operator_domain, Poolboy.operator_version, Poolboy.namespace, 'resourcehandles', name
             )
-            if 'deletionTimestamp' in definition['metadata']:
+            if ignore_deleting and 'deletionTimestamp' in definition['metadata']:
                 return None
             return cls.__register_definition(definition=definition)
 
