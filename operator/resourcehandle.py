@@ -67,7 +67,11 @@ class ResourceHandle(KopfObject):
             # Check if there is already an assigned claim
             resource_handle = cls.bound_instances.get((resource_claim.namespace, resource_claim.name))
             if resource_handle:
-                return resource_handle
+                if await resource_handle.refetch():
+                    logger.warning(f"Rebinding {resource_handle} to {resource_claim}")
+                    return resource_handle
+                else:
+                    logger.warning(f"Deleted {resource_handle} was still in memory cache")
 
             matched_resource_handles = []
             matched_resource_handle = None
@@ -556,6 +560,10 @@ class ResourceHandle(KopfObject):
         Add ResourceHandle to register of bound or unbound instances.
         This method must be called with the ResourceHandle.lock held.
         """
+        # Ensure deleting resource handles are not cached
+        if self.is_deleting:
+            self.__unregister()
+            return
         self.all_instances[self.name] = self
         if self.is_bound:
             self.bound_instances[(
@@ -563,7 +571,7 @@ class ResourceHandle(KopfObject):
                 self.resource_claim_name
             )] = self
             self.unbound_instances.pop(self.name, None)
-        elif not self.is_deleting:
+        else:
             self.unbound_instances[self.name] = self
 
     def __unregister(self) -> None:
@@ -830,6 +838,8 @@ class ResourceHandle(KopfObject):
             resource_pool = await resourcepool.ResourcePool.get(self.resource_pool_name)
             if resource_pool:
                 await resource_pool.manage(logger=logger)
+
+        self.__unregister()
 
     async def handle_resource_event(self,
         logger: Union[logging.Logger, logging.LoggerAdapter],
