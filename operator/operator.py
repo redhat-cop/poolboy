@@ -335,6 +335,41 @@ async def resource_pool_delete(
     )
     await resource_pool.handle_delete(logger=logger)
 
+@kopf.daemon(Poolboy.operator_domain, Poolboy.operator_version, 'resourcepools',
+    cancellation_timeout = 1,
+    initial_delay = Poolboy.manage_pools_interval,
+    labels = {Poolboy.ignore_label: kopf.ABSENT},
+)
+async def resource_pool_daemon(
+    annotations: kopf.Annotations,
+    labels: kopf.Labels,
+    logger: kopf.ObjectLogger,
+    meta: kopf.Meta,
+    name: str,
+    namespace: str,
+    spec: kopf.Spec,
+    status: kopf.Status,
+    stopped: Optional[datetime],
+    uid: str,
+    **_
+):
+    resource_pool = await ResourcePool.register(
+        annotations = annotations,
+        labels = labels,
+        meta = meta,
+        name = name,
+        namespace = namespace,
+        spec = spec,
+        status = status,
+        uid = uid,
+    )
+    try:
+        while not stopped:
+            await resource_pool.manage(logger=logger)
+            await asyncio.sleep(Poolboy.manage_pools_interval)
+    except asyncio.CancelledError:
+        pass
+
 
 @kopf.on.event(Poolboy.operator_domain, Poolboy.operator_version, 'resourceproviders')
 async def resource_provider_event(event: Mapping, logger: kopf.ObjectLogger, **_) -> None:
