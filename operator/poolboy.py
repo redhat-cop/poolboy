@@ -4,6 +4,7 @@ import os
 class Poolboy():
     manage_claims_interval = int(os.environ.get('MANAGE_CLAIMS_INTERVAL', 60))
     manage_handles_interval = int(os.environ.get('MANAGE_HANDLES_INTERVAL', 60))
+    manage_pools_interval = int(os.environ.get('MANAGE_POOLS_INTERVAL', 10))
     operator_domain = os.environ.get('OPERATOR_DOMAIN', 'poolboy.gpte.redhat.com')
     operator_version = os.environ.get('OPERATOR_VERSION', 'v1')
     operator_api_version = f"{operator_domain}/{operator_version}"
