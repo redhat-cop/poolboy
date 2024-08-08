@@ -140,12 +140,12 @@ class ResourceWatcher:
                     method = Poolboy.custom_objects_api.list_cluster_custom_object
             elif self.namespace:
                 method = getattr(
-                    Poolboy.core_v1_api, "list_namespaced_" + inflection.underscore(kind)
+                    Poolboy.core_v1_api, "list_namespaced_" + inflection.underscore(self.kind)
                 )
                 kwargs = dict(namespace=namespace)
             else:
                 method = getattr(
-                    Poolboy.core_v1_api, "list_" + inflection.underscore(kind)
+                    Poolboy.core_v1_api, "list_" + inflection.underscore(self.kind)
                 )
                 kwargs = {}
 
