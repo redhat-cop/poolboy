@@ -12,6 +12,8 @@
             poolboy_domain ~ "/test": "simple"
           } }}
       spec:
+        healthCheck: >-
+          spec.stringvalue is defined
         override:
           apiVersion: "{{ poolboy_domain }}/v1"
           kind: ResourceClaimTest
@@ -30,6 +32,8 @@
               - one
               - two
               - three
+        readinessCheck:
+          spec.stringvalue in ('one', 'two', 'three')
         statusSummaryTemplate:
           stringValue: "{% raw %}{{ resources[0].state.spec.stringvalue }}{% endraw %}"
         template:
@@ -67,7 +71,8 @@
     namespace: "{{ poolboy_test_namespace }}"
   register: r_get_resource_claim
   failed_when: >-
-    r_get_resource_claim.resources[0].status.resources[0].state is undefined
+    r_get_resource_claim.resources[0].status.resources[0].state is undefined or
+    r_get_resource_claim.resources[0].status.summary is undefined
   until: r_get_resource_claim is success
   delay: 1
   retries: 10
