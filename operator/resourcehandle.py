@@ -1075,6 +1075,7 @@ class ResourceHandle(KopfObject):
             if status_patch:
                 await self.json_patch_status(status_patch)
 
+            await self.update_status(logger=logger)
             if resource_claim:
                 await resource_claim.update_status_from_handle(
                     logger=logger,

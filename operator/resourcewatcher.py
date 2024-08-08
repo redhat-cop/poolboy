@@ -180,17 +180,6 @@ class ResourceWatcher:
         watch = None
         self.cache.clear()
         try:
-            _continue = None
-            while True:
-                obj_list = await method(**kwargs, _continue=_continue, limit=50)
-                for obj in obj_list.get('items', []):
-                    if not isinstance(obj, Mapping):
-                        obj = Poolboy.api_client.sanitize_for_serialization(event_obj)
-                    await self.__watch_event(event_type='PRELOAD', event_obj=obj)
-                _continue = obj_list['metadata'].get('continue')
-                if not _continue:
-                    break
-
             watch = kubernetes_asyncio.watch.Watch()
             async for event in watch.stream(method, **kwargs):
                 if not isinstance(event, Mapping):
