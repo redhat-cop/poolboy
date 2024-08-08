@@ -264,6 +264,7 @@ class ResourceWatcher:
 
         await resource_handle.handle_resource_event(logger=logger)
 
+        resource_claim = None
         try:
             resource_claim = await resource_handle.get_resource_claim()
         except kubernetes_asyncio.client.exceptions.ApiException as exception:
