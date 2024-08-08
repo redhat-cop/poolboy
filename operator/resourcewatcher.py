@@ -140,12 +140,12 @@ class ResourceWatcher:
                     method = Poolboy.custom_objects_api.list_cluster_custom_object
             elif self.namespace:
                 method = getattr(
-                    Poolboy.core_v1_api, "list_namespaced_" + inflection.underscore(kind)
+                    Poolboy.core_v1_api, "list_namespaced_" + inflection.underscore(self.kind)
                 )
                 kwargs = dict(namespace=namespace)
             else:
                 method = getattr(
-                    Poolboy.core_v1_api, "list_" + inflection.underscore(kind)
+                    Poolboy.core_v1_api, "list_" + inflection.underscore(self.kind)
                 )
                 kwargs = {}
 
@@ -180,17 +180,6 @@ class ResourceWatcher:
         watch = None
         self.cache.clear()
         try:
-            _continue = None
-            while True:
-                obj_list = await method(**kwargs, _continue=_continue, limit=50)
-                for obj in obj_list.get('items', []):
-                    if not isinstance(obj, Mapping):
-                        obj = Poolboy.api_client.sanitize_for_serialization(event_obj)
-                    await self.__watch_event(event_type='PRELOAD', event_obj=obj)
-                _continue = obj_list['metadata'].get('continue')
-                if not _continue:
-                    break
-
             watch = kubernetes_asyncio.watch.Watch()
             async for event in watch.stream(method, **kwargs):
                 if not isinstance(event, Mapping):
@@ -275,6 +264,7 @@ class ResourceWatcher:
 
         await resource_handle.handle_resource_event(logger=logger)
 
+        resource_claim = None
         try:
             resource_claim = await resource_handle.get_resource_claim()
         except kubernetes_asyncio.client.exceptions.ApiException as exception:

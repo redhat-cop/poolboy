@@ -4,6 +4,7 @@
 *.swx
 *.pyc
 __pycache__
+.odo
 .odo/
 .odo/env
 .odo/odo-file-index.json

@@ -1071,9 +1071,22 @@ class ResourceHandle(KopfObject):
                     resources_to_create.append(resource_definition)
 
             if patch:
-                await self.json_patch(patch)
+                try:
+                    await self.json_patch(patch)
+                except kubernetes_asyncio.client.exceptions.ApiException as exception:
+                    if exception.status == 422:
+                        logger.error(f"Failed to apply {patch}")
+                    raise
+
             if status_patch:
-                await self.json_patch_status(status_patch)
+                try:
+                    await self.json_patch_status(status_patch)
+                except kubernetes_asyncio.client.exceptions.ApiException as exception:
+                    if exception.status == 422:
+                        logger.error(f"Failed to apply {status_patch}")
+                    raise
+
+            await self.update_status(logger=logger)
 
             if resource_claim:
                 await resource_claim.update_status_from_handle(
