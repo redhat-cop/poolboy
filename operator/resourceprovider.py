@@ -149,7 +149,7 @@ class ResourceProvider:
             resource_provider = cls.instances.get(name)
             if resource_provider:
                 return resource_provider
-            definition = await Poolboy.custom_objects_api.get_cluster_custom_object(
+            definition = await Poolboy.custom_objects_api.get_namespaced_custom_object(
                 group = Poolboy.operator_domain,
                 name = name,
                 namespace = Poolboy.namespace,
