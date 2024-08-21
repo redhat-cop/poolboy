@@ -27,7 +27,7 @@ helm template helm \
 . Create a project for development using `odo`:
 +
 ------------------------------
-oc project create poolboy-dev
+oc create namespace poolboy-dev
 ------------------------------
 
 . Grant privileges for cluster role `poolboy-dev` to default service account:
@@ -110,7 +110,6 @@ helm template helm \
 --set operatorDomain.name=poolboy.dev.local \
 --set=image.tagOverride=- \
 --set=image.repository=$(oc get imagestream poolboy -o jsonpath='{.status.tags[?(@.tag=="latest")].items[0].dockerImageReference}') \
---set=admin.deploy=false \
 | oc apply -f -
 --------------------------------------------------------------------------------
 

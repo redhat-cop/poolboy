@@ -25,6 +25,51 @@ ResourceHandleT = TypeVar('ResourceHandleT', bound='ResourceHandle')
 ResourcePoolT = TypeVar('ResourcePoolT', bound='ResourcePool')
 ResourceProviderT = TypeVar('ResourceProviderT', bound='ResourceProvider')
 
+class ResourceHandleMatch:
+    def __init__(self, resource_handle):
+        self.resource_handle = resource_handle
+        self.resource_count_difference = 0
+        self.resource_name_difference_count = 0
+        self.template_difference_count = 0
+
+    def __lt__(self, cmp):
+        '''Compare matches by preference'''
+        if self.resource_count_difference < cmp.resource_count_difference:
+            return True
+        elif self.resource_count_difference > cmp.resource_count_difference:
+            return False
+
+        if self.resource_name_difference_count < cmp.resource_name_difference_count:
+            return True
+        elif self.resource_name_difference_count > cmp.resource_name_difference_count:
+            return False
+
+        if self.template_difference_count < cmp.template_difference_count:
+            return True
+        elif self.template_difference_count > cmp.template_difference_count:
+            return False
+
+        # Prefer healthy resources to unknown health state
+        if self.resource_handle.is_healthy and not cmp.resource_handle.is_healthy == None:
+            return True
+        elif not self.resource_handle.is_healthy and cmp.resource_handle.is_healthy == None:
+            return False
+
+        # Prefer ready resources to unready or unknown readiness state
+        if self.resource_handle.is_ready and not cmp.resource_handle.is_ready:
+            return True
+        elif not self.resource_handle.is_ready and cmp.resource_handle.is_ready:
+            return False
+
+        # Prefer unknown readiness state to known unready state
+        if self.resource_handle.is_ready == None and not cmp.resource_handle.is_ready == False:
+            return True
+        elif not self.resource_handle.is_ready == False and cmp.resource_handle.is_ready == None:
+            return False
+
+        # Prefer older matches
+        return self.resource_handle.creation_timestamp < cmp.resource_handle.creation_timestamp
+
 class ResourceHandle(KopfObject):
     api_group = Poolboy.operator_domain
     api_version = Poolboy.operator_version
@@ -73,11 +118,10 @@ class ResourceHandle(KopfObject):
                 else:
                     logger.warning(f"Deleted {resource_handle} was still in memory cache")
 
-            matched_resource_handles = []
-            matched_resource_handle = None
             claim_status_resources = resource_claim.status_resources
 
             # Loop through unbound instances to find best match
+            matches = []
             for resource_handle in cls.unbound_instances.values():
                 # Skip unhealthy
                 if resource_handle.is_healthy == False:
@@ -93,26 +137,14 @@ class ResourceHandle(KopfObject):
                 and resource_handle.timedelta_to_lifespan_end.total_seconds() < 120:
                     continue
 
-                diff_count = 0
-
-                # Prefer handles with known healthy status
-                if resource_handle.is_healthy == None:
-                    diff_count += 0.1
-                # Prefer handles that are ready
-                if resource_handle.is_ready == False:
-                    diff_count += 0.01
-                elif resource_handle.is_ready == None:
-                    diff_count += 0.001
-
-                is_match = True
                 handle_resources = resource_handle.resources
                 if len(resource_claim_resources) < len(handle_resources):
                     # ResourceClaim cannot match ResourceHandle if there are more
                     # resources in the ResourceHandle than the ResourceClaim
                     continue
-                elif len(resource_claim_resources) > len(handle_resources):
-                    # Claim that adds resources strongly weighted in favor of normal diff match
-                    diff_count += 1000
+
+                match = ResourceHandleMatch(resource_handle)
+                match.resource_count_difference = len(resource_claim_resources) - len(handle_resources)
 
                 for i, handle_resource in enumerate(handle_resources):
                     claim_resource = resource_claim_resources[i]
@@ -120,18 +152,14 @@ class ResourceHandle(KopfObject):
                     # ResourceProvider must match
                     provider_name = claim_status_resources[i]['provider']['name']
                     if provider_name != handle_resource['provider']['name']:
-                        is_match = False
+                        match = None
                         break
 
-                    # If handle has a resource name then resource_claim must specify the same name
+                    # Check resource name match
                     claim_resource_name = claim_resource.get('name')
                     handle_resource_name = handle_resource.get('name')
-                    if handle_resource_name:
-                        if claim_resource_name != handle_resource_name:
-                            is_match = False
-                            break
-                    elif claim_resource_name:
-                        diff_count += 1
+                    if claim_resource_name != handle_resource_name:
+                        match.resource_name_difference_count += 1
 
                     # Use provider to check if templates match and get list of allowed differences
                     provider = await resourceprovider.ResourceProvider.get(provider_name)
@@ -140,18 +168,19 @@ class ResourceHandle(KopfObject):
                         claim_resource_template = claim_resource.get('template', {}),
                     )
                     if diff_patch == None:
-                        is_match = False
+                        match = None
                         break
                     # Match with (possibly empty) difference list
-                    diff_count += len(diff_patch)
+                    match.template_difference_count += len(diff_patch)
 
-                if is_match:
-                    matched_resource_handles.append((diff_count, resource_handle))
+                if match:
+                    matches.append(match)
 
             # Bind the oldest ResourceHandle with the smallest difference score
-            matched_resource_handles.sort(key=lambda item: f"{item[0]:012.3f} {item[1].creation_timestamp}")
-            for matched_resource_handle_item in matched_resource_handles:
-                matched_resource_handle = matched_resource_handle_item[1]
+            matches.sort()
+            matched_resource_handle = None
+            for match in matches:
+                matched_resource_handle = match.resource_handle
                 patch = [
                     {
                         "op": "add",
@@ -165,15 +194,28 @@ class ResourceHandle(KopfObject):
                     }
                 ]
 
-                # Add any additional resources to handle
-                for resource_index in range(len(matched_resource_handle.resources), len(resource_claim_resources)):
-                    patch.append({
-                        "op": "add",
-                        "path": f"/spec/resources/{resource_index}",
-                        "value": {
+                # Set resource names and add any additional resources to handle
+                for resource_index, claim_resource in enumerate(resource_claim_resources):
+                    resource_name = resource_claim_resources[resource_index].get('name')
+                    if resource_index < len(matched_resource_handle.resources):
+                        handle_resource = matched_resource_handle.resources[resource_index]
+                        if resource_name != handle_resource.get('name'):
+                            patch.append({
+                                "op": "add",
+                                "path": f"/spec/resources/{resource_index}/name",
+                                "value": resource_name,
+                            })
+                    else:
+                        patch_value = {
                             "provider": resource_claim_resources[resource_index]['provider'],
-                        },
-                    })
+                        }
+                        if resource_name:
+                            patch_value['name'] = resource_name
+                        patch.append({
+                            "op": "add",
+                            "path": f"/spec/resources/{resource_index}",
+                            "value": patch_value,
+                        })
 
                 # Set lifespan end from default on claim bind
                 lifespan_default = matched_resource_handle.get_lifespan_default(resource_claim)
