@@ -492,6 +492,12 @@ class ResourceProvider:
                 parameter_values.update(resource_claim.parameter_values)
             elif resource_handle:
                 parameter_values.update(resource_handle.parameter_values)
+        else:
+            # Add defaults to parameter values
+            parameter_values = {
+                **self.parameter_defaults,
+                **parameter_values,
+            }
 
         resource_handle_vars = resource_handle.vars if resource_handle else {}
         vars_ = {
