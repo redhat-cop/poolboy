@@ -36,35 +36,35 @@ class ResourceHandleMatch:
         '''Compare matches by preference'''
         if self.resource_count_difference < cmp.resource_count_difference:
             return True
-        elif self.resource_count_difference > cmp.resource_count_difference:
+        if self.resource_count_difference > cmp.resource_count_difference:
             return False
 
         if self.resource_name_difference_count < cmp.resource_name_difference_count:
             return True
-        elif self.resource_name_difference_count > cmp.resource_name_difference_count:
+        if self.resource_name_difference_count > cmp.resource_name_difference_count:
             return False
 
         if self.template_difference_count < cmp.template_difference_count:
             return True
-        elif self.template_difference_count > cmp.template_difference_count:
+        if self.template_difference_count > cmp.template_difference_count:
             return False
 
         # Prefer healthy resources to unknown health state
-        if self.resource_handle.is_healthy and not cmp.resource_handle.is_healthy == None:
+        if self.resource_handle.is_healthy and cmp.resource_handle.is_healthy == None:
             return True
-        elif not self.resource_handle.is_healthy and cmp.resource_handle.is_healthy == None:
+        if self.resource_handle.is_healthy == None and cmp.resource_handle.is_healthy:
             return False
 
         # Prefer ready resources to unready or unknown readiness state
         if self.resource_handle.is_ready and not cmp.resource_handle.is_ready:
             return True
-        elif not self.resource_handle.is_ready and cmp.resource_handle.is_ready:
+        if not self.resource_handle.is_ready and cmp.resource_handle.is_ready:
             return False
 
         # Prefer unknown readiness state to known unready state
-        if self.resource_handle.is_ready == None and not cmp.resource_handle.is_ready == False:
+        if self.resource_handle.is_ready == None and cmp.resource_handle.is_ready == False:
             return True
-        elif not self.resource_handle.is_ready == False and cmp.resource_handle.is_ready == None:
+        if not self.resource_handle.is_ready == False and cmp.resource_handle.is_ready == None:
             return False
 
         # Prefer older matches
