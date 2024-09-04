@@ -68,7 +68,7 @@ class ResourceHandleMatch:
             return False
 
         # Prefer older matches
-        return self.resource_handle.creation_timestamp < cmp.resource_handle.creation_timestamp
+        return self.resource_handle.creation_timestamp > cmp.resource_handle.creation_timestamp
 
 class ResourceHandle(KopfObject):
     api_group = Poolboy.operator_domain
