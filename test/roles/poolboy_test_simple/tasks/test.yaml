@@ -9,6 +9,7 @@
   - test-ignore-01.yaml
   - test-linked-01.yaml
   - test-linked-02.yaml
+  - test-linked-03.yaml
   - test-pool-01.yaml
   - test-pool-02.yaml
   - test-pool-03.yaml
