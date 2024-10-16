@@ -974,12 +974,12 @@ class ResourceHandle(KopfObject):
                             linked_resource_state = resource_states[pn]
                             break
                     else:
-                        raise kopf.TemporaryError(
+                        logger.debug(
                             f"{self} uses {resource_provider} which has "
                             f"linked ResourceProvider {resource_provider.name} but no resource in this "
-                            f"ResourceHandle use this provider.",
-                            delay=600
+                            f"ResourceHandle uses this provider."
                         )
+                        continue
 
                     if not linked_provider.check_wait_for(
                         linked_resource_provider = linked_resource_provider,

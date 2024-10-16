@@ -1,0 +1,485 @@
+---
+# Test linked resource provider which creates no resources of its own
+- name: Create ResourceProvider test-linked-03-base-a
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: "{{ poolboy_domain }}/v1"
+      kind: ResourceProvider
+      metadata:
+        name: test-linked-03-base-a
+        namespace: "{{ poolboy_namespace }}"
+        labels: >-
+          {{ {
+            poolboy_domain ~ "/test": "simple"
+          } }}
+      spec:
+        override:
+          apiVersion: "{{ poolboy_domain }}/v1"
+          kind: ResourceClaimTest
+          metadata:
+            name: test-linked-03-{% raw %}{{ guid }}-{{ resource_name }}{% endraw %}
+            namespace: "{{ poolboy_test_namespace }}"
+        parameters:
+        - name: stringvar
+          allowUpdate: true
+          required: true
+          validation:
+            openAPIV3Schema:
+              type: string
+              default: one
+              enum:
+              - one
+              - two
+              - three
+        - name: numbervar
+          allowUpdate: false
+          validation:
+            openAPIV3Schema:
+              type: integer
+              default: 0
+              minimum: 0
+        template:
+          definition:
+            spec:
+              numbervalue: "{% raw %}{{ numbervar | int }}{% endraw %}"
+              stringvalue: "{% raw %}{{ stringvar }}-a{% endraw %}"
+          enable: true
+        updateFilters:
+        - pathMatch: /spec/.*
+          allowedOps:
+          - replace
+
+- name: Create ResourceProvider test-linked-03-base-b
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: "{{ poolboy_domain }}/v1"
+      kind: ResourceProvider
+      metadata:
+        name: test-linked-03-base-b
+        namespace: "{{ poolboy_namespace }}"
+        labels: >-
+          {{ {
+            poolboy_domain ~ "/test": "simple"
+          } }}
+      spec:
+        override:
+          apiVersion: "{{ poolboy_domain }}/v1"
+          kind: ResourceClaimTest
+          metadata:
+            name: test-linked-03-{% raw %}{{ guid }}-{{ resource_name }}{% endraw %}
+            namespace: "{{ poolboy_test_namespace }}"
+        parameters:
+        - name: stringvar
+          allowUpdate: true
+          required: true
+          validation:
+            openAPIV3Schema:
+              type: string
+              default: one
+              enum:
+              - one
+              - two
+              - three
+        - name: numbervar
+          allowUpdate: true
+          validation:
+            openAPIV3Schema:
+              type: integer
+              default: 0
+              minimum: 0
+        template:
+          definition:
+            spec:
+              numbervalue: "{% raw %}{{ (numbervar | int * 10) | int }}{% endraw %}"
+              stringvalue: "{% raw %}{{ stringvar }}-b{% endraw %}"
+          enable: true
+        updateFilters:
+        - pathMatch: /spec/.*
+          allowedOps:
+          - replace
+
+- name: Create ResourceProvider test-linked-03-conditional
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: "{{ poolboy_domain }}/v1"
+      kind: ResourceProvider
+      metadata:
+        name: test-linked-03-conditional
+        namespace: "{{ poolboy_namespace }}"
+        labels: >-
+          {{ {
+            poolboy_domain ~ "/test": "simple"
+          } }}
+      spec:
+        linkedResourceProviders:
+        - name: test-linked-03-base-a
+          parameterValues:
+            numbervar: "{% raw %}{{ numbervar | int }}{% endraw %}"
+            stringvar: "{% raw %}{{ stringvar | upper }}{% endraw %}"
+          resourceName: base
+          templateVars:
+          - from: /spec/numbervalue
+            name: base_numbervalue
+          - from: /spec/stringvalue
+            name: base_stringvalue
+          waitFor: base_numbervalue | default(0) | int > 0
+          when: numbervar | default(0) | int == 1
+        - name: test-linked-03-base-b
+          parameterValues:
+            numbervar: "{% raw %}{{ numbervar | int }}{% endraw %}"
+            stringvar: "{% raw %}{{ stringvar | upper }}{% endraw %}"
+          resourceName: base
+          templateVars:
+          - from: /spec/numbervalue
+            name: base_numbervalue
+          - from: /spec/stringvalue
+            name: base_stringvalue
+          waitFor: base_numbervalue | default(0) | int > 0
+          when: numbervar | default(0) | int > 1
+        override:
+          apiVersion: "{{ poolboy_domain }}/v1"
+          kind: ResourceClaimTest
+          metadata:
+            name: test-linked-01-{% raw %}{{ guid }}{% endraw %}-binder
+            namespace: "{{ poolboy_test_namespace }}"
+          spec:
+            numbervalue: "{% raw %}{{ (base_numbervalue | default(0) | int * 10) | int }}{% endraw %}"
+            stringvalue: "{% raw %}{{ base_stringvalue | default('no base') | upper }}{% endraw %}"
+        parameters:
+        - name: stringvar
+          allowUpdate: true
+          required: true
+          validation:
+            openAPIV3Schema:
+              type: string
+              default: one
+              enum:
+              - one
+              - two
+              - three
+        - name: numbervar
+          allowUpdate: true
+          validation:
+            openAPIV3Schema:
+              type: integer
+              default: 0
+              minimum: 0
+        resourceName: conditional_binder
+        template:
+          enable: true
+        updateFilters:
+        - pathMatch: /spec/.*
+          allowedOps:
+          - replace
+
+- name: Create ResourceClaim test-linked-03-a
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: "{{ poolboy_domain }}/v1"
+      kind: ResourceClaim
+      metadata:
+        name: test-linked-03-a
+        namespace: "{{ poolboy_test_namespace }}"
+        labels: >-
+          {{ {
+            poolboy_domain ~ "/test": "simple"
+          } }}
+      spec:
+        provider:
+          name: test-linked-03-conditional
+          parameterValues:
+            stringvar: one
+            numbervar: 0
+
+- name: Verify handling of ResourceClaim test-linked-03-a
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-linked-03-a
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_resource_claim
+  vars:
+    __resource_claim: "{{ r_get_resource_claim.resources[0] }}"
+  failed_when: >-
+    __resource_claim.status.resources | length != 1 or
+    __resource_claim.status.resources[0].name != 'conditional_binder' or
+    __resource_claim.status.resources[0].provider.name != 'test-linked-03-conditional' or
+    __resource_claim.status.resources[0].state is undefined or
+    __resource_claim.status.resources[0].state.spec.numbervalue != 0 or
+    __resource_claim.status.resources[0].state.spec.stringvalue != 'NO BASE'
+  until: r_get_resource_claim is success
+  delay: 1
+  retries: 10
+
+- name: Create ResourceClaim test-linked-03-b
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: "{{ poolboy_domain }}/v1"
+      kind: ResourceClaim
+      metadata:
+        name: test-linked-03-b
+        namespace: "{{ poolboy_test_namespace }}"
+        labels: >-
+          {{ {
+            poolboy_domain ~ "/test": "simple"
+          } }}
+      spec:
+        provider:
+          name: test-linked-03-conditional
+          parameterValues:
+            stringvar: one
+            numbervar: 1
+
+- name: Verify handling of ResourceClaim test-linked-03-b
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-linked-03-b
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_resource_claim
+  vars:
+    __resource_claim: "{{ r_get_resource_claim.resources[0] }}"
+  failed_when: >-
+    __resource_claim.status.resources | length != 2 or
+    __resource_claim.status.resources[0].name != 'base' or
+    __resource_claim.status.resources[0].provider.name != 'test-linked-03-base-a' or
+    __resource_claim.status.resources[0].state is undefined or
+    __resource_claim.status.resources[0].state.spec.numbervalue != 1 or
+    __resource_claim.status.resources[0].state.spec.stringvalue != 'ONE-a' or
+    __resource_claim.status.resources[1].name != 'conditional_binder' or
+    __resource_claim.status.resources[1].provider.name != 'test-linked-03-conditional' or
+    __resource_claim.status.resources[1].state is undefined or
+    __resource_claim.status.resources[1].state.spec.numbervalue != 10 or
+    __resource_claim.status.resources[1].state.spec.stringvalue != 'ONE-A'
+  until: r_get_resource_claim is success
+  delay: 1
+  retries: 10
+
+- name: Save facts from for ResourceClaim test-linked-03-b
+  vars:
+    __resource_claim: >-
+      {{ r_get_resource_claim.resources[0] }}
+  set_fact:
+    resource_claim_test_linked_03_b_resource_handle_name: >-
+      {{ __resource_claim.status.resourceHandle.name }}
+    resource_claim_test_linked_03_b_base_resource_name: >-
+      {{ __resource_claim.status.resources[0].state.metadata.name }}
+    resource_claim_test_linked_03_b_binder_resource_name: >-
+      {{ __resource_claim.status.resources[1].state.metadata.name }}
+
+- name: Verify creation of base ResourceClaimTest for test-linked-03-b
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaimTest
+    name: "{{ resource_claim_test_linked_03_b_base_resource_name }}"
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_resource_claim_test
+  failed_when:  r_get_resource_claim_test.resources | length != 1
+  until: r_get_resource_claim_test is success
+  delay: 1
+  retries: 10
+
+- name: Verify creation of binder ResourceClaimTest for test-linked-03-b
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaimTest
+    name: "{{ resource_claim_test_linked_03_b_binder_resource_name }}"
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_resource_claim_test
+  failed_when:  r_get_resource_claim_test.resources | length != 1
+  until: r_get_resource_claim_test is success
+  delay: 1
+  retries: 10
+
+- name: Delete ResourceClaim test-linked-03-b
+  kubernetes.core.k8s:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-linked-03-b
+    namespace: "{{ poolboy_test_namespace }}"
+    state: absent
+
+- name: Verify delete of ResourceClaim test-linked-03-b
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-linked-03-b
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_resource_claim
+  failed_when: r_get_resource_claim.resources | length != 0
+  until: r_get_resource_claim is success
+  retries: 5
+  delay: 1
+
+- name: Verify delete of ResourceHandle for test-linked-03-b
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceHandle
+    name: "{{ resource_claim_test_linked_03_b_resource_handle_name }}"
+    namespace: "{{ poolboy_namespace }}"
+  register: r_get_resource_handle
+  failed_when: r_get_resource_handle.resources | length != 0
+  until: r_get_resource_handle is success
+  retries: 5
+  delay: 1
+
+- name: Verify delete of base ResourceClaimTest test-linked-03-b
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaimTest
+    name: "{{ resource_claim_test_linked_03_b_base_resource_name }}"
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_resource_claim_test
+  failed_when: r_get_resource_claim_test.resources | length != 0
+  until: r_get_resource_claim_test is success
+  delay: 1
+  retries: 10
+
+- name: Verify delete of binder ResourceClaimTest test-linked-03-b
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaimTest
+    name: "{{ resource_claim_test_linked_03_b_binder_resource_name }}"
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_resource_claim_test
+  failed_when: r_get_resource_claim_test.resources | length != 0
+  until: r_get_resource_claim_test is success
+  delay: 1
+  retries: 10
+
+- name: Create ResourceClaim test-linked-03-c
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: "{{ poolboy_domain }}/v1"
+      kind: ResourceClaim
+      metadata:
+        name: test-linked-03-c
+        namespace: "{{ poolboy_test_namespace }}"
+        labels: >-
+          {{ {
+            poolboy_domain ~ "/test": "simple"
+          } }}
+      spec:
+        provider:
+          name: test-linked-03-conditional
+          parameterValues:
+            stringvar: two
+            numbervar: 2
+
+- name: Verify handling of ResourceClaim test-linked-03-c
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-linked-03-c
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_resource_claim
+  vars:
+    __resource_claim: "{{ r_get_resource_claim.resources[0] }}"
+  failed_when: >-
+    __resource_claim.status.resources | length != 2 or
+    __resource_claim.status.resources[0].name != 'base' or
+    __resource_claim.status.resources[0].provider.name != 'test-linked-03-base-b' or
+    __resource_claim.status.resources[0].state is undefined or
+    __resource_claim.status.resources[0].state.spec.numbervalue != 20 or
+    __resource_claim.status.resources[0].state.spec.stringvalue != 'TWO-b' or
+    __resource_claim.status.resources[1].name != 'conditional_binder' or
+    __resource_claim.status.resources[1].provider.name != 'test-linked-03-conditional' or
+    __resource_claim.status.resources[1].state is undefined or
+    __resource_claim.status.resources[1].state.spec.numbervalue != 200 or
+    __resource_claim.status.resources[1].state.spec.stringvalue != 'TWO-B'
+  until: r_get_resource_claim is success
+  delay: 1
+  retries: 10
+
+- name: Save facts from for ResourceClaim test-linked-03-c
+  vars:
+    __resource_claim: >-
+      {{ r_get_resource_claim.resources[0] }}
+  set_fact:
+    resource_claim_test_linked_03_c_resource_handle_name: >-
+      {{ __resource_claim.status.resourceHandle.name }}
+    resource_claim_test_linked_03_c_base_resource_name: >-
+      {{ __resource_claim.status.resources[0].state.metadata.name }}
+    resource_claim_test_linked_03_c_binder_resource_name: >-
+      {{ __resource_claim.status.resources[1].state.metadata.name }}
+
+- name: Verify creation of base ResourceClaimTest for test-linked-03-c
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaimTest
+    name: "{{ resource_claim_test_linked_03_c_base_resource_name }}"
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_resource_claim_test
+  failed_when:  r_get_resource_claim_test.resources | length != 1
+  until: r_get_resource_claim_test is success
+  delay: 1
+  retries: 10
+
+- name: Verify creation of binder ResourceClaimTest for test-linked-03-c
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaimTest
+    name: "{{ resource_claim_test_linked_03_c_binder_resource_name }}"
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_resource_claim_test
+  failed_when:  r_get_resource_claim_test.resources | length != 1
+  until: r_get_resource_claim_test is success
+  delay: 1
+  retries: 10
+
+- name: Delete ResourceClaim test-linked-03-c
+  kubernetes.core.k8s:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-linked-03-c
+    namespace: "{{ poolboy_test_namespace }}"
+    state: absent
+
+- name: Verify delete of ResourceClaim test-linked-03-c
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaim
+    name: test-linked-03-c
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_resource_claim
+  failed_when: r_get_resource_claim.resources | length != 0
+  until: r_get_resource_claim is success
+  retries: 5
+  delay: 1
+
+- name: Verify delete of ResourceHandle for test-linked-03-c
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceHandle
+    name: "{{ resource_claim_test_linked_03_c_resource_handle_name }}"
+    namespace: "{{ poolboy_namespace }}"
+  register: r_get_resource_handle
+  failed_when: r_get_resource_handle.resources | length != 0
+  until: r_get_resource_handle is success
+  retries: 5
+  delay: 1
+
+- name: Verify delete of base ResourceClaimTest test-linked-03-c
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaimTest
+    name: "{{ resource_claim_test_linked_03_c_base_resource_name }}"
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_resource_claim_test
+  failed_when: r_get_resource_claim_test.resources | length != 0
+  until: r_get_resource_claim_test is success
+  delay: 1
+  retries: 10
+
+- name: Verify delete of binder ResourceClaimTest test-linked-03-c
+  kubernetes.core.k8s_info:
+    api_version: "{{ poolboy_domain }}/v1"
+    kind: ResourceClaimTest
+    name: "{{ resource_claim_test_linked_03_c_binder_resource_name }}"
+    namespace: "{{ poolboy_test_namespace }}"
+  register: r_get_resource_claim_test
+  failed_when: r_get_resource_claim_test.resources | length != 0
+  until: r_get_resource_claim_test is success
+  delay: 1
+  retries: 10
+...

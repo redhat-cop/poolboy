@@ -30,6 +30,12 @@ helm template helm \
 oc create namespace poolboy-dev
 ------------------------------
 
+. Change project to `poolboy-dev` namespace:
++
+----------------------
+oc project poolboy-dev
+----------------------
+
 . Grant privileges for cluster role `poolboy-dev` to default service account:
 +
 -------------------------------------------------------------

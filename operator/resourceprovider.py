@@ -29,6 +29,7 @@ class _LinkedResourceProvider:
         self.parameter_values = spec.get('parameterValues', {})
         self.resource_name = spec.get('resourceName', self.name)
         self.wait_for = spec.get('waitFor')
+        self.when = spec.get('when')
         self.template_vars = [
             _TemplateVar(item) for item in spec.get('templateVars', [])
         ]
@@ -70,6 +71,35 @@ class _LinkedResourceProvider:
 
         return recursive_process_template_strings(
             '{{(' + self.wait_for + ')|bool}}', resource_provider.template_style, vars_
+        )
+
+    def check_when(self,
+        parameter_values: Optional[Mapping] = None,
+        resource_claim: Optional[ResourceClaimT] = None,
+        resource_handle: Optional[ResourceHandleT] = None,
+        resource_provider: Optional[ResourceProviderT] = None,
+    ) -> bool:
+        if not self.when:
+            return True
+
+        if parameter_values == None:
+            parameter_values = {**self.parameter_defaults}
+            if resource_claim:
+                parameter_values.update(resource_claim.parameter_values)
+            elif resource_handle:
+                parameter_values.update(resource_handle.parameter_values)
+
+        resource_handle_vars = resource_handle.vars if resource_handle else {}
+
+        return recursive_process_template_strings(
+            '{{(' + self.when + ')|bool}}', resource_provider.template_style, {
+                **resource_provider.vars,
+                **resource_handle_vars,
+                **parameter_values,
+                "resource_claim": resource_claim,
+                "resource_handle": resource_handle,
+                "resource_provider": self,
+            }
         )
 
 
@@ -512,6 +542,13 @@ class ResourceProvider:
         resources = []
         for linked_resource_provider in self.linked_resource_providers:
             resource_provider = await self.get(linked_resource_provider.name)
+            if not linked_resource_provider.check_when(
+                parameter_values=parameter_values,
+                resource_claim=resource_claim,
+                resource_handle=resource_handle,
+                resource_provider=self,
+            ):
+                continue
             resources.extend(
                 await resource_provider.get_resources(
                     resource_claim = resource_claim,

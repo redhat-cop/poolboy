@@ -165,6 +165,10 @@ spec:
                         Condition is given in Jinja2 syntax similar to ansible "when" clauses.
                         The linked provider's resource state may be referenced with "resource_state".
                       type: string
+                    when:
+                      description: >-
+                        Condition which is used to determine if this provider should be used.
+                      type: string
               match:
                 description: >-
                   Partial resource definition used to check if a resource in a handle or claim
