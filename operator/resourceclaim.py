@@ -942,16 +942,19 @@ class ResourceClaim(KopfObject):
         parameter_states = self.status.get('provider', {}).get('parameterValues')
 
         # Collect parameter values from status and resource provider defaults
+        parameters_from_defaults = set()
         for parameter in resource_provider.get_parameters():
             if parameter.name not in parameter_values:
                 if parameter_states and parameter.name in parameter_states:
                     parameter_values[parameter.name] = parameter_states[parameter.name]
                 elif parameter.default_template != None:
+                    parameters_from_defaults.add(parameter.name)
                     parameter_values[parameter.name] = recursive_process_template_strings(
                         parameter.default_template,
                         variables = { **vars_, **parameter_values }
                     )
                 elif parameter.default_value != None:
+                    parameters_from_defaults.add(parameter.name)
                     parameter_values[parameter.name] = parameter.default_value
 
         parameter_names = set()
@@ -963,6 +966,9 @@ class ResourceClaim(KopfObject):
                     if value == parameter_states.get(parameter.name):
                         # Unchanged from current state is automatically considered valid
                         # even if validation rules have changed.
+                        continue
+                    if parameter.name in parameters_from_defaults:
+                        # New parameter set from default is automatically valid
                         continue
                     if not parameter.allow_update:
                         validation_errors.append(f"Parameter {parameter.name} is immutable.")
