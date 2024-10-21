@@ -22,6 +22,8 @@ operatorDomain:
 
 manageClaimsInterval: 60
 manageHandlesInterval: 60
+managePoolsInterval: 10
+resourceRefreshInterval: 600
 
 anarchy:
   # Control whether anarchy integration should be created
