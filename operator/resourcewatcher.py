@@ -33,6 +33,9 @@ class ResourceWatcher:
 
     class CacheEntry:
         def __init__(self, resource):
+            resource['metadata'].pop('managedFields', None)
+            if 'status' in resource:
+                resource['status'].pop('diffBase', None)
             self.resource = resource
             self.cache_datetime = datetime.now(timezone.utc)
 
