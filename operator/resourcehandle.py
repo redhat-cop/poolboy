@@ -18,7 +18,7 @@ import resourcewatcher
 
 from kopfobject import KopfObject
 from poolboy import Poolboy
-from poolboy_templating import recursive_process_template_strings, seconds_to_interval
+from poolboy_templating import recursive_process_template_strings, seconds_to_interval, timedelta_to_str
 
 ResourceClaimT = TypeVar('ResourceClaimT', bound='ResourceClaim')
 ResourceHandleT = TypeVar('ResourceHandleT', bound='ResourceHandle')
@@ -366,19 +366,17 @@ class ResourceHandle(KopfObject):
                 )
                 lifespan_end = lifespan_start_datetime + lifespan_maximum_timedelta
 
-        if lifespan_end_datetime \
-        or lifespan_maximum_timedelta \
-        or lifespan_relative_maximum_timedelta:
-            definition['spec']['lifespan'] = {}
+        if lifespan_default_timedelta:
+            definition['spec'].setdefault('lifespan', {})['default'] = timedelta_to_str(lifespan_default_timedelta)
 
         if lifespan_end_datetime:
-            definition['spec']['lifespan']['end'] = lifespan_end_datetime.strftime('%FT%TZ')
+            definition['spec'].setdefault('lifespan', {})['end'] = lifespan_end_datetime.strftime('%FT%TZ')
 
         if lifespan_maximum:
-            definition['spec']['lifespan']['maximum'] = lifespan_maximum
+            definition['spec'].setdefault('lifespan', {})['maximum'] = lifespan_maximum
 
         if lifespan_relative_maximum:
-            definition['spec']['lifespan']['relativeMaximum'] = lifespan_relative_maximum
+            definition['spec'].setdefault('lifespan', {})['relativeMaximum'] = lifespan_relative_maximum
 
         definition = await Poolboy.custom_objects_api.create_namespaced_custom_object(
             body = definition,
@@ -785,10 +783,21 @@ class ResourceHandle(KopfObject):
 
     def get_lifespan_end_maximum_datetime(self, resource_claim=None):
         lifespan_start_datetime = resource_claim.lifespan_start_datetime if resource_claim else self.creation_datetime
+
         maximum_timedelta = self.get_lifespan_maximum_timedelta(resource_claim=resource_claim)
-        maximum_end = lifespan_start_datetime + maximum_timedelta if maximum_timedelta else None
+        if maximum_timedelta:
+            if resource_claim.lifespan_first_ready_timestamp:
+                maximum_end = resource_claim.lifespan_first_ready_datetime + maximum_timedelta
+            else:
+                maximum_end = lifespan_start_datetime + maximum_timedelta
+        else:
+            maximum_end = None
+
         relative_maximum_timedelta = self.get_lifespan_relative_maximum_timedelta(resource_claim=resource_claim)
-        relative_maximum_end = datetime.now(timezone.utc) + relative_maximum_timedelta if relative_maximum_timedelta else None
+        if relative_maximum_timedelta:
+            relative_maximum_end = datetime.now(timezone.utc) + relative_maximum_timedelta
+        else:
+            relative_maximum_end = None
 
         if relative_maximum_end \
         and (not maximum_end or relative_maximum_end < maximum_end):

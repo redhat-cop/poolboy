@@ -189,6 +189,11 @@ spec:
                       Effective timestamp for end of lifespan for ResourceClaim.
                     type: string
                     format: date-time
+                  firstReady:
+                    description: >-
+                      First timestamp when ResourceClaim indicated ready status.
+                    type: string
+                    format: date-time
                   maximum:
                     description: >-
                       Maximum lifespan which may be requested in the ResourceClaim relative to the creation timestamp.
