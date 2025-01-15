@@ -82,22 +82,21 @@ def seconds_to_interval(seconds:int) -> str:
         return f"{int(seconds)}s"
 
 def timedelta_to_str(td:timedelta) -> str:
+    total_seconds = int(td.total_seconds())
+    days = total_seconds // 86400
+    hours = (total_seconds % 86400) // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+
     ret = ""
-    remaining = int(td.total_seconds())
-    days = remaining // 60 // 60 // 24
     if days > 0:
         ret += f"{days}d"
-        remaining -= days * 60 * 60 * 24
-    hours = remaining // 60 // 60
     if hours > 0:
         ret += f"{hours:d}h"
-        remaining -= hours * 60 * 60
-    minutes = remaining // 60
     if minutes > 0:
         ret += f"{minutes}m"
-        remaining -= minutes * 60
-    if remaining > 0:
-        ret += f"{remaining}s"
+    if seconds > 0:
+        ret += f"{seconds}s"
     return ret
 
 jinja2envs = {
