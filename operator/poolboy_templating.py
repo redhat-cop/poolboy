@@ -81,6 +81,24 @@ def seconds_to_interval(seconds:int) -> str:
     else:
         return f"{int(seconds)}s"
 
+def timedelta_to_str(td:timedelta) -> str:
+    total_seconds = int(td.total_seconds())
+    days = total_seconds // 86400
+    hours = (total_seconds % 86400) // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+
+    ret = ""
+    if days > 0:
+        ret += f"{days}d"
+    if hours > 0:
+        ret += f"{hours:d}h"
+    if minutes > 0:
+        ret += f"{minutes}m"
+    if seconds > 0:
+        ret += f"{seconds}s"
+    return ret
+
 jinja2envs = {
     'jinja2': jinja2.Environment(
         finalize = error_if_undefined,

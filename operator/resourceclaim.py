@@ -194,6 +194,18 @@ class ResourceClaim(KopfObject):
             return lifespan.get('end')
 
     @property
+    def lifespan_first_ready_datetime(self) -> Optional[datetime]:
+        timestamp = self.lifespan_first_ready_timestamp
+        if timestamp:
+            return datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S%z")
+
+    @property
+    def lifespan_first_ready_timestamp(self) -> Optional[str]:
+        timestamp = self.status.get('lifespan', {}).get('firstReady')
+        if timestamp:
+            return timestamp
+
+    @property
     def lifespan_maximum(self) -> Optional[str]:
         lifespan = self.status.get('lifespan')
         if lifespan:
@@ -340,6 +352,10 @@ class ResourceClaim(KopfObject):
             "maximum": resource_handle.get_lifespan_maximum(resource_claim=self),
             "relativeMaximum": resource_handle.get_lifespan_relative_maximum(resource_claim=self),
         }
+
+        if resource_handle.is_ready:
+            lifespan_value['firstReady'] = datetime.now(timezone.utc).strftime('%FT%TZ')
+
         status_patch.append({
             "op": "add",
             "path": "/status/lifespan",
@@ -405,12 +421,37 @@ class ResourceClaim(KopfObject):
             return None
         return self.status['resources'][resource_index].get('state')
 
+    async def set_requested_lifespan_end(self,
+        end_datetime,
+    ) -> None:
+        await self.merge_patch({
+            "spec": {
+                "lifespan": {
+                    "end": end_datetime.strftime('%FT%TZ')
+                }
+            }
+        })
+
     async def update_status_from_handle(self,
         logger: kopf.ObjectLogger,
         resource_handle: ResourceHandleT
     ) -> None:
         async with self.lock:
             patch = []
+
+            # Reset lifespan from default on first ready
+            if resource_handle.is_ready and not self.lifespan_first_ready_timestamp:
+                logger.info(f"{self} is first ready")
+                lifespan_default_timedelta = resource_handle.get_lifespan_default_timedelta(resource_claim=self)
+                if lifespan_default_timedelta:
+                    logger.info(f"{self} has lifespan_default_timedelta")
+                    # Adjust requested end if unchanged from default
+                    if not self.requested_lifespan_end_datetime \
+                    or lifespan_default_timedelta == self.requested_lifespan_end_datetime - self.lifespan_start_datetime:
+                        logger.info(f"Setting requested lifespan end")
+                        await self.set_requested_lifespan_end(
+                            datetime.now(timezone.utc) + lifespan_default_timedelta
+                        )
 
             lifespan_maximum = resource_handle.get_lifespan_maximum(resource_claim=self)
             lifespan_relative_maximum = resource_handle.get_lifespan_relative_maximum(resource_claim=self)
@@ -421,6 +462,8 @@ class ResourceClaim(KopfObject):
                     "maximum": lifespan_maximum,
                     "relativeMaximum": lifespan_relative_maximum,
                 }
+                if resource_handle.is_ready:
+                    lifespan_value['firstReady'] = datetime.now(timezone.utc).strftime('%FT%TZ')
                 patch.append({
                     "op": "add",
                     "path": "/status/lifespan",
@@ -439,6 +482,14 @@ class ResourceClaim(KopfObject):
                         "op": "add",
                         "path": "/status/lifespan/end",
                         "value": resource_handle.lifespan_end_timestamp,
+                    })
+
+                if resource_handle.is_ready and not self.lifespan_first_ready_timestamp:
+                    # FIXME - Reset ResourceHandle lifespan default!
+                    patch.append({
+                        "op": "add",
+                        "path": "/status/lifespan/firstReady",
+                        "value": datetime.now(timezone.utc).strftime('%FT%TZ'),
                     })
 
                 if lifespan_maximum:
