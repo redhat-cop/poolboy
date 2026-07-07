@@ -205,14 +205,14 @@ spec:
                       Configured as a whole number followed by units "s", "m", "h", or "d" for seconds, minutes, hours, or days.
                       Ex: "3d" for 3 days.
                     type: string
-                    pattern: ^[0-9]+[smhd]$
+                    pattern: ^([0-9]+[smhd])+$
                   relativeMaximum:
                     description: >-
                       Maximum lifespan which may be requested in the ResourceClaim relative to the present datetime.
                       Configured as a whole number followed by units "s", "m", "h", or "d" for seconds, minutes, hours, or days.
                       Ex: "3d" for 3 days.
                     type: string
-                    pattern: ^[0-9]+[smhd]$
+                    pattern: ^([0-9]+[smhd])+$
                   start:
                     description: >-
                       Effective timestamp for start of lifespan for ResourceClaim.

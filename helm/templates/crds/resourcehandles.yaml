@@ -79,6 +79,7 @@ spec:
                       Ex: "3d" for 3 days.
                       This value may be a template string.
                     type: string
+                    pattern: ^([0-9]+[smhd])+$
                   end:
                     description: >-
                       Configured end of lifespan for ResourceHandle and resources it manages.
@@ -91,6 +92,7 @@ spec:
                       Ex: "3d" for 3 days.
                       This value may be a template string.
                     type: string
+                    pattern: ^([0-9]+[smhd])+$
                   relativeMaximum:
                     description: >-
                       Maximum lifespan which may be requested in the ResourceClaim relative to the present datetime.
@@ -98,6 +100,7 @@ spec:
                       Ex: "3d" for 3 days.
                       This value may be a template string.
                     type: string
+                    pattern: ^([0-9]+[smhd])+$
               preferenceScore:
                 description: >-
                   The preference score to apply to ResourceHandles created from this ResourcePool.
