@@ -1354,12 +1354,23 @@ class ResourceHandle(KopfObject):
                             linked_resource_state = resource_states[pn]
                             break
                     else:
-                        logger.debug(
-                            f"{self} uses {resource_provider} which has "
-                            f"linked ResourceProvider {resource_provider.name} but no resource in this "
-                            f"ResourceHandle uses this provider."
-                        )
-                        continue
+                        if not linked_provider.when:
+                            logger.warning(
+                                f"{self} uses {resource_provider} which has "
+                                f"linked ResourceProvider {linked_provider.name} "
+                                f"(resource name: {linked_provider.resource_name}) "
+                                f"but no resource in this ResourceHandle uses this "
+                                f"provider. Blocking resource creation."
+                            )
+                            wait_for_linked_provider = True
+                            break
+                        else:
+                            logger.debug(
+                                f"{self} uses {resource_provider} which has "
+                                f"linked ResourceProvider {linked_provider.name} "
+                                f"with when condition - skipping."
+                            )
+                            continue
 
                     if not linked_provider.check_wait_for(
                         linked_resource_provider = linked_resource_provider,
