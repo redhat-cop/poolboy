@@ -6,7 +6,7 @@ jsonpointer==3.0.0
 jsonschema==4.26.0
 openapi-schema-validator==0.8.1
 prometheus-client==0.24.1
-pyasn1==0.6.2
+pyasn1==0.6.4
 pyasn1-modules==0.4.2
 pydantic==2.12.5
 pyOpenSSL==20.0.1
